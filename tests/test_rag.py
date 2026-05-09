@@ -1,3 +1,7 @@
+import pytest
+from unittest.mock import MagicMock
+from app.rag import run_pipeline, DISCLAIMER
+from app.config import settings
 from app.rag import _build_query
 from app.models import QuestionnaireInput
 
@@ -77,3 +81,66 @@ def test_build_query_monetizacion_ninguna_excluded():
 
 def test_build_query_monetizacion_included():
     assert "publicidad" in _build_query(_make_input(monetizacion="publicidad"))
+
+
+@pytest.fixture
+def sample_input():
+    return _make_input()
+
+
+def _make_mock_doc(source="RGPD.pdf", doc_type="normativa_europea"):
+    doc = MagicMock()
+    doc.page_content = f"Contenido de prueba de {source}"
+    doc.metadata = {"source": source, "doc_type": doc_type}
+    return doc
+
+
+def _make_state(docs, llm_response="Respuesta de prueba"):
+    state = MagicMock()
+    state.vectorstore.similarity_search.return_value = docs
+    state.groq_client.invoke.return_value = MagicMock(content=llm_response)
+    return state
+
+
+def test_run_pipeline_returns_rag_response(sample_input):
+    docs = [
+        _make_mock_doc("RGPD.pdf"),
+        _make_mock_doc("LOPDGDD.pdf", "normativa_española"),
+    ]
+    state = _make_state(docs, "Debes implementar consentimiento explícito.")
+
+    result = run_pipeline(sample_input, state)
+
+    assert result.respuesta_completa == "Debes implementar consentimiento explícito."
+    assert result.chunks_utilizados == 2
+    assert result.disclaimer == DISCLAIMER
+    assert "RGPD" in result.normativas_detectadas
+    assert "LOPDGDD" in result.normativas_detectadas
+
+
+def test_run_pipeline_normativas_deduplicadas(sample_input):
+    docs = [_make_mock_doc("RGPD.pdf"), _make_mock_doc("RGPD.pdf")]
+    result = run_pipeline(sample_input, _make_state(docs))
+    assert result.normativas_detectadas.count("RGPD") == 1
+
+
+def test_run_pipeline_groq_error_raises_503(sample_input):
+    state = MagicMock()
+    state.vectorstore.similarity_search.return_value = [_make_mock_doc()]
+    state.groq_client.invoke.side_effect = Exception("Connection refused")
+
+    with pytest.raises(Exception) as exc_info:
+        run_pipeline(sample_input, state)
+
+    assert exc_info.value.status_code == 503
+
+
+def test_run_pipeline_calls_similarity_search_with_k(sample_input):
+    docs = [_make_mock_doc()]
+    state = _make_state(docs)
+
+    run_pipeline(sample_input, state)
+
+    state.vectorstore.similarity_search.assert_called_once()
+    call_args = state.vectorstore.similarity_search.call_args
+    assert call_args.kwargs.get("k") == settings.top_k_chunks
