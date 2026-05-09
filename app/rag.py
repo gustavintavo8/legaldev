@@ -1,4 +1,5 @@
 import logging
+from pathlib import Path
 from fastapi import HTTPException
 from langchain_core.messages import SystemMessage, HumanMessage
 
@@ -122,7 +123,7 @@ def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
         )
 
     normativas = list({
-        doc.metadata["source"].replace(".pdf", "")
+        Path(doc.metadata["source"]).stem
         for doc in docs
         if "source" in doc.metadata
     })

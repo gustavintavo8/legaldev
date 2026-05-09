@@ -34,3 +34,9 @@ def test_analyze_descripcion_too_long(client, sample_input_dict):
     sample_input_dict["descripcion_breve"] = "x" * 501
     response = client.post("/analyze", json=sample_input_dict)
     assert response.status_code == 422
+
+
+def test_analyze_groq_error_returns_503(client, sample_input_dict):
+    client.app.state.groq_client.invoke.side_effect = Exception("LLM down")
+    response = client.post("/analyze", json=sample_input_dict)
+    assert response.status_code == 503

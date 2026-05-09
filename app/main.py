@@ -63,7 +63,10 @@ def root():
 
 @app.get("/health")
 def health(request: Request):
-    docs_indexed = request.app.state.vectorstore._collection.count()
+    try:
+        docs_indexed = request.app.state.vectorstore._collection.count()
+    except AttributeError:
+        docs_indexed = -1
     return {"status": "ok", "docs_indexed": docs_indexed}
 
 
