@@ -13,11 +13,29 @@ def test_nis2():
 def test_responsabilidad_ia():
     assert get_doc_type("Directiva de Responsabilidad por Productos con IA.pdf") == "normativa_europea"
 
+def test_dsa():
+    assert get_doc_type("Digital Services Act (Reglamento UE 2022-2065).pdf") == "normativa_europea"
+
+def test_cra():
+    assert get_doc_type("Cyber Resilience Act (Reglamento UE 2024-2847).pdf") == "normativa_europea"
+
+def test_eprivacy():
+    assert get_doc_type("Directiva ePrivacy (2002-58-CE consolidada).pdf") == "normativa_europea"
+
+def test_data_act():
+    assert get_doc_type("Data Act (Reglamento UE 2023-2854).pdf") == "normativa_europea"
+
+def test_dga():
+    assert get_doc_type("Data Governance Act (Reglamento UE 2022-868).pdf") == "normativa_europea"
+
+def test_dora():
+    assert get_doc_type("DORA (Reglamento UE 2022-2554).pdf") == "normativa_europea"
+
 def test_lopdgdd():
     assert get_doc_type("LOPDGDD.pdf") == "normativa_española"
 
 def test_ens():
-    assert get_doc_type("ENS Real Decreto 311-2022.pdf") == "normativa_española"
+    assert get_doc_type("Real Decreto 311-2022 ENS.pdf") == "normativa_española"
 
 def test_lssi():
     assert get_doc_type("LSSI.pdf") == "normativa_española"

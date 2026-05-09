@@ -64,10 +64,12 @@ Genera `chroma_db/` con el vector store. Solo es necesario ejecutarlo una vez (o
 
 ## Arrancar el servidor
 
-### Desarrollo (uvicorn)
+### Desarrollo
 
 ```bash
-uvicorn app.main:app --reload
+make dev        # uvicorn app.main:app --reload
+make test       # pytest -v
+make ingest     # python app/ingest.py
 ```
 
 API disponible en http://localhost:8000. Documentación interactiva en http://localhost:8000/docs.
@@ -83,10 +85,10 @@ docker-compose up --build
 
 ## Uso de la API
 
-### POST /analyze
+### POST /v1/analyze
 
 ```bash
-curl -X POST http://localhost:8000/analyze \
+curl -X POST http://localhost:8000/v1/analyze \
   -H "Content-Type: application/json" \
   -d '{
     "tipo_proyecto": "app_web",
@@ -117,6 +119,13 @@ Respuesta:
   "chunks_utilizados": 8,
   "disclaimer": "⚠️ Esta información es orientativa y no constituye asesoramiento legal..."
 }
+```
+
+### GET /normativas
+
+```bash
+curl http://localhost:8000/normativas
+# {"normativas": ["RGPD.pdf", "LOPDGDD.pdf", ...], "total": 22}
 ```
 
 ### GET /health
@@ -154,8 +163,14 @@ pytest -v
 | EU AI Act | Normativa europea |
 | Directiva NIS2 | Normativa europea |
 | Directiva de Responsabilidad por Productos con IA | Normativa europea |
+| Digital Services Act (Reglamento UE 2022/2065) | Normativa europea |
+| Cyber Resilience Act (Reglamento UE 2024/2847) | Normativa europea |
+| Directiva ePrivacy (2002/58/CE consolidada) | Normativa europea |
+| Data Act (Reglamento UE 2023/2854) | Normativa europea |
+| Data Governance Act (Reglamento UE 2022/868) | Normativa europea |
+| DORA (Reglamento UE 2022/2554) | Normativa europea |
 | LOPDGDD | Normativa española |
-| ENS | Normativa española |
+| Real Decreto 311/2022 ENS | Normativa española |
 | LSSI | Normativa española |
 | Ley de Propiedad Intelectual | Normativa española |
 | Guías AEPD (×7) | Guías oficiales AEPD |

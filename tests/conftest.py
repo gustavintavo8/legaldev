@@ -68,6 +68,9 @@ def client(mock_doc):
         mock_vectorstore = MagicMock()
         mock_vectorstore.similarity_search_with_relevance_scores.return_value = [(mock_doc, 0.85)]
         mock_vectorstore._collection.count.return_value = 1234
+        mock_vectorstore._collection.get.return_value = {
+            "metadatas": [{"source": "RGPD.pdf"}, {"source": "LOPDGDD.pdf"}, {"source": "RGPD.pdf"}]
+        }
         mock_chroma_cls.return_value = mock_vectorstore
 
         mock_llm = MagicMock()

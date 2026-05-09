@@ -46,3 +46,22 @@ def test_analyze_no_relevant_docs_returns_404(client, sample_input_dict):
     client.app.state.vectorstore.similarity_search_with_relevance_scores.return_value = []
     response = client.post("/analyze", json=sample_input_dict)
     assert response.status_code == 404
+
+
+def test_v1_analyze_returns_rag_response(client, sample_input_dict):
+    response = client.post("/v1/analyze", json=sample_input_dict)
+    assert response.status_code == 200
+    data = response.json()
+    assert "respuesta_completa" in data
+    assert "normativas_detectadas" in data
+    assert "disclaimer" in data
+
+
+def test_normativas_returns_deduplicated_list(client):
+    response = client.get("/normativas")
+    assert response.status_code == 200
+    data = response.json()
+    assert "normativas" in data
+    assert data["total"] == 2
+    assert "RGPD.pdf" in data["normativas"]
+    assert "LOPDGDD.pdf" in data["normativas"]

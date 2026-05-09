@@ -1,7 +1,7 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
@@ -62,6 +62,20 @@ app.add_middleware(
 )
 
 
+def _analyze_handler(input: QuestionnaireInput, request: Request) -> RAGResponse:
+    return run_pipeline(input, request.app.state)
+
+
+def _normativas_handler(request: Request) -> dict:
+    try:
+        result = request.app.state.vectorstore._collection.get(include=["metadatas"])
+        sources = sorted({m["source"] for m in result["metadatas"] if m.get("source")})
+        return {"normativas": sources, "total": len(sources)}
+    except Exception:
+        return {"normativas": [], "total": 0}
+
+
+# Root and health stay unversioned (Railway health checks, discovery)
 @app.get("/")
 def root():
     return {
@@ -80,7 +94,26 @@ def health(request: Request):
     return {"status": "ok", "docs_indexed": docs_indexed}
 
 
-@app.post("/analyze", response_model=RAGResponse)
+@app.get("/normativas")
+def normativas(request: Request):
+    return _normativas_handler(request)
+
+
+# Legacy route (kept for backwards compat, hidden from docs)
+@app.post("/analyze", response_model=RAGResponse, include_in_schema=False)
 @limiter.limit(settings.rate_limit)
 def analyze(input: QuestionnaireInput, request: Request):
-    return run_pipeline(input, request.app.state)
+    return _analyze_handler(input, request)
+
+
+# v1 router — canonical API
+v1 = APIRouter(prefix="/v1", tags=["v1"])
+
+
+@v1.post("/analyze", response_model=RAGResponse)
+@limiter.limit(settings.rate_limit)
+def analyze_v1(input: QuestionnaireInput, request: Request):
+    return _analyze_handler(input, request)
+
+
+app.include_router(v1)

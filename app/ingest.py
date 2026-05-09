@@ -19,6 +19,31 @@ CHROMA_DB_PATH = os.getenv("CHROMA_DB_PATH", "./chroma_db")
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 COLLECTION_NAME = "legaldev"
 
+REQUIRED_DOCS = {
+    "RGPD.pdf",
+    "EU AI Act.pdf",
+    "Directiva NIS2.pdf",
+    "Directiva de Responsabilidad por Productos con IA.pdf",
+    "Digital Services Act (Reglamento UE 2022-2065).pdf",
+    "Cyber Resilience Act (Reglamento UE 2024-2847).pdf",
+    "Directiva ePrivacy (2002-58-CE consolidada).pdf",
+    "Data Act (Reglamento UE 2023-2854).pdf",
+    "Data Governance Act (Reglamento UE 2022-868).pdf",
+    "DORA (Reglamento UE 2022-2554).pdf",
+    "LOPDGDD.pdf",
+    "Real Decreto 311-2022 ENS.pdf",
+    "LSSI.pdf",
+    "Ley de Propiedad Intelectual.pdf",
+    "Guía para el cumplimiento del deber de informar - AEPD.pdf",
+    "Guía de Análisis de Riesgos para tratamientos de datos personales - AEPD.pdf",
+    "Guía de Privacidad desde el Diseño - AEPD.pdf",
+    "Guía sobre uso de cookies - AEPD.pdf",
+    "Adecuación al RGPD de tratamientos que incorporan IA - AEPD.pdf",
+    "IA Agentica desde la perspectiva de proteccion de datos - AEPD.pdf",
+    "Guía de Anonimización - AEPD.pdf",
+    "Código Ético y Deontológico CCII.pdf",
+}
+
 DOC_TYPE_MAP = {
     # Normativa europea
     "RGPD.pdf": "normativa_europea",
@@ -33,7 +58,6 @@ DOC_TYPE_MAP = {
     "DORA (Reglamento UE 2022-2554).pdf": "normativa_europea",
     # Normativa española
     "LOPDGDD.pdf": "normativa_española",
-    "ENS Real Decreto 311-2022.pdf": "normativa_española",
     "Real Decreto 311-2022 ENS.pdf": "normativa_española",
     "LSSI.pdf": "normativa_española",
     "Ley de Propiedad Intelectual.pdf": "normativa_española",
@@ -48,14 +72,24 @@ def get_doc_type(filename: str) -> str:
     return DOC_TYPE_MAP.get(filename, "otro")
 
 
+def _check_required_docs(docs_dir: Path) -> None:
+    present = {f.name for f in docs_dir.glob("*.pdf")}
+    missing = REQUIRED_DOCS - present
+    if missing:
+        for name in sorted(missing):
+            logger.error("Missing required document: %s", name)
+        raise SystemExit(
+            f"Aborted: {len(missing)} required document(s) missing from {docs_dir}. "
+            "Add the missing PDFs and re-run."
+        )
+
+
 def main() -> None:
     docs_dir = Path(DOCS_PATH)
+
+    _check_required_docs(docs_dir)
+
     pdf_files = sorted(docs_dir.glob("*.pdf"))
-
-    if not pdf_files:
-        logger.warning("No PDF files found in %s", DOCS_PATH)
-        return
-
     splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=100)
     embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
     all_chunks = []
