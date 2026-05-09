@@ -40,3 +40,9 @@ def test_analyze_groq_error_returns_503(client, sample_input_dict):
     client.app.state.groq_client.invoke.side_effect = Exception("LLM down")
     response = client.post("/analyze", json=sample_input_dict)
     assert response.status_code == 503
+
+
+def test_analyze_no_relevant_docs_returns_404(client, sample_input_dict):
+    client.app.state.vectorstore.similarity_search_with_relevance_scores.return_value = []
+    response = client.post("/analyze", json=sample_input_dict)
+    assert response.status_code == 404

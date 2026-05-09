@@ -23,8 +23,12 @@ SYSTEM_PROMPT = (
     "- Responde siempre en español\n"
     "- Sé específico y técnico: no digas 'debes cumplir el RGPD', di qué tienes que implementar exactamente\n"
     "- Organiza la respuesta por normativa aplicable\n"
-    "- Incluye siempre el disclaimer al final\n"
-    "- No inventes normativas que no estén en el contexto proporcionado\n\n"
+    "- SOLO menciona normativas que aparezcan en los fragmentos proporcionados. "
+    "Si una obligación no está respaldada por un fragmento concreto, no la incluyas\n"
+    "- Para cada obligación técnica, cita el fragmento exacto que la justifica con este formato:\n"
+    "  > \"[cita textual del fragmento]\" — {Nombre normativa}\n"
+    "- No extrapoles ni inventes obligaciones más allá de lo que dicen los fragmentos\n"
+    "- Incluye siempre el disclaimer al final\n\n"
     "Disclaimer obligatorio al final de cada respuesta:\n"
     '"⚠️ Esta información es orientativa y no constituye asesoramiento legal. '
     'Para decisiones con impacto legal, consulta con un abogado especializado en derecho digital."'
@@ -107,10 +111,24 @@ def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
     query = _build_query(input)
     logger.info("Running RAG pipeline, query: %s", query[:100])
 
-    docs = state.vectorstore.max_marginal_relevance_search(
-        query, k=settings.top_k_chunks, fetch_k=settings.mmr_fetch_k
+    candidates = state.vectorstore.similarity_search_with_relevance_scores(
+        query, k=settings.mmr_fetch_k
     )
-    logger.info("Retrieved %d chunks", len(docs))
+    docs = [
+        doc for doc, score in candidates
+        if score >= settings.min_relevance_score
+    ][:settings.top_k_chunks]
+
+    logger.info(
+        "Retrieved %d/%d chunks above threshold %.2f",
+        len(docs), len(candidates), settings.min_relevance_score,
+    )
+
+    if not docs:
+        raise HTTPException(
+            status_code=404,
+            detail="No se encontraron normativas aplicables a este tipo de proyecto en la base de conocimiento.",
+        )
 
     messages = [
         SystemMessage(content=SYSTEM_PROMPT),

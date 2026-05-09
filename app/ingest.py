@@ -46,7 +46,7 @@ def main() -> None:
         logger.warning("No PDF files found in %s", DOCS_PATH)
         return
 
-    splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+    splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=100)
     embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
     all_chunks = []
 

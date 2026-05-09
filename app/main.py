@@ -38,6 +38,7 @@ async def lifespan(app: FastAPI):
         api_key=settings.groq_api_key,
         model_name=settings.groq_model,
         timeout=settings.groq_timeout,
+        temperature=settings.groq_temperature,
     )
     logger.info("LegalDev is ready")
     yield

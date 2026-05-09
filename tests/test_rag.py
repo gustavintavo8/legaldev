@@ -95,9 +95,11 @@ def _make_mock_doc(source="RGPD.pdf", doc_type="normativa_europea"):
     return doc
 
 
-def _make_state(docs, llm_response="Respuesta de prueba"):
+def _make_state(docs, llm_response="Respuesta de prueba", score=0.85):
     state = MagicMock()
-    state.vectorstore.max_marginal_relevance_search.return_value = docs
+    state.vectorstore.similarity_search_with_relevance_scores.return_value = [
+        (doc, score) for doc in docs
+    ]
     state.groq_client.invoke.return_value = MagicMock(content=llm_response)
     return state
 
@@ -126,7 +128,9 @@ def test_run_pipeline_normativas_deduplicadas(sample_input):
 
 def test_run_pipeline_groq_error_raises_503(sample_input):
     state = MagicMock()
-    state.vectorstore.similarity_search.return_value = [_make_mock_doc()]
+    state.vectorstore.similarity_search_with_relevance_scores.return_value = [
+        (_make_mock_doc(), 0.85)
+    ]
     state.groq_client.invoke.side_effect = Exception("Connection refused")
 
     with pytest.raises(Exception) as exc_info:
@@ -135,13 +139,41 @@ def test_run_pipeline_groq_error_raises_503(sample_input):
     assert exc_info.value.status_code == 503
 
 
-def test_run_pipeline_calls_mmr_search_with_correct_params(sample_input):
+def test_run_pipeline_calls_relevance_search_with_correct_k(sample_input):
     docs = [_make_mock_doc()]
     state = _make_state(docs)
 
     run_pipeline(sample_input, state)
 
-    state.vectorstore.max_marginal_relevance_search.assert_called_once()
-    call_args = state.vectorstore.max_marginal_relevance_search.call_args
-    assert call_args.kwargs.get("k") == settings.top_k_chunks
-    assert call_args.kwargs.get("fetch_k") == settings.mmr_fetch_k
+    state.vectorstore.similarity_search_with_relevance_scores.assert_called_once()
+    call_args = state.vectorstore.similarity_search_with_relevance_scores.call_args
+    assert call_args.kwargs.get("k") == settings.mmr_fetch_k
+
+
+def test_run_pipeline_no_relevant_docs_raises_404(sample_input):
+    state = MagicMock()
+    state.vectorstore.similarity_search_with_relevance_scores.return_value = [
+        (_make_mock_doc(), 0.05)
+    ]
+
+    with pytest.raises(Exception) as exc_info:
+        run_pipeline(sample_input, state)
+
+    assert exc_info.value.status_code == 404
+
+
+def test_run_pipeline_filters_below_threshold(sample_input):
+    high_doc = _make_mock_doc("RGPD.pdf")
+    low_doc = _make_mock_doc("LOPDGDD.pdf", "normativa_española")
+    state = MagicMock()
+    state.vectorstore.similarity_search_with_relevance_scores.return_value = [
+        (high_doc, 0.8),
+        (low_doc, 0.05),
+    ]
+    state.groq_client.invoke.return_value = MagicMock(content="Respuesta filtrada")
+
+    result = run_pipeline(sample_input, state)
+
+    assert result.chunks_utilizados == 1
+    assert "RGPD" in result.normativas_detectadas
+    assert "LOPDGDD" not in result.normativas_detectadas
