@@ -14,7 +14,7 @@ from app.rag import run_pipeline
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-EMBEDDING_MODEL = "paraphrase-multilingual-MiniLM-L12-v2"
+EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 CHROMA_COLLECTION = "legaldev"
 
 
