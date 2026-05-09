@@ -74,7 +74,7 @@ docs/*.pdf → PyPDFLoader → RecursiveCharacterTextSplitter → HuggingFaceEmb
 
 ### `config.py`
 
-`Settings` class loaded from environment (via `pydantic-settings` or `python-dotenv`):
+`Settings` class using `pydantic-settings` (`BaseSettings`). Values loaded from `.env` automatically:
 
 ```python
 GROQ_API_KEY: str
@@ -132,7 +132,7 @@ Standalone script (`python ingest.py`). Not imported by the app.
 
 ### `rag.py`
 
-Exposes one public function: `run_pipeline(input: QuestionnaireInput, state: AppState) -> RAGResponse`
+Exposes one public function: `run_pipeline(input: QuestionnaireInput, state: fastapi.datastructures.State) -> RAGResponse`
 
 **Step 1 — Semantic query construction:**
 
@@ -203,7 +203,7 @@ async def lifespan(app: FastAPI):
 
 | Method | Path | Response |
 |--------|------|----------|
-| `GET` | `/` | `{"name": "LegalDev", "version": "0.1.0", "description": "..."}` |
+| `GET` | `/` | `{"name": "LegalDev", "version": "0.1.0", "description": "Asistente RAG de normativa legal para developers en España"}` |
 | `GET` | `/health` | `{"status": "ok", "docs_indexed": N}` via `vectorstore._collection.count()` |
 | `POST` | `/analyze` | `QuestionnaireInput` → `RAGResponse` |
 
