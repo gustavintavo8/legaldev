@@ -6,6 +6,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 from langchain_groq import ChatGroq
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 from app.config import settings
 from app.models import QuestionnaireInput, RAGResponse
@@ -16,6 +19,8 @@ logger = logging.getLogger(__name__)
 
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 CHROMA_COLLECTION = "legaldev"
+
+limiter = Limiter(key_func=get_remote_address)
 
 
 @asynccontextmanager
@@ -32,6 +37,7 @@ async def lifespan(app: FastAPI):
     app.state.groq_client = ChatGroq(
         api_key=settings.groq_api_key,
         model_name=settings.groq_model,
+        timeout=settings.groq_timeout,
     )
     logger.info("LegalDev is ready")
     yield
@@ -44,11 +50,14 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=settings.cors_origins,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 
@@ -71,5 +80,6 @@ def health(request: Request):
 
 
 @app.post("/analyze", response_model=RAGResponse)
+@limiter.limit(settings.rate_limit)
 def analyze(input: QuestionnaireInput, request: Request):
     return run_pipeline(input, request.app.state)

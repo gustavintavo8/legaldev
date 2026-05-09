@@ -9,6 +9,14 @@ class Settings(BaseSettings):
     chroma_db_path: str = "./chroma_db"
     docs_path: str = "./docs"
     top_k_chunks: int = 8
+    mmr_fetch_k: int = 24
+    groq_timeout: int = 30
+    rate_limit: str = "10/minute"
+    allowed_origins: str = "*"
+
+    @property
+    def cors_origins(self) -> list[str]:
+        return [o.strip() for o in self.allowed_origins.split(",")]
 
 
 settings = Settings()

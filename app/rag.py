@@ -95,7 +95,9 @@ def _build_user_message(input: QuestionnaireInput, docs: list) -> str:
 
     for i, doc in enumerate(docs, 1):
         source = doc.metadata.get("source", "desconocido")
-        lines.append(f"\n### Fuente {i}: {source}")
+        page = doc.metadata.get("page")
+        page_str = f", p. {page + 1}" if page is not None else ""
+        lines.append(f"\n### Fuente {i}: {source}{page_str}")
         lines.append(doc.page_content)
 
     return "\n".join(lines)
@@ -105,7 +107,9 @@ def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
     query = _build_query(input)
     logger.info("Running RAG pipeline, query: %s", query[:100])
 
-    docs = state.vectorstore.similarity_search(query, k=settings.top_k_chunks)
+    docs = state.vectorstore.max_marginal_relevance_search(
+        query, k=settings.top_k_chunks, fetch_k=settings.mmr_fetch_k
+    )
     logger.info("Retrieved %d chunks", len(docs))
 
     messages = [

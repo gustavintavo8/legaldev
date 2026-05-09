@@ -66,7 +66,7 @@ def client(mock_doc):
          patch("app.main.ChatGroq") as mock_groq_cls:
 
         mock_vectorstore = MagicMock()
-        mock_vectorstore.similarity_search.return_value = [mock_doc]
+        mock_vectorstore.max_marginal_relevance_search.return_value = [mock_doc]
         mock_vectorstore._collection.count.return_value = 1234
         mock_chroma_cls.return_value = mock_vectorstore
 

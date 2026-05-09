@@ -97,7 +97,7 @@ def _make_mock_doc(source="RGPD.pdf", doc_type="normativa_europea"):
 
 def _make_state(docs, llm_response="Respuesta de prueba"):
     state = MagicMock()
-    state.vectorstore.similarity_search.return_value = docs
+    state.vectorstore.max_marginal_relevance_search.return_value = docs
     state.groq_client.invoke.return_value = MagicMock(content=llm_response)
     return state
 
@@ -135,12 +135,13 @@ def test_run_pipeline_groq_error_raises_503(sample_input):
     assert exc_info.value.status_code == 503
 
 
-def test_run_pipeline_calls_similarity_search_with_k(sample_input):
+def test_run_pipeline_calls_mmr_search_with_correct_params(sample_input):
     docs = [_make_mock_doc()]
     state = _make_state(docs)
 
     run_pipeline(sample_input, state)
 
-    state.vectorstore.similarity_search.assert_called_once()
-    call_args = state.vectorstore.similarity_search.call_args
+    state.vectorstore.max_marginal_relevance_search.assert_called_once()
+    call_args = state.vectorstore.max_marginal_relevance_search.call_args
     assert call_args.kwargs.get("k") == settings.top_k_chunks
+    assert call_args.kwargs.get("fetch_k") == settings.mmr_fetch_k
