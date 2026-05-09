@@ -17,7 +17,7 @@ def test_lopdgdd():
     assert get_doc_type("LOPDGDD.pdf") == "normativa_española"
 
 def test_ens():
-    assert get_doc_type("ENS.pdf") == "normativa_española"
+    assert get_doc_type("ENS Real Decreto 311-2022.pdf") == "normativa_española"
 
 def test_lssi():
     assert get_doc_type("LSSI.pdf") == "normativa_española"
