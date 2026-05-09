@@ -1,0 +1,80 @@
+import os
+os.environ.setdefault("GROQ_API_KEY", "test-key-not-real")
+
+import pytest
+from unittest.mock import MagicMock
+
+
+@pytest.fixture
+def mock_doc():
+    doc = MagicMock()
+    doc.page_content = "El RGPD establece que los datos personales deben tratarse de forma lícita."
+    doc.metadata = {"source": "RGPD.pdf", "doc_type": "normativa_europea"}
+    return doc
+
+
+@pytest.fixture
+def sample_input():
+    from app.models import QuestionnaireInput
+    return QuestionnaireInput(
+        tipo_proyecto="app_web",
+        descripcion_breve="Plataforma SaaS para gestión de facturas",
+        tiene_usuarios_registrados=True,
+        acceso_publico=False,
+        tipos_datos_personales=["nombre", "email"],
+        usuarios_menores=False,
+        usuarios_ue=True,
+        transferencia_datos_terceros=False,
+        usa_ia=True,
+        tipo_ia="generativa",
+        usa_cookies=True,
+        monetizacion="suscripcion",
+        contenido_digital=False,
+        ccaa="Asturias",
+        es_empresa=False,
+        colegiado=None,
+    )
+
+
+@pytest.fixture
+def sample_input_dict():
+    return {
+        "tipo_proyecto": "app_web",
+        "descripcion_breve": "Plataforma SaaS para gestión de facturas",
+        "tiene_usuarios_registrados": True,
+        "acceso_publico": False,
+        "tipos_datos_personales": ["nombre", "email"],
+        "usuarios_menores": False,
+        "usuarios_ue": True,
+        "transferencia_datos_terceros": False,
+        "usa_ia": True,
+        "tipo_ia": "generativa",
+        "usa_cookies": True,
+        "monetizacion": "suscripcion",
+        "contenido_digital": False,
+        "ccaa": "Asturias",
+        "es_empresa": False,
+        "colegiado": None,
+    }
+
+
+@pytest.fixture
+def client(mock_doc):
+    from unittest.mock import patch
+    with patch("app.main.HuggingFaceEmbeddings"), \
+         patch("app.main.Chroma") as mock_chroma_cls, \
+         patch("app.main.ChatGroq") as mock_groq_cls:
+
+        mock_vectorstore = MagicMock()
+        mock_vectorstore.similarity_search.return_value = [mock_doc]
+        mock_vectorstore._collection.count.return_value = 1234
+        mock_chroma_cls.return_value = mock_vectorstore
+
+        mock_llm = MagicMock()
+        mock_llm.invoke.return_value = MagicMock(content="Respuesta de prueba sobre RGPD")
+        mock_groq_cls.return_value = mock_llm
+
+        from app.main import app
+        from fastapi.testclient import TestClient
+        with TestClient(app) as c:
+            yield c
