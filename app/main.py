@@ -6,9 +6,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 from langchain_groq import ChatGroq
+from prometheus_fastapi_instrumentator import Instrumentator
 from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
 from app.config import settings
 from app.models import QuestionnaireInput, RAGResponse
@@ -20,7 +21,15 @@ logger = logging.getLogger(__name__)
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 CHROMA_COLLECTION = "legaldev"
 
-limiter = Limiter(key_func=get_remote_address)
+
+def _get_real_ip(request: Request) -> str:
+    xff = request.headers.get("x-forwarded-for")
+    if xff:
+        return xff.split(",")[0].strip()
+    return get_remote_address(request)
+
+
+limiter = Limiter(key_func=_get_real_ip)
 
 
 @asynccontextmanager
@@ -66,6 +75,8 @@ app.add_middleware(
     allow_headers=["Content-Type", "Authorization"],
 )
 
+Instrumentator().instrument(app).expose(app)
+
 
 def _analyze_handler(input: QuestionnaireInput, request: Request) -> RAGResponse:
     return run_pipeline(input, request.app.state)
@@ -80,7 +91,6 @@ def _normativas_handler(request: Request) -> dict:
         return {"normativas": [], "total": 0}
 
 
-# Root and health stay unversioned (Railway health checks, discovery)
 @app.get("/")
 def root():
     return {
@@ -104,7 +114,6 @@ def normativas(request: Request):
     return _normativas_handler(request)
 
 
-# v1 router — canonical API
 v1 = APIRouter(prefix="/v1", tags=["v1"])
 
 
