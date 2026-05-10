@@ -1,4 +1,5 @@
 import os
+
 os.environ.setdefault("GROQ_API_KEY", "test-key-not-real")
 
 import pytest
@@ -8,7 +9,9 @@ from unittest.mock import MagicMock
 @pytest.fixture
 def mock_doc():
     doc = MagicMock()
-    doc.page_content = "El RGPD establece que los datos personales deben tratarse de forma lícita."
+    doc.page_content = (
+        "El RGPD establece que los datos personales deben tratarse de forma lícita."
+    )
     doc.metadata = {"source": "RGPD.pdf", "doc_type": "normativa_europea"}
     return doc
 
@@ -16,6 +19,7 @@ def mock_doc():
 @pytest.fixture
 def sample_input():
     from app.models import QuestionnaireInput
+
     return QuestionnaireInput(
         tipo_proyecto="app_web",
         descripcion_breve="Plataforma SaaS para gestión de facturas",
@@ -61,23 +65,34 @@ def sample_input_dict():
 @pytest.fixture
 def client(mock_doc):
     from unittest.mock import patch
-    with patch("app.main.HuggingFaceEmbeddings"), \
-         patch("app.main.Chroma") as mock_chroma_cls, \
-         patch("app.main.ChatGroq") as mock_groq_cls:
 
+    with (
+        patch("app.main.HuggingFaceEmbeddings"),
+        patch("app.main.Chroma") as mock_chroma_cls,
+        patch("app.main.ChatGroq") as mock_groq_cls,
+    ):
         mock_vectorstore = MagicMock()
-        mock_vectorstore.similarity_search_with_relevance_scores.return_value = [(mock_doc, 0.85)]
+        mock_vectorstore.similarity_search_with_relevance_scores.return_value = [
+            (mock_doc, 0.85)
+        ]
         mock_vectorstore._collection.count.return_value = 1234
         mock_vectorstore._collection.get.return_value = {
-            "metadatas": [{"source": "RGPD.pdf"}, {"source": "LOPDGDD.pdf"}, {"source": "RGPD.pdf"}]
+            "metadatas": [
+                {"source": "RGPD.pdf"},
+                {"source": "LOPDGDD.pdf"},
+                {"source": "RGPD.pdf"},
+            ]
         }
         mock_chroma_cls.return_value = mock_vectorstore
 
         mock_llm = MagicMock()
-        mock_llm.invoke.return_value = MagicMock(content="Respuesta de prueba sobre RGPD")
+        mock_llm.invoke.return_value = MagicMock(
+            content="Respuesta de prueba sobre RGPD"
+        )
         mock_groq_cls.return_value = mock_llm
 
         from app.main import app
         from fastapi.testclient import TestClient
+
         with TestClient(app) as c:
             yield c

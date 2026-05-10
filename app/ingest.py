@@ -105,11 +105,15 @@ def main() -> None:
             chunk.metadata["source"] = filename
             chunk.metadata["doc_type"] = doc_type
 
-        logger.info("Indexing %s → %d chunks (doc_type=%s)", filename, len(chunks), doc_type)
+        logger.info(
+            "Indexing %s → %d chunks (doc_type=%s)", filename, len(chunks), doc_type
+        )
         all_chunks.extend(chunks)
 
     if Path(CHROMA_DB_PATH).exists():
-        logger.warning("Wiping existing ChromaDB at %s — this is irreversible", CHROMA_DB_PATH)
+        logger.warning(
+            "Wiping existing ChromaDB at %s — this is irreversible", CHROMA_DB_PATH
+        )
         shutil.rmtree(CHROMA_DB_PATH)
         logger.info("Wiped existing ChromaDB at %s", CHROMA_DB_PATH)
 

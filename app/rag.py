@@ -26,7 +26,7 @@ SYSTEM_PROMPT = (
     "- SOLO menciona normativas que aparezcan en los fragmentos proporcionados. "
     "Si una obligación no está respaldada por un fragmento concreto, no la incluyas\n"
     "- Para cada obligación técnica, cita el fragmento exacto que la justifica con este formato:\n"
-    "  > \"[cita textual del fragmento]\" — {Nombre normativa}\n"
+    '  > "[cita textual del fragmento]" — {Nombre normativa}\n'
     "- No extrapoles ni inventes obligaciones más allá de lo que dicen los fragmentos\n"
     "- Incluye siempre el disclaimer al final\n\n"
     "Disclaimer obligatorio al final de cada respuesta:\n"
@@ -89,7 +89,9 @@ def _build_query(input: QuestionnaireInput) -> str:
         parts.append("Ofrece contenido digital a consumidores.")
 
     if input.es_empresa:
-        parts.append("Es una empresa (persona jurídica). Obligaciones como responsable del tratamiento empresarial, registro de actividades de tratamiento.")
+        parts.append(
+            "Es una empresa (persona jurídica). Obligaciones como responsable del tratamiento empresarial, registro de actividades de tratamiento."
+        )
     else:
         parts.append("Es un desarrollador individual o autónomo (persona física).")
 
@@ -143,14 +145,15 @@ def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
     candidates = state.vectorstore.similarity_search_with_relevance_scores(
         query, k=settings.overfetch_k
     )
-    docs = [
-        doc for doc, score in candidates
-        if score >= settings.min_relevance_score
-    ][:settings.top_k_chunks]
+    docs = [doc for doc, score in candidates if score >= settings.min_relevance_score][
+        : settings.top_k_chunks
+    ]
 
     logger.info(
         "Retrieved %d/%d chunks above threshold %.2f",
-        len(docs), len(candidates), settings.min_relevance_score,
+        len(docs),
+        len(candidates),
+        settings.min_relevance_score,
     )
 
     if not docs:
@@ -173,11 +176,9 @@ def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
             detail="LLM service unavailable. Please try again later.",
         )
 
-    normativas = list({
-        Path(doc.metadata["source"]).stem
-        for doc in docs
-        if "source" in doc.metadata
-    })
+    normativas = list(
+        {Path(doc.metadata["source"]).stem for doc in docs if "source" in doc.metadata}
+    )
 
     return RAGResponse(
         respuesta_completa=response.content,

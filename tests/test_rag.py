@@ -51,7 +51,6 @@ def test_build_query_ia_with_tipo():
     assert "generativa" in result
 
 
-
 def test_build_query_no_ia():
     result = _build_query(_make_input(usa_ia=False))
     assert "inteligencia artificial" not in result
