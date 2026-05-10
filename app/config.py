@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     chroma_db_path: str = "./chroma_db"
     docs_path: str = "./docs"
     top_k_chunks: int = 8
-    mmr_fetch_k: int = 24
+    overfetch_k: int = 24
     groq_timeout: int = 30
     groq_temperature: float = 0.0
     min_relevance_score: float = 0.35

@@ -104,13 +104,6 @@ def normativas(request: Request):
     return _normativas_handler(request)
 
 
-# Legacy route (kept for backwards compat, hidden from docs)
-@app.post("/analyze", response_model=RAGResponse, include_in_schema=False)
-@limiter.limit(settings.rate_limit)
-def analyze(input: QuestionnaireInput, request: Request):
-    return _analyze_handler(input, request)
-
-
 # v1 router — canonical API
 v1 = APIRouter(prefix="/v1", tags=["v1"])
 

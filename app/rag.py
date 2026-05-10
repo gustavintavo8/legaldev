@@ -141,7 +141,7 @@ def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
     logger.info("Running RAG pipeline, query: %s", query[:100])
 
     candidates = state.vectorstore.similarity_search_with_relevance_scores(
-        query, k=settings.mmr_fetch_k
+        query, k=settings.overfetch_k
     )
     docs = [
         doc for doc, score in candidates

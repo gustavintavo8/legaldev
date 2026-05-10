@@ -24,7 +24,7 @@ Tests are fully mocked — no Groq API key or ChromaDB needed to run them.
 ## What to contribute
 
 - **New legal documents**: add PDFs to `docs/`, update `DOC_TYPE_MAP` in `ingest.py`, re-run `python app/ingest.py`.
-- **Retrieval improvements**: changes to chunking strategy, embedding model, or MMR parameters go in `ingest.py` and `app/config.py`.
+- **Retrieval improvements**: changes to chunking strategy, embedding model, or retrieval parameters (`OVERFETCH_K`, `MIN_RELEVANCE_SCORE`) go in `ingest.py` and `app/config.py`.
 - **Prompt improvements**: system prompt and user message construction are in `app/rag.py`.
 - **Bug fixes**: open an issue first if the fix is non-trivial.
 

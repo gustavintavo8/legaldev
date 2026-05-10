@@ -88,7 +88,7 @@ Para un corpus de 22 documentos con ~8.000 chunks fijos que no cambian en runtim
 
 ### Embeddings pre-generados, no en startup
 
-La indexación de 22 PDFs tarda ~45 segundos e implica descargar el modelo de sentence-transformers (~80 MB) la primera vez. Ejecutar `ingest.py` en startup de la API añadiría ese overhead a cada cold start en Railway. La solución es generar el `chroma_db/` localmente, commitearlo al repo, y bakearlo en la imagen Docker. La API solo hace retrieval — carga el modelo de embeddings para las queries (~2s) y ya está.
+La indexación de 22 PDFs tarda ~45 segundos e implica descargar el modelo de sentence-transformers (~80 MB) la primera vez. Ejecutar `ingest.py` en startup de la API añadiría ese overhead a cada cold start en Railway. La solución es generar el `chroma_db/` localmente, commitearlo al repo, y bakearlo en la imagen Docker. La API solo hace retrieval — carga el modelo de embeddings para las queries (~2s) y ya está. El `chroma_db/` pesa ~100 MB en el repo (vectores HNSW + SQLite); es el trade-off consciente que hacemos a cambio de cold starts < 3s sin infraestructura adicional.
 
 ### all-MiniLM-L6-v2 en vez de paraphrase-multilingual-MiniLM-L12-v2
 
@@ -199,8 +199,8 @@ GROQ_TEMPERATURE=0.0
 CHROMA_DB_PATH=./chroma_db
 DOCS_PATH=./docs
 TOP_K_CHUNKS=8
-MMR_FETCH_K=24
-MIN_RELEVANCE_SCORE=0.2
+OVERFETCH_K=24
+MIN_RELEVANCE_SCORE=0.35
 RATE_LIMIT=10/minute
 ALLOWED_ORIGINS=*
 ```
@@ -212,7 +212,7 @@ ALLOWED_ORIGINS=*
 | `GROQ_TEMPERATURE` | Temperatura del LLM (0 = determinista) | `0.0` |
 | `MIN_RELEVANCE_SCORE` | Umbral mínimo de relevancia para chunks | `0.35` |
 | `TOP_K_CHUNKS` | Chunks a incluir en el prompt | `8` |
-| `MMR_FETCH_K` | Candidatos a recuperar antes de filtrar | `24` |
+| `OVERFETCH_K` | Candidatos a recuperar antes de filtrar por score | `24` |
 | `RATE_LIMIT` | Límite de requests en `/v1/analyze` | `10/minute` |
 | `ALLOWED_ORIGINS` | CORS origins (coma-separados) | `*` |
 

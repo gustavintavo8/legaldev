@@ -143,7 +143,7 @@ def test_run_pipeline_calls_relevance_search_with_correct_k(sample_input):
 
     state.vectorstore.similarity_search_with_relevance_scores.assert_called_once()
     call_args = state.vectorstore.similarity_search_with_relevance_scores.call_args
-    assert call_args.kwargs.get("k") == settings.mmr_fetch_k
+    assert call_args.kwargs.get("k") == settings.overfetch_k
 
 
 def test_run_pipeline_no_relevant_docs_raises_404(sample_input):
