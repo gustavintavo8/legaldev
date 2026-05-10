@@ -23,6 +23,8 @@ CHROMA_COLLECTION = "legaldev"
 
 
 def _get_real_ip(request: Request) -> str:
+    # X-Forwarded-For: <client>, <proxy1>, <proxy2> — first value is the original client.
+    # Assumes a trusted proxy (Railway) sets this header; spoofeable without one.
     xff = request.headers.get("x-forwarded-for")
     if xff:
         return xff.split(",")[0].strip()

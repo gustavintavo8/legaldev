@@ -1,3 +1,4 @@
+import hashlib
 import json
 import logging
 import time
@@ -195,6 +196,10 @@ def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
             {
                 "event": "rag_pipeline",
                 "tipo_proyecto": input.tipo_proyecto,
+                "descripcion_length": len(input.descripcion_breve),
+                "descripcion_hash": hashlib.sha256(
+                    input.descripcion_breve.encode()
+                ).hexdigest()[:8],
                 "chunks_fetched": len(candidates),
                 "chunks_passed": len(docs),
                 "top_score": round(candidates[0][1], 3) if candidates else None,
