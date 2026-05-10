@@ -165,7 +165,7 @@ def test_run_pipeline_colegiado_triggers_auxiliary_search():
     state = MagicMock()
     state.vectorstore.similarity_search_with_relevance_scores.side_effect = [
         [(docs[0], 0.85)],  # main search
-        [],                  # ccii auxiliary
+        [],  # ccii auxiliary
     ]
     state.groq_client.invoke.return_value = MagicMock(content="ok")
 
