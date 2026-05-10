@@ -88,6 +88,18 @@ def _build_query(input: QuestionnaireInput) -> str:
     if input.contenido_digital:
         parts.append("Ofrece contenido digital a consumidores.")
 
+    if input.es_empresa:
+        parts.append("Es una empresa (persona jurídica). Obligaciones como responsable del tratamiento empresarial, registro de actividades de tratamiento.")
+    else:
+        parts.append("Es un desarrollador individual o autónomo (persona física).")
+
+    if input.colegiado:
+        parts.append(
+            "El responsable es un ingeniero informático colegiado."
+            " Obligaciones del Código Ético y Deontológico del CCII."
+            " Responsabilidad deontológica profesional."
+        )
+
     parts.append(f"Comunidad Autónoma: {input.ccaa}. Cumplimiento legal en España.")
 
     return " ".join(parts)

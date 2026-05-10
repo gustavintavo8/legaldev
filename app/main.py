@@ -40,7 +40,12 @@ async def lifespan(app: FastAPI):
         timeout=settings.groq_timeout,
         temperature=settings.groq_temperature,
     )
-    logger.info("LegalDev is ready")
+    count = app.state.vectorstore._collection.count()
+    if count == 0:
+        raise RuntimeError(
+            f"ChromaDB at '{settings.chroma_db_path}' is empty. Run 'make ingest' first."
+        )
+    logger.info("LegalDev is ready — %d chunks indexed", count)
     yield
 
 
@@ -89,7 +94,7 @@ def root():
 def health(request: Request):
     try:
         docs_indexed = request.app.state.vectorstore._collection.count()
-    except AttributeError:
+    except Exception:
         docs_indexed = -1
     return {"status": "ok", "docs_indexed": docs_indexed}
 

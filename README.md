@@ -17,7 +17,7 @@
 
 ## ⚡ Highlights técnicos
 
-- **RAG sobre 22 documentos legales** — RGPD, EU AI Act, DSA, CRA, DORA, LOPDGDD, ENS, LSSI y 7 guías oficiales de la AEPD, indexados en ChromaDB con embeddings locales.
+- **RAG sobre 22 documentos legales** — 10 normativas europeas (RGPD, EU AI Act, NIS2, DSA, CRA, DORA, ePrivacy, Data Act, DGA, Responsabilidad IA), 4 españolas (LOPDGDD, ENS, LSSI, LPI), Código Ético CCII y 7 guías oficiales de la AEPD, indexados en ChromaDB con embeddings locales.
 - **Score threshold anti-alucinación** — Si ningún chunk supera el umbral de relevancia, devuelve 404 en vez de inventar normativas con contexto basura.
 - **Temperatura 0 + citas forzadas** — El LLM no "improvisa" en dominio legal: temperatura 0 para determinismo y prompt que exige citar textualmente el fragmento que justifica cada obligación.
 - **Cuestionario estructurado como query semántica** — 16 campos del formulario se mapean a términos legales que dirigen el retrieval exactamente hacia las normativas relevantes para ese proyecto.
@@ -210,7 +210,7 @@ ALLOWED_ORIGINS=*
 | `GROQ_API_KEY` | API key de [GroqCloud](https://console.groq.com) | — |
 | `GROQ_MODEL` | Modelo de Groq a usar | `llama-4-scout-17b-16e-instruct` |
 | `GROQ_TEMPERATURE` | Temperatura del LLM (0 = determinista) | `0.0` |
-| `MIN_RELEVANCE_SCORE` | Umbral mínimo de relevancia para chunks | `0.2` |
+| `MIN_RELEVANCE_SCORE` | Umbral mínimo de relevancia para chunks | `0.35` |
 | `TOP_K_CHUNKS` | Chunks a incluir en el prompt | `8` |
 | `MMR_FETCH_K` | Candidatos a recuperar antes de filtrar | `24` |
 | `RATE_LIMIT` | Límite de requests en `/v1/analyze` | `10/minute` |
