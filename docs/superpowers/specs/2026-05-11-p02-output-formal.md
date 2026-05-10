@@ -3,7 +3,7 @@
 **Goal:** Rewrite `SYSTEM_PROMPT` and supporting plumbing so the pipeline produces a structured,
 formal legal document instead of a conversational chat response.
 
-**Scope:** `app/rag.py`, `app/config.py`, `app/main.py`, `tests/test_rag.py`. No frontend changes.
+**Scope:** `app/corpus.py` (new), `app/rag.py`, `app/ingest.py`, `app/config.py`, `app/main.py`, `tests/test_rag.py`. No frontend changes.
 
 ---
 
@@ -106,13 +106,11 @@ Ordenadas por tier:
 - Tier 1: RGPD, LOPDGDD, EU AI Act
 - Tier 2: Directiva ePrivacy, LSSI, Digital Services Act, Directiva NIS2, DORA, Cyber Resilience Act, Data Act, Data Governance Act, Real Decreto 311-2022 ENS, Directiva de Responsabilidad por Productos con IA
 - Tier 3: Guía para el cumplimiento del deber de informar - AEPD, Guía de Análisis de Riesgos para tratamientos de datos personales - AEPD, Guía de Privacidad desde el Diseño - AEPD, Guía sobre uso de cookies - AEPD, Adecuación al RGPD de tratamientos que incorporan IA - AEPD, IA Agentica desde la perspectiva de proteccion de datos - AEPD, Guía de Anonimización - AEPD
-- Tier 4: Código Ético y Deontológico CCII (solo si el developer es ingeniero informático colegiado)
+- Tier 4: Código Ético y Deontológico CCII
 
 Dentro del mismo tier, ordena por número de fragmentos recuperados (más a menos).
 
-Criterio de inclusión:
-- Tier 1-3: abre sección propia solo si tienes 2 o más fragmentos de esa normativa. Si tienes solo 1 fragmento, incorpóralo brevemente en la sección de la normativa más relacionada del mismo tier o tier adyacente, citado como "[Nombre normativa]".
-- Tier 4: basta con 1 fragmento para abrir sección propia. La deontología profesional no tiene normativa adyacente y su ausencia sería un error categórico.
+Criterio de inclusión: abre sección propia para una normativa solo si tienes 2 o más fragmentos de ella. Si solo tienes 1 fragmento de una normativa Tier 1-3, omite esa normativa del informe — su cobertura es insuficiente para generar obligaciones fiables. Excepción: Tier 4 (Código Ético CCII) abre sección con 1 solo fragmento.
 
 Encabezado de sección: ## {Nombre normativa}
 
@@ -174,17 +172,60 @@ Add `GROQ_MAX_TOKENS=4000` after `GROQ_TEMPERATURE`.
 
 Pass `max_tokens=settings.groq_max_tokens` to `ChatGroq(...)` in lifespan.
 
+### `app/corpus.py` (new file)
+
+Single source of truth for the indexed document corpus. No side effects — importable from
+both `rag.py` and `ingest.py` without pulling in script-level code.
+
+```python
+REQUIRED_DOCS: frozenset[str] = frozenset({
+    "RGPD.pdf",
+    "EU AI Act.pdf",
+    "Directiva NIS2.pdf",
+    "Directiva de Responsabilidad por Productos con IA.pdf",
+    "Digital Services Act (Reglamento UE 2022-2065).pdf",
+    "Cyber Resilience Act (Reglamento UE 2024-2847).pdf",
+    "Directiva ePrivacy (2002-58-CE consolidada).pdf",
+    "Data Act (Reglamento UE 2023-2854).pdf",
+    "Data Governance Act (Reglamento UE 2022-868).pdf",
+    "DORA (Reglamento UE 2022-2554).pdf",
+    "LOPDGDD.pdf",
+    "Real Decreto 311-2022 ENS.pdf",
+    "LSSI.pdf",
+    "Ley de Propiedad Intelectual.pdf",
+    "Guía para el cumplimiento del deber de informar - AEPD.pdf",
+    "Guía de Análisis de Riesgos para tratamientos de datos personales - AEPD.pdf",
+    "Guía de Privacidad desde el Diseño - AEPD.pdf",
+    "Guía sobre uso de cookies - AEPD.pdf",
+    "Adecuación al RGPD de tratamientos que incorporan IA - AEPD.pdf",
+    "IA Agentica desde la perspectiva de proteccion de datos - AEPD.pdf",
+    "Guía de Anonimización - AEPD.pdf",
+    "Código Ético y Deontológico CCII.pdf",
+})
+```
+
+### `app/ingest.py`
+
+Replace the local `REQUIRED_DOCS` definition with an import from `app/corpus.py`:
+
+```python
+from app.corpus import REQUIRED_DOCS
+```
+
+Remove the existing 22-element set literal from `ingest.py`.
+
 ### `app/rag.py`
 
 **a) `INDEXED_NORMATIVAS` constant** (module level, after imports):
 
 ```python
-from app.ingest import REQUIRED_DOCS
+from pathlib import Path
+from app.corpus import REQUIRED_DOCS
 
 INDEXED_NORMATIVAS: frozenset[str] = frozenset(Path(f).stem for f in REQUIRED_DOCS)
 ```
 
-`REQUIRED_DOCS` is the authoritative set of indexed filenames. `INDEXED_NORMATIVAS`
+`REQUIRED_DOCS` in `corpus.py` is the single source of truth. `INDEXED_NORMATIVAS`
 is a computed projection — no risk of sync divergence, no separate test needed.
 
 **b) Replace `SYSTEM_PROMPT`** with the text from section 2 above.
