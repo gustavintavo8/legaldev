@@ -30,7 +30,7 @@ def _make_input(**overrides):
 
 
 def test_build_query_includes_tipo_proyecto():
-    assert "api" in _build_query(_make_input(tipo_proyecto="api"))
+    assert "API" in _build_query(_make_input(tipo_proyecto="api"))
 
 
 def test_build_query_includes_datos_personales():

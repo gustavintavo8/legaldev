@@ -36,42 +36,59 @@ SYSTEM_PROMPT = (
 
 
 def _build_query(input: QuestionnaireInput) -> str:
-    parts = [input.tipo_proyecto]
+    parts = [input.descripcion_breve + "."]
+
+    tipo_map = {
+        "app_web": "aplicación web",
+        "api": "API",
+        "app_movil": "aplicación móvil",
+        "saas": "plataforma SaaS",
+        "ecommerce": "tienda online",
+    }
+    tipo_legible = tipo_map.get(input.tipo_proyecto, input.tipo_proyecto)
+    parts.append(f"Se trata de {tipo_legible}.")
 
     if input.tiene_usuarios_registrados:
-        parts.append("usuarios registrados")
+        parts.append("Tiene usuarios registrados con cuentas.")
 
-    if input.tipos_datos_personales and "ninguno" not in input.tipos_datos_personales:
-        parts.append("tratamiento datos personales")
-        parts.extend(input.tipos_datos_personales)
+    datos = [d for d in input.tipos_datos_personales if d != "ninguno"]
+    if datos:
+        parts.append(
+            f"Trata datos personales: {', '.join(datos)}."
+            " Obligaciones de protección de datos, RGPD, privacidad."
+        )
 
     if input.usuarios_menores:
-        parts.append("usuarios menores de edad")
+        parts.append("Usuarios menores de edad: requiere protección reforzada.")
 
     if input.usuarios_ue:
-        parts.append("usuarios Unión Europea")
+        parts.append(
+            "Presta servicio a usuarios de la Unión Europea."
+            " Aplicación del Reglamento General de Protección de Datos (RGPD)."
+        )
 
     if input.transferencia_datos_terceros:
-        parts.append("transferencia datos terceros")
+        parts.append("Transfiere datos personales a terceros o países terceros.")
 
     if input.usa_ia:
-        ia_text = "inteligencia artificial"
-        if input.tipo_ia:
-            ia_text += f" {input.tipo_ia}"
-        parts.append(ia_text)
+        parts.append(
+            f"Incorpora inteligencia artificial de tipo {input.tipo_ia}."
+            " Normativa sobre IA, EU AI Act, responsabilidad algoritmos."
+        )
 
     if input.usa_cookies:
-        parts.append("cookies")
+        parts.append(
+            "Usa cookies y tecnologías de rastreo."
+            " Obligaciones de consentimiento y política de cookies."
+        )
 
     if input.monetizacion and input.monetizacion != "ninguna":
-        parts.append(input.monetizacion)
+        parts.append(f"Modelo de monetización: {input.monetizacion}.")
 
     if input.contenido_digital:
-        parts.append("contenido digital")
+        parts.append("Ofrece contenido digital a consumidores.")
 
-    parts.append("cumplimiento legal España")
-    parts.append(input.ccaa)
-    parts.append(input.descripcion_breve)
+    parts.append(f"Comunidad Autónoma: {input.ccaa}. Cumplimiento legal en España.")
 
     return " ".join(parts)
 
