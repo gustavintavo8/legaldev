@@ -145,7 +145,9 @@ def _build_user_message(input: QuestionnaireInput, docs: list) -> str:
     return "\n".join(lines)
 
 
-def _cap_per_source(candidates: list, min_score: float, max_per_source: int, top_k: int) -> list:
+def _cap_per_source(
+    candidates: list, min_score: float, max_per_source: int, top_k: int
+) -> list:
     counts: dict = defaultdict(int)
     result = []
     for doc, score in candidates:
