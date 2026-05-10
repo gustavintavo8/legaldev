@@ -52,6 +52,26 @@ def test_questionnaire_input_descripcion_max_length():
         )
 
 
+def test_questionnaire_input_usa_ia_without_tipo_ia_raises():
+    with pytest.raises(ValidationError, match="tipo_ia es obligatorio"):
+        QuestionnaireInput(
+            tipo_proyecto="app_web",
+            descripcion_breve="App con IA",
+            tiene_usuarios_registrados=True,
+            acceso_publico=False,
+            tipos_datos_personales=["email"],
+            usuarios_menores=False,
+            usuarios_ue=True,
+            transferencia_datos_terceros=False,
+            usa_ia=True,
+            tipo_ia=None,
+            usa_cookies=False,
+            contenido_digital=False,
+            ccaa="Madrid",
+            es_empresa=False,
+        )
+
+
 def test_rag_response():
     r = RAGResponse(
         respuesta_completa="Debes implementar consentimiento explícito según el RGPD.",

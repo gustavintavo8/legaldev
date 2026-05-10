@@ -1,5 +1,5 @@
-from typing import Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+from typing import Self
 
 
 class QuestionnaireInput(BaseModel):
@@ -14,14 +14,20 @@ class QuestionnaireInput(BaseModel):
     transferencia_datos_terceros: bool
 
     usa_ia: bool
-    tipo_ia: Optional[str] = None
+    tipo_ia: str | None = None
     usa_cookies: bool
-    monetizacion: Optional[str] = None
+    monetizacion: str | None = None
     contenido_digital: bool
 
     ccaa: str
     es_empresa: bool
-    colegiado: Optional[bool] = None
+    colegiado: bool | None = None
+
+    @model_validator(mode="after")
+    def tipo_ia_required_when_usa_ia(self) -> Self:
+        if self.usa_ia and not self.tipo_ia:
+            raise ValueError("tipo_ia es obligatorio cuando usa_ia es True")
+        return self
 
 
 class RAGResponse(BaseModel):
