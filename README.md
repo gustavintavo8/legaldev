@@ -9,7 +9,7 @@
 [![ChromaDB](https://img.shields.io/badge/ChromaDB-1.5-ff6b35)](https://www.trychroma.com/)
 [![Groq](https://img.shields.io/badge/Groq-Llama_4-f55036)](https://groq.com/)
 [![Railway](https://img.shields.io/badge/Deploy-Railway-0b0d0e?logo=railway)](https://railway.app/)
-[![Tests](https://img.shields.io/badge/Tests-49_passed-22c55e?logo=pytest)](./tests/)
+[![Tests](https://img.shields.io/badge/Tests-50_passed-22c55e?logo=pytest)](./tests/)
 
 [Highlights](#-highlights-técnicos) · [Cómo funciona](#-cómo-funciona) · [Tech Stack](#️-tech-stack) · [Decisiones técnicas](#-decisiones-técnicas) · [Instalación](#-instalación) · [API](#-api) · [Deploy](#-deploy)
 
@@ -35,10 +35,12 @@ POST /v1/analyze (QuestionnaireInput)
           │      tipo_proyecto + datos_personales + usa_ia + cookies + ccaa + ...
           │
           ├─ 2. ChromaDB retrieval
-          │      similarity_search_with_relevance_scores(query, k=24)
-          │      → filter chunks where score < 0.2
+          │      similarity_search_with_relevance_scores(query, k=100)
+          │      → filter chunks where score < 0.35
+          │      → if usa_cookies: auxiliary search "cookies consentimiento..." (k=6)
+          │         merge + deduplicate by content hash
           │      → if no chunks pass: HTTP 404 (no coverage)
-          │      → take top 8
+          │      → take top 12 from main + up to 6 from cookies auxiliary
           │
           ├─ 3. LLM call (Groq · Llama 4 Scout · temperature=0)
           │      SystemPrompt: rules + mandatory citation format
@@ -96,7 +98,7 @@ El modelo multilingual daría mejores embeddings para texto en español, pero oc
 
 ### Score threshold como guardia anti-alucinación
 
-Sin umbral, el retriever siempre devuelve `k` chunks aunque la query tenga poca cobertura en la base de documentos. El LLM, ante chunks poco relevantes, tiende a completar con conocimiento paramétrico — inventando obligaciones plausibles pero no fundamentadas. El umbral de 0.2 (configurable vía `MIN_RELEVANCE_SCORE`) hace que si ningún chunk supera ese score, la API devuelva HTTP 404 con "no se encontraron normativas aplicables" en vez de pasarle contexto basura al modelo.
+Sin umbral, el retriever siempre devuelve `k` chunks aunque la query tenga poca cobertura en la base de documentos. El LLM, ante chunks poco relevantes, tiende a completar con conocimiento paramétrico — inventando obligaciones plausibles pero no fundamentadas. El umbral de 0.35 (configurable vía `MIN_RELEVANCE_SCORE`) hace que si ningún chunk supera ese score, la API devuelva HTTP 404 con "no se encontraron normativas aplicables" en vez de pasarle contexto basura al modelo.
 
 ### Temperatura 0 para respuestas legales
 
@@ -118,9 +120,25 @@ Los documentos legales tienen artículos cortos y bien delimitados. Un chunk de 
 
 En vez de texto libre ("tengo una app de salud para menores"), el cuestionario extrae campos específicos que se mapean directamente a términos legales en `_build_query()`. `usuarios_menores=True` → añade "usuarios menores de edad" a la query semántica, que dirigirá el retrieval hacia artículos del RGPD sobre menores y la guía AEPD correspondiente. `usa_ia=True + tipo_ia="generativa"` → "inteligencia artificial generativa", que apunta al EU AI Act. Esta traducción estructurada produce queries semánticamente ricas sin depender de que el usuario sepa qué palabras clave usar.
 
+### Query descriptiva + búsqueda auxiliar por dominio
+
+El retrieval usa una sola query semántica construida desde el cuestionario. El problema: las guías operativas de la AEPD (cookies, análisis de riesgos, privacidad por diseño) tienen centenares de chunks muy específicos que repiten sus términos clave en cada uno. Cuando el cuestionario incluye `usa_cookies=True`, la palabra "cookies" en la query hacía que la *Guía sobre uso de cookies* ocupara las primeras 100+ posiciones del ranking por densidad léxica — desplazando RGPD a la posición #142 y EU AI Act fuera del top 200, aunque ambos sean directamente aplicables.
+
+Medición sobre 5 cuestionarios representativos:
+
+| Query | RGPD (antes) | RGPD (después) | EU AI Act (antes) | Cookies AEPD |
+|-------|-------------|----------------|-------------------|--------------|
+| SaaS B2B con cookies + IA | #142 | #2 | no aparece | #98 |
+| Ecommerce con cookies | #52 | #5 | #30 | #57 |
+| App de salud con IA (sin cookies) | #6 | #6 | #30 | sin cambio |
+
+La solución: la query principal no menciona "cookies" — describe el proyecto, sus datos y sus señales regulatorias generales. Cuando `usa_cookies=True`, una segunda búsqueda dirigida (`"cookies consentimiento banner rastreo política privacidad"`, `k=6`) recupera los chunks operativos de la guía AEPD y los añade al contexto tras deduplicar por hash de contenido. Ambas búsquedas aplican el mismo umbral `MIN_RELEVANCE_SCORE=0.35`.
+
+Esto no es multi-query universal — solo se activa para el dominio cuya señal léxica demostró empíricamente ser tóxica para el ranking. "Menores", "salud" y "biométricos" fueron verificados y no presentan el mismo problema (sus guías son más cortas y su lexical match no satura el índice).
+
 ### Groq en vez de OpenAI
 
-Groq ofrece un Developer Plan gratuito con 500.000 tokens/día y latencias de ~200ms por respuesta gracias a su hardware LPU. Para un proyecto open source dirigido a developers individuales, el coste cero en inferencia es fundamental. El modelo elegido (`llama-4-scout-17b-16e-instruct`) tiene context window de 128k tokens y function calling fiable — más que suficiente para el tamaño de los prompts generados (cuestionario + 8 chunks ≈ ~3.000 tokens).
+Groq ofrece un Developer Plan gratuito con 500.000 tokens/día y latencias de ~200ms por respuesta gracias a su hardware LPU. Para un proyecto open source dirigido a developers individuales, el coste cero en inferencia es fundamental. El modelo elegido (`llama-4-scout-17b-16e-instruct`) tiene context window de 128k tokens y function calling fiable — más que suficiente para el tamaño de los prompts generados (cuestionario + 12-18 chunks ≈ ~5.000 tokens).
 
 ---
 
@@ -198,8 +216,9 @@ GROQ_TIMEOUT=30
 GROQ_TEMPERATURE=0.0
 CHROMA_DB_PATH=./chroma_db
 DOCS_PATH=./docs
-TOP_K_CHUNKS=8
-OVERFETCH_K=24
+TOP_K_CHUNKS=12
+COOKIES_K=6
+OVERFETCH_K=100
 MIN_RELEVANCE_SCORE=0.35
 RATE_LIMIT=10/minute
 ALLOWED_ORIGINS=*
@@ -211,8 +230,9 @@ ALLOWED_ORIGINS=*
 | `GROQ_MODEL` | Modelo de Groq a usar | `llama-4-scout-17b-16e-instruct` |
 | `GROQ_TEMPERATURE` | Temperatura del LLM (0 = determinista) | `0.0` |
 | `MIN_RELEVANCE_SCORE` | Umbral mínimo de relevancia para chunks | `0.35` |
-| `TOP_K_CHUNKS` | Chunks a incluir en el prompt | `8` |
-| `OVERFETCH_K` | Candidatos a recuperar antes de filtrar por score | `24` |
+| `TOP_K_CHUNKS` | Chunks de la query principal a incluir en el prompt | `12` |
+| `COOKIES_K` | Chunks adicionales de la búsqueda auxiliar de cookies | `6` |
+| `OVERFETCH_K` | Candidatos a recuperar antes de filtrar por score | `100` |
 | `RATE_LIMIT` | Límite de requests en `/v1/analyze` | `10/minute` |
 | `ALLOWED_ORIGINS` | CORS origins (coma-separados) | `*` |
 
