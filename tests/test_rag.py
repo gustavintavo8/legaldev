@@ -160,6 +160,29 @@ def test_run_pipeline_no_relevant_docs_raises_404(sample_input):
     assert exc_info.value.status_code == 404
 
 
+def test_run_pipeline_colegiado_triggers_auxiliary_search():
+    docs = [_make_mock_doc("RGPD.pdf")]
+    state = MagicMock()
+    state.vectorstore.similarity_search_with_relevance_scores.side_effect = [
+        [(docs[0], 0.85)],  # main search
+        [],                  # ccii auxiliary
+    ]
+    state.groq_client.invoke.return_value = MagicMock(content="ok")
+
+    run_pipeline(_make_input(colegiado=True), state)
+
+    assert state.vectorstore.similarity_search_with_relevance_scores.call_count == 2
+
+
+def test_run_pipeline_colegiado_none_no_auxiliary_search():
+    docs = [_make_mock_doc("RGPD.pdf")]
+    state = _make_state(docs)
+
+    run_pipeline(_make_input(colegiado=None), state)
+
+    assert state.vectorstore.similarity_search_with_relevance_scores.call_count == 1
+
+
 def test_run_pipeline_filters_below_threshold(sample_input):
     high_doc = _make_mock_doc("RGPD.pdf")
     low_doc = _make_mock_doc("LOPDGDD.pdf", "normativa_española")
