@@ -8,9 +8,9 @@ class Settings(BaseSettings):
     groq_model: str = "meta-llama/llama-4-scout-17b-16e-instruct"
     chroma_db_path: str = "./chroma_db"
     docs_path: str = "./docs"
-    top_k_chunks: int = 8
-    max_chunks_per_source: int = 3
-    overfetch_k: int = 24
+    top_k_chunks: int = 12
+    cookies_k: int = 6
+    overfetch_k: int = 100
     groq_timeout: int = 30
     groq_temperature: float = 0.0
     min_relevance_score: float = 0.35

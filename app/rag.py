@@ -2,7 +2,6 @@ import hashlib
 import json
 import logging
 import time
-from collections import defaultdict
 from pathlib import Path
 
 from fastapi import HTTPException
@@ -83,12 +82,6 @@ def _build_query(input: QuestionnaireInput) -> str:
             " Normativa sobre IA, EU AI Act, responsabilidad algoritmos."
         )
 
-    if input.usa_cookies:
-        parts.append(
-            "Usa cookies y tecnologías de rastreo."
-            " Obligaciones de consentimiento y política de cookies."
-        )
-
     if input.monetizacion and input.monetizacion != "ninguna":
         parts.append(f"Modelo de monetización: {input.monetizacion}.")
 
@@ -145,23 +138,6 @@ def _build_user_message(input: QuestionnaireInput, docs: list) -> str:
     return "\n".join(lines)
 
 
-def _cap_per_source(
-    candidates: list, min_score: float, max_per_source: int, top_k: int
-) -> list:
-    counts: dict = defaultdict(int)
-    result = []
-    for doc, score in candidates:
-        if score < min_score:
-            continue
-        source = doc.metadata.get("source", "")
-        if counts[source] < max_per_source:
-            counts[source] += 1
-            result.append(doc)
-        if len(result) >= top_k:
-            break
-    return result
-
-
 def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
     query = _build_query(input)
     t0 = time.perf_counter()
@@ -169,12 +145,23 @@ def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
     candidates = state.vectorstore.similarity_search_with_relevance_scores(
         query, k=settings.overfetch_k
     )
-    docs = _cap_per_source(
-        candidates,
-        settings.min_relevance_score,
-        settings.max_chunks_per_source,
-        settings.top_k_chunks,
-    )
+    docs = [doc for doc, score in candidates if score >= settings.min_relevance_score][
+        : settings.top_k_chunks
+    ]
+
+    if input.usa_cookies:
+        cookies_candidates = state.vectorstore.similarity_search_with_relevance_scores(
+            "cookies consentimiento banner rastreo política privacidad",
+            k=settings.cookies_k,
+        )
+        seen = {hashlib.md5(d.page_content.encode()).hexdigest() for d in docs}
+        for doc, score in cookies_candidates:
+            if score >= settings.min_relevance_score:
+                h = hashlib.md5(doc.page_content.encode()).hexdigest()
+                if h not in seen:
+                    seen.add(h)
+                    docs.append(doc)
+
     t_retrieval = time.perf_counter()
 
     if not docs:

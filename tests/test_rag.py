@@ -56,8 +56,11 @@ def test_build_query_no_ia():
     assert "inteligencia artificial" not in result
 
 
-def test_build_query_cookies():
-    assert "cookies" in _build_query(_make_input(usa_cookies=True))
+def test_build_query_cookies_not_in_main_query():
+    # "cookies" is intentionally absent from the main query to avoid lexical
+    # saturation by the AEPD cookies guide. A targeted auxiliary search handles
+    # cookies retrieval separately when usa_cookies=True.
+    assert "cookies" not in _build_query(_make_input(usa_cookies=True))
 
 
 def test_build_query_usuarios_menores():
