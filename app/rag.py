@@ -2,6 +2,7 @@ import hashlib
 import json
 import logging
 import time
+from collections import defaultdict
 from pathlib import Path
 
 from fastapi import HTTPException
@@ -144,6 +145,21 @@ def _build_user_message(input: QuestionnaireInput, docs: list) -> str:
     return "\n".join(lines)
 
 
+def _cap_per_source(candidates: list, min_score: float, max_per_source: int, top_k: int) -> list:
+    counts: dict = defaultdict(int)
+    result = []
+    for doc, score in candidates:
+        if score < min_score:
+            continue
+        source = doc.metadata.get("source", "")
+        if counts[source] < max_per_source:
+            counts[source] += 1
+            result.append(doc)
+        if len(result) >= top_k:
+            break
+    return result
+
+
 def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
     query = _build_query(input)
     t0 = time.perf_counter()
@@ -151,9 +167,12 @@ def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
     candidates = state.vectorstore.similarity_search_with_relevance_scores(
         query, k=settings.overfetch_k
     )
-    docs = [doc for doc, score in candidates if score >= settings.min_relevance_score][
-        : settings.top_k_chunks
-    ]
+    docs = _cap_per_source(
+        candidates,
+        settings.min_relevance_score,
+        settings.max_chunks_per_source,
+        settings.top_k_chunks,
+    )
     t_retrieval = time.perf_counter()
 
     if not docs:
