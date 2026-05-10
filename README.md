@@ -84,7 +84,7 @@ Fine-tuning modifica el comportamiento del modelo; RAG le da acceso a informaci�
 
 ### ChromaDB local en vez de Pinecone o Qdrant
 
-Para un corpus de 22 documentos con ~8.000 chunks fijos que no cambian en runtime, una base vectorial en disco es suficiente y tiene latencia de consulta < 10ms. Pinecone añadiría latencia de red (~80-150ms por query), coste mensual y una dependencia de servicio externo. ChromaDB persiste en SQLite con su propio formato binario y se copia directamente al Docker image sin configuración adicional.
+Para un corpus de 22 documentos con ~14.300 chunks fijos que no cambian en runtime, una base vectorial en disco es suficiente y tiene latencia de consulta < 10ms. Pinecone añadiría latencia de red (~80-150ms por query), coste mensual y una dependencia de servicio externo. ChromaDB persiste en SQLite con su propio formato binario y se copia directamente al Docker image sin configuración adicional.
 
 ### Embeddings pre-generados, no en startup
 
