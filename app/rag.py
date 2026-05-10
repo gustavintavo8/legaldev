@@ -149,13 +149,27 @@ def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
         : settings.top_k_chunks
     ]
 
+    seen = {hashlib.md5(d.page_content.encode()).hexdigest() for d in docs}
+
     if input.usa_cookies:
         cookies_candidates = state.vectorstore.similarity_search_with_relevance_scores(
             "cookies consentimiento banner rastreo política privacidad",
             k=settings.cookies_k,
         )
-        seen = {hashlib.md5(d.page_content.encode()).hexdigest() for d in docs}
         for doc, score in cookies_candidates:
+            if score >= settings.min_relevance_score:
+                h = hashlib.md5(doc.page_content.encode()).hexdigest()
+                if h not in seen:
+                    seen.add(h)
+                    docs.append(doc)
+
+    if input.colegiado:
+        # Auxiliary search — P1.5: move to AUXILIARY_SEARCHES
+        ccii_candidates = state.vectorstore.similarity_search_with_relevance_scores(
+            "código deontológico ingeniero informático colegiado responsabilidad profesional",
+            k=settings.colegiado_k,
+        )
+        for doc, score in ccii_candidates:
             if score >= settings.min_relevance_score:
                 h = hashlib.md5(doc.page_content.encode()).hexdigest()
                 if h not in seen:
