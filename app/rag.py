@@ -2,6 +2,8 @@ import hashlib
 import json
 import logging
 import time
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 from fastapi import HTTPException
@@ -21,6 +23,34 @@ DISCLAIMER = (
     "en derecho digital."
 )
 
+
+@dataclass(frozen=True)
+class AuxSearch:
+    """Búsqueda auxiliar para normativas que la query principal no recupera fiablemente.
+
+    Añadir una entrada cuando una normativa queda sistemáticamente enterrada por dilución
+    léxica (e.g., "datos personales" domina el ranking y desplaza documentos de dominio
+    específico). La condición acota la búsqueda: coste cero cuando no aplica.
+    """
+
+    condition: Callable[[QuestionnaireInput], bool]
+    query: str
+    k: int
+
+
+AUXILIARY_SEARCHES: list[AuxSearch] = [
+    AuxSearch(
+        condition=lambda inp: inp.usa_cookies,
+        query="cookies consentimiento banner rastreo política privacidad",
+        k=settings.cookies_k,
+    ),
+    AuxSearch(
+        condition=lambda inp: bool(inp.colegiado),
+        query="código deontológico ingeniero informático colegiado responsabilidad profesional",
+        k=settings.colegiado_k,
+    ),
+]
+
 SYSTEM_PROMPT = """\
 Eres LegalDev, un asistente especializado en normativa legal aplicable a proyectos de software en España y la Unión Europea.
 
@@ -32,13 +62,13 @@ Tu tarea es producir un informe legal estructurado, formal y accionable. Sigue e
 
 ## ESTRUCTURA OBLIGATORIA
 
-### 1. Sumario ejecutivo
+**1. Sumario ejecutivo**
 
 Una sola línea que describa la situación legal del proyecto en términos directos.
 Seguida de 2-3 bullets con las obligaciones más críticas o urgentes.
 No es un resumen de lo que viene — es un diagnóstico ejecutivo accionable.
 
-### 2. Secciones por normativa
+**2. Secciones por normativa**
 
 Una sección por cada normativa con fragmentos recuperados.
 Ordenadas por tier:
@@ -65,7 +95,7 @@ Formato de cada obligación (repite el bloque por cada obligación identificada)
 - Acción técnica concreta 2
 (mínimo 2 bullets por obligación)
 
-### 3. Cobertura del análisis
+**3. Cobertura del análisis**
 
 Incluye esta sección antes del disclaimer. Usa el campo "normativas_no_recuperadas" del contexto.
 
@@ -210,30 +240,16 @@ def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
 
     seen = {hashlib.md5(d.page_content.encode()).hexdigest() for d in docs}
 
-    if input.usa_cookies:
-        cookies_candidates = state.vectorstore.similarity_search_with_relevance_scores(
-            "cookies consentimiento banner rastreo política privacidad",
-            k=settings.cookies_k,
-        )
-        for doc, score in cookies_candidates:
-            if score >= settings.min_relevance_score:
-                h = hashlib.md5(doc.page_content.encode()).hexdigest()
-                if h not in seen:
-                    seen.add(h)
-                    docs.append(doc)
-
-    if input.colegiado:
-        # Auxiliary search — P1.5: move to AUXILIARY_SEARCHES
-        ccii_candidates = state.vectorstore.similarity_search_with_relevance_scores(
-            "código deontológico ingeniero informático colegiado responsabilidad profesional",
-            k=settings.colegiado_k,
-        )
-        for doc, score in ccii_candidates:
-            if score >= settings.min_relevance_score:
-                h = hashlib.md5(doc.page_content.encode()).hexdigest()
-                if h not in seen:
-                    seen.add(h)
-                    docs.append(doc)
+    for aux in AUXILIARY_SEARCHES:
+        if aux.condition(input):
+            for doc, score in state.vectorstore.similarity_search_with_relevance_scores(
+                aux.query, k=aux.k
+            ):
+                if score >= settings.min_relevance_score:
+                    h = hashlib.md5(doc.page_content.encode()).hexdigest()
+                    if h not in seen:
+                        seen.add(h)
+                        docs.append(doc)
 
     t_retrieval = time.perf_counter()
 

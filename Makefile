@@ -1,4 +1,4 @@
-.PHONY: dev test ingest
+.PHONY: dev test ingest eval
 
 dev:
 	uvicorn app.main:app --reload
@@ -8,3 +8,6 @@ test:
 
 ingest:
 	python app/ingest.py
+
+eval:
+	python tools/eval_retrieval.py

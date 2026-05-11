@@ -1,0 +1,94 @@
+base_input:
+  tipo_proyecto: app_web
+  descripcion_breve: App de gestión de tareas
+  tiene_usuarios_registrados: true
+  acceso_publico: false
+  tipos_datos_personales:
+    - email
+  usuarios_menores: false
+  usuarios_ue: true
+  transferencia_datos_terceros: false
+  usa_ia: false
+  tipo_ia: null
+  usa_cookies: false
+  monetizacion: null
+  contenido_digital: false
+  ccaa: Madrid
+  es_empresa: false
+  colegiado: null
+
+cases:
+  - label: rgpd-lopdgdd-basico
+    notes: "App web básica con datos personales de usuarios EU"
+    overrides:
+      tipos_datos_personales: [email, nombre]
+    expected:
+      - RGPD
+      - LOPDGDD
+
+  - label: datos-sensibles-salud
+    notes: "Datos de salud — categoría especial Art. 9 RGPD"
+    overrides:
+      tipos_datos_personales: [salud, nombre, email]
+    expected:
+      - RGPD
+      - LOPDGDD
+
+  - label: ia-generativa
+    notes: "App con IA generativa — aplica EU AI Act"
+    overrides:
+      usa_ia: true
+      tipo_ia: generativa
+      tipos_datos_personales: [email]
+    expected:
+      - EU AI Act
+
+  - label: ia-agente
+    notes: "App con IA agéntica — EU AI Act + guía AEPD sobre IA agéntica"
+    overrides:
+      usa_ia: true
+      tipo_ia: agentes
+      tipos_datos_personales: [email]
+    expected:
+      - EU AI Act
+      - IA Agentica desde la perspectiva de proteccion de datos - AEPD
+
+  - label: menores-datos-personales
+    notes: "App con usuarios menores — protección reforzada RGPD Art. 8"
+    overrides:
+      usuarios_menores: true
+      tipos_datos_personales: [nombre, email]
+    expected:
+      - RGPD
+      - LOPDGDD
+
+  - label: cookies-webapp
+    notes: "App con cookies — búsqueda auxiliar activa (usa_cookies=True)"
+    overrides:
+      usa_cookies: true
+    expected:
+      - Guía sobre uso de cookies - AEPD
+
+  - label: ccii-ingeniero-colegiado
+    notes: "Ingeniero informático colegiado — búsqueda auxiliar CCII"
+    overrides:
+      colegiado: true
+      es_empresa: false
+    expected:
+      - Código Ético y Deontológico CCII
+
+  - label: sin-datos-personales
+    notes: "Sin datos personales — retrieval mínimo esperado"
+    off_topic: true
+    overrides:
+      tipos_datos_personales: [ninguno]
+    expected: []
+
+  - label: off-topic-recetas
+    notes: "App de recetas sin usuarios — fuera del alcance legal"
+    off_topic: true
+    overrides:
+      descripcion_breve: "App de recetas de cocina sin usuarios registrados"
+      tipos_datos_personales: [ninguno]
+      tiene_usuarios_registrados: false
+    expected: []

@@ -1,135 +1,137 @@
 """
-Retrieval evaluation script — embrión de P1.4.
+Retrieval evaluation script — P1.4.
 
 Ejecutar: python tools/eval_retrieval.py
+          make eval
 Requiere: ChromaDB generado (make ingest) y GROQ_API_KEY en .env (o env var).
 Solo hace retrieval — no llama al LLM.
+
+Casos definidos en tools/eval_cases.yaml. Para añadir un caso nuevo, edita ese
+archivo: añade label, overrides sobre base_input, y la lista expected de stems
+(nombre de archivo sin .pdf) que deben aparecer en los resultados.
 """
+
+import hashlib
 import os
 import sys
+from pathlib import Path
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 os.environ.setdefault("GROQ_API_KEY", "eval-no-llm")
 
-from langchain_huggingface import HuggingFaceEmbeddings
+import yaml
 from langchain_chroma import Chroma
+from langchain_huggingface import HuggingFaceEmbeddings
 
 from app.config import settings
 from app.models import QuestionnaireInput
-from app.rag import _build_query
-
-BASE_INPUT = dict(
-    tipo_proyecto="app_web",
-    descripcion_breve="App de gestión",
-    tiene_usuarios_registrados=True,
-    acceso_publico=False,
-    tipos_datos_personales=["email"],
-    usuarios_menores=False,
-    usuarios_ue=True,
-    transferencia_datos_terceros=False,
-    usa_ia=False,
-    tipo_ia=None,
-    usa_cookies=False,
-    monetizacion=None,
-    contenido_digital=False,
-    ccaa="Madrid",
-    es_empresa=False,
-    colegiado=None,
-)
-
-# Cada caso: (label, overrides_sobre_BASE_INPUT, normativa_esperada_en_source | None)
-# normativa_esperada=None significa "esperamos que NO haya cobertura (off-topic)"
-CASES = [
-    (
-        "covered-RGPD",
-        {"tipos_datos_personales": ["nombre", "email", "salud"]},
-        "RGPD",
-    ),
-    (
-        "covered-cookies",
-        {"usa_cookies": True},
-        "Guía sobre uso de cookies - AEPD",
-    ),
-    # CCII no aparece en la query principal (query demasiado dilutada).
-    # La búsqueda auxiliar de run_pipeline() es la que lo trae. Validar end-to-end con el smoke test.
-    (
-        "covered-CCII (main query only)",
-        {"colegiado": True, "es_empresa": False},
-        None,
-    ),
-    (
-        "border-minimal",
-        {"tipos_datos_personales": ["ninguno"]},
-        None,
-    ),
-    (
-        "off-topic-recetas",
-        {
-            "descripcion_breve": "App de recetas de cocina sin usuarios registrados",
-            "tipos_datos_personales": ["ninguno"],
-            "tiene_usuarios_registrados": False,
-        },
-        None,
-    ),
-]
+from app.rag import AUXILIARY_SEARCHES, _build_query
 
 
-def run_case(label, overrides, expected_source, vs, threshold):
-    inp = QuestionnaireInput(**{**BASE_INPUT, **overrides})
-    query = _build_query(inp)
-    results = vs.similarity_search_with_relevance_scores(query, k=settings.overfetch_k)
-    passed = [doc for doc, score in results if score >= threshold]
-    found = (
-        any(expected_source in doc.metadata.get("source", "") for doc in passed)
-        if expected_source
-        else True
-    )
-    top5 = [
-        (doc.metadata.get("source", "?")[:45], round(score, 4))
-        for doc, score in results[:5]
+def _load_cases(yaml_path: Path) -> tuple[dict, list[dict]]:
+    with yaml_path.open(encoding="utf-8") as f:
+        data = yaml.safe_load(f)
+    return data["base_input"], data["cases"]
+
+
+def _make_input(base: dict, overrides: dict) -> QuestionnaireInput:
+    return QuestionnaireInput(**{**base, **(overrides or {})})
+
+
+def _retrieve(vs, query: str, k: int, threshold: float) -> list:
+    return [
+        doc
+        for doc, score in vs.similarity_search_with_relevance_scores(query, k=k)
+        if score >= threshold
     ]
+
+
+def run_case(case: dict, base_input: dict, vs, threshold: float) -> dict:
+    inp = _make_input(base_input, case.get("overrides"))
+    expected: list[str] = case.get("expected", [])
+
+    # Main query
+    docs = _retrieve(vs, _build_query(inp), settings.overfetch_k, threshold)
+    seen = {hashlib.md5(d.page_content.encode()).hexdigest() for d in docs}
+
+    for aux in AUXILIARY_SEARCHES:
+        if aux.condition(inp):
+            for doc in _retrieve(vs, aux.query, aux.k, threshold):
+                h = hashlib.md5(doc.page_content.encode()).hexdigest()
+                if h not in seen:
+                    seen.add(h)
+                    docs.append(doc)
+
+    retrieved_stems = {
+        Path(d.metadata["source"]).stem for d in docs if "source" in d.metadata
+    }
+    found = [e for e in expected if e in retrieved_stems]
+    missing = [e for e in expected if e not in retrieved_stems]
+    recall = len(found) / len(expected) if expected else None
+
     return {
-        "label": label,
-        "expected": expected_source or "N/A (off-topic)",
+        "label": case["label"],
+        "off_topic": case.get("off_topic", False),
+        "expected": expected,
         "found": found,
-        "chunks_passed": len(passed),
-        "top_score": round(results[0][1], 4) if results else None,
-        "top5": top5,
+        "missing": missing,
+        "recall": recall,
+        "chunks": len(docs),
     }
 
 
 def main():
+    cases_path = Path(__file__).parent / "eval_cases.yaml"
+    base_input, cases = _load_cases(cases_path)
+
     print("Cargando embeddings y ChromaDB...")
-    embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
     vs = Chroma(
         persist_directory=settings.chroma_db_path,
-        embedding_function=embeddings,
+        embedding_function=HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2"),
         collection_name="legaldev",
     )
     threshold = settings.min_relevance_score
 
-    print(f"\nRetrieval eval — threshold={threshold}, overfetch_k={settings.overfetch_k}\n")
-    print(f"{'Caso':<20} {'Esperado':<45} {'OK':>4} {'Chunks':>6} {'TopScore':>9}")
-    print("-" * 90)
+    print(
+        f"\nRetrieval eval — threshold={threshold}  overfetch_k={settings.overfetch_k}"
+        f"  casos={len(cases)}\n"
+    )
+    print(f"{'':4} {'Caso':<32} {'Recall':>7}  {'Chunks':>6}  Faltantes")
+    print("-" * 75)
 
     all_passed = True
-    for label, overrides, expected_source in CASES:
-        r = run_case(label, overrides, expected_source, vs, threshold)
-        ok = "YES" if r["found"] else "NO "
-        if not r["found"]:
+    results = []
+    for case in cases:
+        r = run_case(case, base_input, vs, threshold)
+        results.append(r)
+
+        if r["recall"] is None:
+            # Off-topic: always pass — informativo, no criterio de fallo
+            ok = True
+            recall_str = "  N/A "
+        else:
+            ok = r["recall"] == 1.0
+            recall_str = f"{r['recall']:>6.0%} "
+
+        if not ok:
             all_passed = False
+
+        status = "OK " if ok else "NOK"
+        missing_str = ", ".join(r["missing"]) if r["missing"] else ""
+        if len(missing_str) > 35:
+            missing_str = missing_str[:32] + "..."
         print(
-            f"{r['label']:<20} {r['expected']:<45} {ok:>4} "
-            f"{r['chunks_passed']:>6} {str(r['top_score']):>9}"
+            f"{status}  {r['label']:<32} {recall_str} {r['chunks']:>6}  {missing_str}"
         )
-        for src, score in r["top5"]:
-            print(f"    {score:.4f}  {src}")
 
     print()
     if all_passed:
-        print("OK Todos los casos pasaron.")
+        print("OK — todos los casos pasaron.")
     else:
-        print("FAIL Algún caso falló — revisar retrieval.")
+        print("FAIL — algún caso falló.")
+        for r in results:
+            if r["missing"]:
+                print(f"  [{r['label']}] no recuperados: {r['missing']}")
         sys.exit(1)
 
 
