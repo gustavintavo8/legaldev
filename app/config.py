@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     top_k_chunks: int = 12
     cookies_k: int = 6
     colegiado_k: int = 6
+    rgpd_k: int = 6
     overfetch_k: int = 100
     groq_timeout: int = 30
     groq_temperature: float = 0.0

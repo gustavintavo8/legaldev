@@ -77,6 +77,20 @@ cases:
     expected:
       - Código Ético y Deontológico CCII
 
+  - label: query-compleja-rgpd-colegiado-ia
+    notes: "Query compleja — colegiado + IA + 4 tipos de datos. RGPD requiere búsqueda auxiliar."
+    overrides:
+      descripcion_breve: "App de gestión de equipos con seguimiento de jugadores"
+      tipos_datos_personales: [nombre, email, telefono, ubicacion]
+      usa_ia: true
+      tipo_ia: recomendacion
+      usa_cookies: true
+      colegiado: true
+      ccaa: Asturias
+    expected:
+      - RGPD
+      - LOPDGDD
+
   - label: sin-datos-personales
     notes: "Sin datos personales — retrieval mínimo esperado"
     off_topic: true

@@ -40,6 +40,11 @@ class AuxSearch:
 
 AUXILIARY_SEARCHES: list[AuxSearch] = [
     AuxSearch(
+        condition=lambda inp: any(d != "ninguno" for d in inp.tipos_datos_personales),
+        query="protección datos personales responsable tratamiento privacidad consentimiento derechos interesado",
+        k=settings.rgpd_k,
+    ),
+    AuxSearch(
         condition=lambda inp: inp.usa_cookies,
         query="cookies consentimiento banner rastreo política privacidad",
         k=settings.cookies_k,
@@ -48,6 +53,36 @@ AUXILIARY_SEARCHES: list[AuxSearch] = [
         condition=lambda inp: bool(inp.colegiado),
         query="código deontológico ingeniero informático colegiado responsabilidad profesional",
         k=settings.colegiado_k,
+    ),
+]
+
+
+@dataclass(frozen=True)
+class Exclusion:
+    """Filtro de exclusión para normativas estructuralmente no aplicables según el contexto.
+
+    Añadir una entrada cuando una normativa tiene condiciones de aplicación que el modelo
+    puede inferir de los campos del cuestionario. La condición indica cuándo excluir:
+    si es True, los chunks de esa normativa se descartan del retrieval final.
+
+    Ejemplo: ENS aplica solo a sector público — sin campo sector_publico en el cuestionario,
+    sus chunks son ruido sistemático. LPI aplica cuando hay contenido digital de terceros.
+    """
+
+    condition: Callable[[QuestionnaireInput], bool]
+    stem: str
+
+
+EXCLUSIONS: list[Exclusion] = [
+    Exclusion(
+        condition=lambda inp: (
+            True
+        ),  # ENS aplica solo a sector público — campo no disponible
+        stem="Real Decreto 311-2022 ENS",
+    ),
+    Exclusion(
+        condition=lambda inp: not inp.contenido_digital,
+        stem="Ley de Propiedad Intelectual",
     ),
 ]
 
@@ -62,13 +97,13 @@ Tu tarea es producir un informe legal estructurado, formal y accionable. Sigue e
 
 ## ESTRUCTURA OBLIGATORIA
 
-**1. Sumario ejecutivo**
+**Sumario ejecutivo**
 
 Una sola línea que describa la situación legal del proyecto en términos directos.
 Seguida de 2-3 bullets con las obligaciones más críticas o urgentes.
 No es un resumen de lo que viene — es un diagnóstico ejecutivo accionable.
 
-**2. Secciones por normativa**
+**Secciones por normativa**
 
 Una sección por cada normativa con fragmentos recuperados.
 Ordenadas por tier:
@@ -95,7 +130,7 @@ Formato de cada obligación (repite el bloque por cada obligación identificada)
 - Acción técnica concreta 2
 (mínimo 2 bullets por obligación)
 
-**3. Cobertura del análisis**
+**Cobertura del análisis**
 
 Incluye esta sección antes del disclaimer. Usa el campo "normativas_no_recuperadas" del contexto.
 
@@ -252,6 +287,14 @@ def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
                         docs.append(doc)
 
     t_retrieval = time.perf_counter()
+
+    excluded_stems = {exc.stem for exc in EXCLUSIONS if exc.condition(input)}
+    if excluded_stems:
+        docs = [
+            doc
+            for doc in docs
+            if Path(doc.metadata.get("source", "")).stem not in excluded_stems
+        ]
 
     if not docs:
         logger.info(

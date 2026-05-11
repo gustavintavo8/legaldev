@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 from app.rag import (
     run_pipeline,
     DISCLAIMER,
+    EXCLUSIONS,
     _build_user_message,
     SYSTEM_PROMPT,
     _build_query,
@@ -16,7 +17,7 @@ from app.models import QuestionnaireInput
 def test_system_prompt_snapshot():
     digest = hashlib.sha256(SYSTEM_PROMPT.encode()).hexdigest()
     assert (
-        digest == "a61e95d3b5a43c9b4f0dcbe02f45f04a96a22ef31d40ab0eee1784cdbd50a755"
+        digest == "83d3b5fde54b05b62d138f359b95bdd2fcc52067019f6541186b97bebd088de3"
     ), f"SYSTEM_PROMPT changed — update this hash consciously. New hash: {digest}"
 
 
@@ -254,9 +255,11 @@ def test_run_pipeline_calls_relevance_search_with_correct_k(sample_input):
 
     run_pipeline(sample_input, state)
 
-    state.vectorstore.similarity_search_with_relevance_scores.assert_called_once()
-    call_args = state.vectorstore.similarity_search_with_relevance_scores.call_args
-    assert call_args.kwargs.get("k") == settings.overfetch_k
+    # Verify the main search (first call) uses overfetch_k — aux searches may also fire
+    first_call = (
+        state.vectorstore.similarity_search_with_relevance_scores.call_args_list[0]
+    )
+    assert first_call.kwargs.get("k") == settings.overfetch_k
 
 
 def test_run_pipeline_no_relevant_docs_raises_404(sample_input):
@@ -272,24 +275,32 @@ def test_run_pipeline_no_relevant_docs_raises_404(sample_input):
 
 
 def test_run_pipeline_colegiado_triggers_auxiliary_search():
+    # colegiado=True + default tipos_datos_personales=["email"] → rgpd + ccii aux fire
     docs = [_make_mock_doc("RGPD.pdf")]
     state = MagicMock()
     state.vectorstore.similarity_search_with_relevance_scores.side_effect = [
         [(docs[0], 0.85)],  # main search
+        [],  # rgpd auxiliary
         [],  # ccii auxiliary
     ]
     state.groq_client.invoke.return_value = MagicMock(content="ok")
 
     run_pipeline(_make_input(colegiado=True), state)
 
-    assert state.vectorstore.similarity_search_with_relevance_scores.call_count == 2
+    assert state.vectorstore.similarity_search_with_relevance_scores.call_count == 3
 
 
-def test_run_pipeline_colegiado_none_no_auxiliary_search():
+def test_run_pipeline_colegiado_none_no_ccii_auxiliary_search():
+    # colegiado=None, ninguno → only main search fires
     docs = [_make_mock_doc("RGPD.pdf")]
     state = _make_state(docs)
 
-    run_pipeline(_make_input(colegiado=None), state)
+    run_pipeline(
+        _make_input(
+            colegiado=None, tipos_datos_personales=["ninguno"], usa_cookies=False
+        ),
+        state,
+    )
 
     assert state.vectorstore.similarity_search_with_relevance_scores.call_count == 1
 
@@ -309,3 +320,91 @@ def test_run_pipeline_filters_below_threshold(sample_input):
     assert result.chunks_utilizados == 1
     assert "RGPD" in result.normativas_detectadas
     assert "LOPDGDD" not in result.normativas_detectadas
+
+
+def test_run_pipeline_rgpd_aux_search_triggers_with_personal_data():
+    docs = [_make_mock_doc("RGPD.pdf")]
+    state = MagicMock()
+    state.vectorstore.similarity_search_with_relevance_scores.side_effect = [
+        [(docs[0], 0.85)],  # main search
+        [],  # rgpd auxiliary
+    ]
+    state.groq_client.invoke.return_value = MagicMock(content="ok")
+
+    run_pipeline(
+        _make_input(
+            tipos_datos_personales=["email"], usa_cookies=False, colegiado=None
+        ),
+        state,
+    )
+
+    assert state.vectorstore.similarity_search_with_relevance_scores.call_count == 2
+
+
+def test_run_pipeline_rgpd_aux_search_no_trigger_for_ninguno():
+    docs = [_make_mock_doc("RGPD.pdf")]
+    state = _make_state(docs)
+
+    run_pipeline(
+        _make_input(
+            tipos_datos_personales=["ninguno"], usa_cookies=False, colegiado=None
+        ),
+        state,
+    )
+
+    assert state.vectorstore.similarity_search_with_relevance_scores.call_count == 1
+
+
+def test_run_pipeline_excludes_ens_always():
+    ens_doc = _make_mock_doc("Real Decreto 311-2022 ENS.pdf")
+    rgpd_doc = _make_mock_doc("RGPD.pdf")
+    state = MagicMock()
+    state.vectorstore.similarity_search_with_relevance_scores.return_value = [
+        (ens_doc, 0.85),
+        (rgpd_doc, 0.85),
+    ]
+    state.groq_client.invoke.return_value = MagicMock(content="ok")
+
+    result = run_pipeline(_make_input(), state)
+
+    assert result.chunks_utilizados == 1
+    assert "Real Decreto 311-2022 ENS" not in result.normativas_detectadas
+    assert "RGPD" in result.normativas_detectadas
+
+
+def test_run_pipeline_excludes_lpi_when_no_contenido_digital():
+    lpi_doc = _make_mock_doc("Ley de Propiedad Intelectual.pdf")
+    rgpd_doc = _make_mock_doc("RGPD.pdf")
+    state = MagicMock()
+    state.vectorstore.similarity_search_with_relevance_scores.return_value = [
+        (lpi_doc, 0.85),
+        (rgpd_doc, 0.85),
+    ]
+    state.groq_client.invoke.return_value = MagicMock(content="ok")
+
+    result = run_pipeline(_make_input(contenido_digital=False), state)
+
+    assert result.chunks_utilizados == 1
+    assert "Ley de Propiedad Intelectual" not in result.normativas_detectadas
+
+
+def test_run_pipeline_keeps_lpi_when_contenido_digital():
+    lpi_doc = _make_mock_doc("Ley de Propiedad Intelectual.pdf")
+    rgpd_doc = _make_mock_doc("RGPD.pdf")
+    state = MagicMock()
+    state.vectorstore.similarity_search_with_relevance_scores.return_value = [
+        (lpi_doc, 0.85),
+        (rgpd_doc, 0.85),
+    ]
+    state.groq_client.invoke.return_value = MagicMock(content="ok")
+
+    result = run_pipeline(_make_input(contenido_digital=True), state)
+
+    assert result.chunks_utilizados == 2
+    assert "Ley de Propiedad Intelectual" in result.normativas_detectadas
+
+
+def test_exclusions_list_has_ens_and_lpi():
+    stems = {exc.stem for exc in EXCLUSIONS}
+    assert "Real Decreto 311-2022 ENS" in stems
+    assert "Ley de Propiedad Intelectual" in stems
