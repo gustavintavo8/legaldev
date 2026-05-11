@@ -1,9 +1,27 @@
+import hashlib
+
 import pytest
 from unittest.mock import MagicMock
-from app.rag import run_pipeline, DISCLAIMER
+from app.rag import (
+    run_pipeline,
+    DISCLAIMER,
+    _build_user_message,
+    SYSTEM_PROMPT,
+    _build_query,
+)
 from app.config import settings
-from app.rag import _build_query
 from app.models import QuestionnaireInput
+
+
+def test_system_prompt_snapshot():
+    digest = hashlib.sha256(SYSTEM_PROMPT.encode()).hexdigest()
+    assert (
+        digest == "340ecfb728df6938db4afc31f409dd922148c071ce0d62423656c35edeee109f"
+    ), f"SYSTEM_PROMPT changed — update this hash consciously. New hash: {digest}"
+
+
+def test_settings_groq_max_tokens_default():
+    assert settings.groq_max_tokens == 4000
 
 
 def _make_input(**overrides):
@@ -79,6 +97,21 @@ def test_build_query_monetizacion_ninguna_excluded():
 
 def test_build_query_monetizacion_included():
     assert "publicidad" in _build_query(_make_input(monetizacion="publicidad"))
+
+
+def test_build_user_message_includes_not_retrieved_section(sample_input):
+    doc = _make_mock_doc("RGPD.pdf")
+    not_retrieved = ["DORA (Reglamento UE 2022-2554)", "EU AI Act"]
+    result = _build_user_message(sample_input, [doc], not_retrieved)
+    assert "normativas_no_recuperadas" in result
+    assert "DORA (Reglamento UE 2022-2554)" in result
+    assert "EU AI Act" in result
+
+
+def test_build_user_message_omits_not_retrieved_section_when_empty(sample_input):
+    doc = _make_mock_doc("RGPD.pdf")
+    result = _build_user_message(sample_input, [doc], [])
+    assert "normativas_no_recuperadas" not in result
 
 
 @pytest.fixture

@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     overfetch_k: int = 100
     groq_timeout: int = 30
     groq_temperature: float = 0.0
+    groq_max_tokens: int = 4000
     min_relevance_score: float = 0.35
     rate_limit: str = "10/minute"
     allowed_origins: str = "*"

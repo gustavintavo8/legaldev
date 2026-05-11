@@ -50,6 +50,7 @@ async def lifespan(app: FastAPI):
         model_name=settings.groq_model,
         timeout=settings.groq_timeout,
         temperature=settings.groq_temperature,
+        max_tokens=settings.groq_max_tokens,
     )
     count = app.state.vectorstore._collection.count()
     if count == 0:
