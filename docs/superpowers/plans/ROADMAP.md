@@ -109,11 +109,11 @@ tools/eval_retrieval.py creado como base de P1.4 (parametrizado, 5 casos).
 
 ### 4. Retrieval: normativas críticas desplazadas en queries complejas
 
-- [ ] Añadir caso al eval (`tools/eval_cases.yaml`) con query compleja (colegiado + IA + ≥4 tipos de datos) que exija RGPD y LOPDGDD en `normativas_detectadas`
-- [ ] Investigar impacto de subir `top_k_chunks` de 12 a 20-25 — correr `make eval` antes y después
-- [ ] Evaluar búsqueda auxiliar dedicada para RGPD con condición `tipos_datos_personales != ["ninguno"]` (`AuxSearch` en `AUXILIARY_SEARCHES`)
-- [ ] Analizar falsos positivos sistemáticos (LPI, ENS, IA Agéntica) y definir condición de exclusión o subir threshold
-- [ ] Corregir residual "3. Cobertura del análisis" como texto plano en el output del LLM
+- [x] Añadir caso al eval (`tools/eval_cases.yaml`) con query compleja (colegiado + IA + ≥4 tipos de datos) que exija RGPD y LOPDGDD en `normativas_detectadas`
+- [-] ~~Investigar impacto de subir `top_k_chunks` de 12 a 20-25~~ — diagnóstico mostró RGPD en posición #29: subir top_k no lo rescata (Escenario B), AuxSearch es la solución correcta
+- [x] Evaluar búsqueda auxiliar dedicada para RGPD con condición `tipos_datos_personales != ["ninguno"]` (`AuxSearch` en `AUXILIARY_SEARCHES`)
+- [x] Analizar falsos positivos sistemáticos (LPI, ENS, IA Agéntica) y definir condición de exclusión
+- [x] Corregir residual "3. Cobertura del análisis" como texto plano en el output del LLM
 
 **Diagnóstico (2026-05-11):** query real — app con nombre/email/teléfono/ubicación, IA tipo recomendación, cookies=true, colegiado=true, Asturias — resultó en:
 
@@ -133,7 +133,28 @@ tools/eval_retrieval.py creado como base de P1.4 (parametrizado, 5 casos).
 **Notas:**
 
 ```
-[espacio]
+Diagnóstico previo a tocar parámetros (tools/diagnose_ranking.py, 2026-05-11):
+- RGPD primera aparición: posición #29 (Escenario B confirmado). top_k_chunks=25 no lo rescata.
+- LOPDGDD: posición #5 — ya en top_k=12, no necesita auxiliar.
+- Score comprimido: los 100 candidatos pasan el threshold 0.35 (rango 0.53–0.61). Opción 3
+  (subir min_relevance_score) descartada — no filtra nada útil.
+- TOP_K_CHUNKS=8 en .env sobreescribía el default 12 del config — eliminado.
+
+Implementado (2026-05-11):
+- AuxSearch para RGPD/LOPDGDD: condición tipos_datos_personales != ["ninguno"], query sin
+  siglas ("protección datos personales responsable tratamiento privacidad consentimiento
+  derechos interesado"), k=rgpd_k (default 6). Primera entrada de AUXILIARY_SEARCHES.
+- EXCLUSIONS: nueva estructura Exclusion(condition, stem), simétrica a AUXILIARY_SEARCHES.
+  ENS siempre excluido (campo sector_publico ausente), LPI excluido si contenido_digital=False.
+- SYSTEM_PROMPT: eliminados números de sección (**1. Sumario** → **Sumario**, etc.) — el LLM
+  ya no copia el "3." como texto plano.
+- Hash SYSTEM_PROMPT actualizado: 83d3b5fde54b05b62d138f359b95bdd2fcc52067019f6541186b97bebd088de3
+- Eval 10/10 OK. 69 tests pasados (7 nuevos).
+
+IA Agéntica en posición #6 (false positive para tipo_ia=recomendación): no se excluyó porque
+la guía AEPD sobre IA agéntica tiene contenido sobre protección de datos aplicable a cualquier
+IA — solo sería ruido si tipo_ia != ["agentes"]. Pendiente revisar si su presencia en el output
+del LLM es problemática en próxima iteración de calidad de output.
 ```
 
 ---
@@ -391,9 +412,11 @@ Hoy solo español. ¿Es producto para España exclusiva o para hispanohablantes 
 5. ~~P1.4~~ → renumerado P1.5 — Eval set de retrieval ✓
 6. ~~P1.6-P1.9~~ → renumerados P1.7-P1.9 — Tests serios ✓
 
-**Próxima sesión:**
+**Hecho (esta sesión, continuación):**
 
-7. **P0.4** — Retrieval gap: RGPD/LOPDGDD ausentes en queries complejas
+7. ~~P0.4~~ — Retrieval gap: AuxSearch RGPD, EXCLUSIONS, SYSTEM_PROMPT renumber ✓
+
+**Próxima sesión:**
 
 **Limpieza paralela:**
 
