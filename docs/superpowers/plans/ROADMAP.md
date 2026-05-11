@@ -35,40 +35,43 @@ Esto confirma exactamente el diagnóstico original: el frontend ya no es el cuel
 
 ### 2. Output del LLM: de chat informal a documento formal
 
-- [ ] Diseñar manualmente la respuesta-tipo ideal para el cuestionario del README
-- [ ] Reescribir `SYSTEM_PROMPT` para producir estructura fija
-- [ ] Pedir explícitamente exhaustividad ("no omitir obligaciones por brevedad")
-- [ ] Pedir ordenación por importancia (criticidad legal + aplicabilidad + concreción técnica)
-- [ ] Forzar formato de cita con página: `> "[cita]" — {Nombre normativa}, p. {página}`
-- [ ] Subir `max_tokens` del LLM a 4000-5000
+- [x] Diseñar manualmente la respuesta-tipo ideal para el cuestionario del README
+- [x] Reescribir `SYSTEM_PROMPT` para producir estructura fija
+- [x] Pedir explícitamente exhaustividad ("no omitir obligaciones por brevedad")
+- [x] Pedir ordenación por importancia (tiers explícitos: RGPD/LOPDGDD/EU AI Act → directivas → guías AEPD → CCII)
+- [x] Forzar formato de cita con página: `> "[cita]" — {Nombre normativa}, p. {página}`
+- [x] Subir `max_tokens` del LLM a 4000 (`groq_max_tokens` en Settings)
 - [ ] Validar que el frontend renderiza markdown (encabezados, citas, listas)
-- [ ] Snapshot test del nuevo `SYSTEM_PROMPT` (ver P1.8)
+- [x] Snapshot test del nuevo `SYSTEM_PROMPT` (SHA256 pinned en `tests/test_rag.py`)
 
-**Estructura propuesta del output formal:**
+**Estructura implementada:**
 
-1. Encabezado: nombre del proyecto + descripción + fecha
-2. Sumario ejecutivo (3-5 líneas)
-3. Secciones por normativa, ordenadas por tier:
-   - **Tier 1**: RGPD, LOPDGDD, EU AI Act (cuando aplican)
-   - **Tier 2**: directivas específicas (NIS2, DORA, CRA, DSA según proyecto)
-   - **Tier 3**: guías AEPD operativas
-   - **Tier 4**: deontología (CCII si colegiado)
-4. Cada sección contiene: artículos relevantes, obligación técnica concreta, cita textual con página, pasos de implementación
-5. Disclaimer al final (ya está)
+1. Sumario ejecutivo (1 línea + 2-3 bullets accionables)
+2. Secciones por normativa, ordenadas por tier:
+   - **Tier 1**: RGPD, LOPDGDD, EU AI Act
+   - **Tier 2**: ePrivacy, LSSI, Ley de Propiedad Intelectual, DSA, NIS2, DORA, CRA, Data Act, Data Governance Act, ENS, Directiva de Responsabilidad por IA
+   - **Tier 3**: guías AEPD operativas (7 documentos)
+   - **Tier 4**: Código Ético CCII (solo si chunks recuperados vía búsqueda auxiliar)
+3. Cada obligación: `> cita` → **Interpretación** → **Implementación** bullets (mínimo 2)
+4. Criterio de inclusión: ≥2 chunks para Tier 1-3; ≥1 chunk para Tier 4
+5. Sección "Cobertura del análisis": normativas indexadas sin chunks recuperados
+6. Disclaimer gestionado por `RAGResponse.disclaimer` (no en el prompt)
 
-**Implicaciones a asumir:**
+**Cambios técnicos realizados (2026-05-11):**
 
-- Latencia: 4000 tokens ≈ 4-6s en Groq (hoy <1s).
-- Coste por request sube proporcionalmente.
-- Frontend tiene que renderizar markdown decentemente.
-- Bookkeeping: tests de prompt se vuelven más sensibles.
-
-**Cómo abordarlo:** sesión dedicada solo a esto. Escribe el output ideal a mano completo, después construye el prompt para que el LLM se aproxime. Ingeniería inversa de prompt.
+- `app/corpus.py` creado como fuente única de `REQUIRED_DOCS` (importado por `ingest.py` y `rag.py`)
+- `INDEXED_NORMATIVAS` derivado de `REQUIRED_DOCS` en `rag.py` para computar `not_retrieved`
+- `_build_user_message` ampliado con tercer parámetro `not_retrieved: list[str]`
+- `run_pipeline` computa `not_retrieved` tras la guard de 404 y lo pasa al mensaje
+- `groq_max_tokens: int = 4000` en `Settings`, cableado a `ChatGroq`
+- Snapshot test SHA256: `340ecfb728df6938db4afc31f409dd922148c071ce0d62423656c35edeee109f`
 
 **Notas:**
 
 ```
-[espacio]
+Pendiente: validar renderizado markdown en el frontend (P0.2 item no cerrado).
+El frontend recibe respuesta_completa con markdown completo — headers, citas blockquote,
+bold, bullets. Hay que verificar que se renderiza correctamente y no se muestra como texto plano.
 ```
 
 ---
