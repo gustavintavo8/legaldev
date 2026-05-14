@@ -11,6 +11,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
+from app import store
 from app.config import settings
 from app.models import QuestionnaireInput, RAGResponse
 from app.rag import run_pipeline
@@ -57,7 +58,7 @@ async def lifespan(app: FastAPI):
         if settings.trust_proxy_headers
         else "direct connection IP (TRUST_PROXY_HEADERS=false)",
     )
-    count = app.state.vectorstore._collection.count()
+    count = store.count(app.state.vectorstore)
     if count == 0:
         raise RuntimeError(
             f"ChromaDB at '{settings.chroma_db_path}' is empty. Run 'make ingest' first."
@@ -92,8 +93,7 @@ def _analyze_handler(input: QuestionnaireInput, request: Request) -> RAGResponse
 
 def _normativas_handler(request: Request) -> dict:
     try:
-        result = request.app.state.vectorstore._collection.get(include=["metadatas"])
-        sources = sorted({m["source"] for m in result["metadatas"] if m.get("source")})
+        sources = store.list_sources(request.app.state.vectorstore)
         return {"normativas": sources, "total": len(sources)}
     except Exception:
         return {"normativas": [], "total": 0}
@@ -111,7 +111,7 @@ def root():
 @app.get("/health")
 def health(request: Request):
     try:
-        docs_indexed = request.app.state.vectorstore._collection.count()
+        docs_indexed = store.count(request.app.state.vectorstore)
     except Exception:
         docs_indexed = -1
     return {"status": "ok", "docs_indexed": docs_indexed}
