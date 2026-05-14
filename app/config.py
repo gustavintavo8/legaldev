@@ -1,3 +1,4 @@
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -19,6 +20,18 @@ class Settings(BaseSettings):
     min_relevance_score: float = 0.35
     rate_limit: str = "10/minute"
     allowed_origins: str = "*"
+    trust_proxy_headers: bool = False
+    chroma_timeout: float = 10.0
+
+    @field_validator("allowed_origins")
+    @classmethod
+    def validate_allowed_origins(cls, v: str) -> str:
+        parts = [p.strip() for p in v.split(",")]
+        if "*" in parts and len(parts) > 1:
+            raise ValueError(
+                f"ALLOWED_ORIGINS: '*' must be the only value when present, got: {v!r}"
+            )
+        return v
 
     @property
     def cors_origins(self) -> list[str]:
