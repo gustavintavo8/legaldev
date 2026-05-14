@@ -14,6 +14,7 @@ from slowapi.util import get_remote_address
 
 from app import store
 from app.config import settings
+from app.middleware import RequestIDMiddleware
 from app.models import QuestionnaireInput, RAGResponse
 from app.rag import run_pipeline
 
@@ -92,6 +93,7 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type", "Authorization"],
 )
+app.add_middleware(RequestIDMiddleware)
 
 Instrumentator().instrument(app).expose(app)
 

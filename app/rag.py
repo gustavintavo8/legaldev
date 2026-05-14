@@ -12,6 +12,7 @@ from fastapi import HTTPException
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from app.config import settings
+from app.middleware import request_id_var
 from app.models import QuestionnaireInput, RAGResponse
 
 logger = logging.getLogger(__name__)
@@ -318,6 +319,7 @@ def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
             json.dumps(
                 {
                     "event": "rag_no_coverage",
+                    "request_id": request_id_var.get(),
                     "chunks_fetched": len(candidates),
                     "top_score": round(candidates[0][1], 3) if candidates else None,
                     "tipo_proyecto": input.tipo_proyecto,
@@ -356,6 +358,7 @@ def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
         json.dumps(
             {
                 "event": "rag_pipeline",
+                "request_id": request_id_var.get(),
                 "tipo_proyecto": input.tipo_proyecto,
                 "descripcion_length": len(input.descripcion_breve),
                 "descripcion_hash": hashlib.sha256(
