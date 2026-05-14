@@ -4,10 +4,11 @@ WORKDIR /app
 
 RUN pip install --no-cache-dir uv
 
-ENV UV_SYSTEM_PYTHON=1
-
 COPY pyproject.toml uv.lock ./
 RUN uv sync --no-dev --frozen --no-cache
+
+# Add the project venv to PATH so subsequent RUN steps and the CMD use it
+ENV PATH="/app/.venv/bin:$PATH"
 
 # Pre-download embedding model into the image so startup makes zero HF Hub requests.
 # HF_HUB_OFFLINE=1 at runtime prevents any validation calls to huggingface.co.
