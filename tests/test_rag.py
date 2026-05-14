@@ -418,3 +418,20 @@ def test_exclusions_list_has_ens_and_lpi():
     stems = {exc.stem for exc in EXCLUSIONS}
     assert "Real Decreto 311-2022 ENS" in stems
     assert "Ley de Propiedad Intelectual" in stems
+
+
+import time
+
+
+def test_search_with_timeout_raises_503_on_slow_chroma():
+    from app.rag import _search_with_timeout
+
+    vs = MagicMock()
+    vs.similarity_search_with_relevance_scores.side_effect = lambda *a, **k: time.sleep(
+        0.05
+    )  # 50ms — longer than the 10ms timeout below
+
+    with pytest.raises(Exception) as exc_info:
+        _search_with_timeout(vs, "query", k=10, timeout=0.01)
+
+    assert exc_info.value.status_code == 503
