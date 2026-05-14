@@ -70,6 +70,8 @@ async def lifespan(app: FastAPI):
     logger.info(
         "Indexed normativas: %d unique sources", len(app.state.indexed_normativas)
     )
+    app.state.corpus_version = store.read_corpus_version(settings.chroma_db_path)
+    logger.info("Corpus version: %s", app.state.corpus_version)
     logger.info("LegalDev is ready — %d chunks indexed", count)
     yield
 
@@ -121,7 +123,11 @@ def health(request: Request):
         docs_indexed = store.count(request.app.state.vectorstore)
     except Exception:
         docs_indexed = -1
-    return {"status": "ok", "docs_indexed": docs_indexed}
+    return {
+        "status": "ok",
+        "docs_indexed": docs_indexed,
+        "corpus_version": request.app.state.corpus_version,
+    }
 
 
 @app.get("/normativas")

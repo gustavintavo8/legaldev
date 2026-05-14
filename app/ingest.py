@@ -1,3 +1,5 @@
+import hashlib
+import json
 import logging
 import os
 import shutil
@@ -49,6 +51,14 @@ def get_doc_type(filename: str) -> str:
     return DOC_TYPE_MAP.get(filename, "otro")
 
 
+def _compute_corpus_version(docs_dir: Path) -> str:
+    pdf_files = sorted(docs_dir.glob("*.pdf"))
+    fingerprint = json.dumps(
+        [(f.name, f.stat().st_size) for f in pdf_files], sort_keys=True
+    )
+    return hashlib.sha256(fingerprint.encode()).hexdigest()[:12]
+
+
 def _check_required_docs(docs_dir: Path) -> None:
     present = {f.name for f in docs_dir.glob("*.pdf")}
     missing = REQUIRED_DOCS - present
@@ -87,6 +97,9 @@ def main() -> None:
         )
         all_chunks.extend(chunks)
 
+    corpus_version = _compute_corpus_version(docs_dir)
+    version_file = Path(CHROMA_DB_PATH) / ".corpus_version"
+
     if Path(CHROMA_DB_PATH).exists():
         logger.warning(
             "Wiping existing ChromaDB at %s — this is irreversible", CHROMA_DB_PATH
@@ -101,6 +114,9 @@ def main() -> None:
         persist_directory=CHROMA_DB_PATH,
         collection_name=COLLECTION_NAME,
     )
+
+    version_file.write_text(corpus_version)
+    logger.info("Corpus version: %s", corpus_version)
 
     logger.info(
         "Indexing complete — %d total chunks across %d documents",

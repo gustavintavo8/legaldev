@@ -119,3 +119,15 @@ def test_get_real_ip_trust_enabled_no_xff_falls_back_to_client():
         s.trust_proxy_headers = True
         ip = _get_real_ip(request)
     assert ip == "10.0.0.1"
+
+
+def test_health_includes_corpus_version(client):
+    response = client.get("/health")
+    assert response.status_code == 200
+    assert "corpus_version" in response.json()
+
+
+def test_analyze_includes_corpus_version(client, sample_input_dict):
+    response = client.post("/v1/analyze", json=sample_input_dict)
+    assert response.status_code == 200
+    assert response.json()["corpus_version"] == "abc123def456"

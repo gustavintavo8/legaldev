@@ -376,4 +376,5 @@ def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
         normativas_detectadas=normativas,
         chunks_utilizados=len(docs),
         disclaimer=DISCLAIMER,
+        corpus_version=state.corpus_version,
     )
