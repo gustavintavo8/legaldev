@@ -1,5 +1,6 @@
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import APIRouter, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -63,6 +64,12 @@ async def lifespan(app: FastAPI):
         raise RuntimeError(
             f"ChromaDB at '{settings.chroma_db_path}' is empty. Run 'make ingest' first."
         )
+    app.state.indexed_normativas = frozenset(
+        Path(s).stem for s in store.list_sources(app.state.vectorstore)
+    )
+    logger.info(
+        "Indexed normativas: %d unique sources", len(app.state.indexed_normativas)
+    )
     logger.info("LegalDev is ready — %d chunks indexed", count)
     yield
 

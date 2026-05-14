@@ -212,6 +212,7 @@ def _make_state(docs, llm_response="Respuesta de prueba", score=0.85):
         (doc, score) for doc in docs
     ]
     state.groq_client.invoke.return_value = MagicMock(content=llm_response)
+    state.indexed_normativas = frozenset({"RGPD", "LOPDGDD"})
     return state
 
 
@@ -243,6 +244,7 @@ def test_run_pipeline_groq_error_raises_503(sample_input):
         (_make_mock_doc(), 0.85)
     ]
     state.groq_client.invoke.side_effect = Exception("Connection refused")
+    state.indexed_normativas = frozenset({"RGPD"})
 
     with pytest.raises(Exception) as exc_info:
         run_pipeline(sample_input, state)
@@ -268,6 +270,7 @@ def test_run_pipeline_no_relevant_docs_raises_404(sample_input):
     state.vectorstore.similarity_search_with_relevance_scores.return_value = [
         (_make_mock_doc(), 0.05)
     ]
+    state.indexed_normativas = frozenset({"RGPD"})
 
     with pytest.raises(Exception) as exc_info:
         run_pipeline(sample_input, state)
@@ -285,6 +288,7 @@ def test_run_pipeline_colegiado_triggers_auxiliary_search():
         [],  # ccii auxiliary
     ]
     state.groq_client.invoke.return_value = MagicMock(content="ok")
+    state.indexed_normativas = frozenset({"RGPD"})
 
     run_pipeline(_make_input(colegiado=True), state)
 
@@ -315,6 +319,7 @@ def test_run_pipeline_filters_below_threshold(sample_input):
         (low_doc, 0.05),
     ]
     state.groq_client.invoke.return_value = MagicMock(content="Respuesta filtrada")
+    state.indexed_normativas = frozenset({"RGPD", "LOPDGDD"})
 
     result = run_pipeline(sample_input, state)
 
@@ -331,6 +336,7 @@ def test_run_pipeline_rgpd_aux_search_triggers_with_personal_data():
         [],  # rgpd auxiliary
     ]
     state.groq_client.invoke.return_value = MagicMock(content="ok")
+    state.indexed_normativas = frozenset({"RGPD"})
 
     run_pipeline(
         _make_input(
@@ -365,6 +371,7 @@ def test_run_pipeline_excludes_ens_always():
         (rgpd_doc, 0.85),
     ]
     state.groq_client.invoke.return_value = MagicMock(content="ok")
+    state.indexed_normativas = frozenset({"Real Decreto 311-2022 ENS", "RGPD"})
 
     result = run_pipeline(_make_input(), state)
 
@@ -382,6 +389,7 @@ def test_run_pipeline_excludes_lpi_when_no_contenido_digital():
         (rgpd_doc, 0.85),
     ]
     state.groq_client.invoke.return_value = MagicMock(content="ok")
+    state.indexed_normativas = frozenset({"Ley de Propiedad Intelectual", "RGPD"})
 
     result = run_pipeline(_make_input(contenido_digital=False), state)
 
@@ -398,6 +406,7 @@ def test_run_pipeline_keeps_lpi_when_contenido_digital():
         (rgpd_doc, 0.85),
     ]
     state.groq_client.invoke.return_value = MagicMock(content="ok")
+    state.indexed_normativas = frozenset({"Ley de Propiedad Intelectual", "RGPD"})
 
     result = run_pipeline(_make_input(contenido_digital=True), state)
 

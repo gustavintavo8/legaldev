@@ -10,10 +10,7 @@ from fastapi import HTTPException
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from app.config import settings
-from app.corpus import REQUIRED_DOCS
 from app.models import QuestionnaireInput, RAGResponse
-
-INDEXED_NORMATIVAS: frozenset[str] = frozenset(Path(f).stem for f in REQUIRED_DOCS)
 
 logger = logging.getLogger(__name__)
 
@@ -316,7 +313,7 @@ def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
     retrieved_sources = {
         Path(doc.metadata["source"]).stem for doc in docs if "source" in doc.metadata
     }
-    not_retrieved = sorted(INDEXED_NORMATIVAS - retrieved_sources)
+    not_retrieved = sorted(state.indexed_normativas - retrieved_sources)
 
     messages = [
         SystemMessage(content=SYSTEM_PROMPT),
