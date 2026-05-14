@@ -16,8 +16,8 @@ RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTr
 
 ENV HF_HUB_OFFLINE=1
 
-COPY app/ ./app/
 COPY chroma_db/ ./chroma_db/
+COPY app/ ./app/
 
 EXPOSE 8000
 
