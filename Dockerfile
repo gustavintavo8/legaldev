@@ -2,8 +2,10 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir uv
+
+COPY pyproject.toml uv.lock ./
+RUN uv sync --no-dev --frozen --system --no-cache
 
 # Pre-download embedding model into the image so startup makes zero HF Hub requests.
 # HF_HUB_OFFLINE=1 at runtime prevents any validation calls to huggingface.co.

@@ -2,8 +2,9 @@ import os
 
 os.environ.setdefault("GROQ_API_KEY", "test-key-not-real")
 
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
 
 
 @pytest.fixture
@@ -91,8 +92,9 @@ def client(mock_doc):
         )
         mock_groq_cls.return_value = mock_llm
 
-        from app.main import app
         from fastapi.testclient import TestClient
+
+        from app.main import app
 
         with TestClient(app) as c:
             yield c

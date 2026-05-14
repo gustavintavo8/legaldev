@@ -1,17 +1,18 @@
 import hashlib
+from unittest.mock import MagicMock
 
 import pytest
-from unittest.mock import MagicMock
-from app.rag import (
-    run_pipeline,
-    DISCLAIMER,
-    EXCLUSIONS,
-    _build_user_message,
-    SYSTEM_PROMPT,
-    _build_query,
-)
+
 from app.config import settings
 from app.models import QuestionnaireInput
+from app.rag import (
+    DISCLAIMER,
+    EXCLUSIONS,
+    SYSTEM_PROMPT,
+    _build_query,
+    _build_user_message,
+    run_pipeline,
+)
 
 
 def test_system_prompt_snapshot():

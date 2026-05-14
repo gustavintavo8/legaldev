@@ -1,3 +1,14 @@
+> **Spec original — la implementación divergió.**
+> Este documento refleja el diseño inicial del 2026-05-09. La arquitectura real actual
+> está documentada en el README y en el código. Las divergencias principales son:
+> modelo de embeddings (`all-MiniLM-L6-v2`, no `paraphrase-multilingual`), score
+> threshold anti-alucinación, `AUXILIARY_SEARCHES` + `EXCLUSIONS`, endpoint `/v1/analyze`,
+> `SYSTEM_PROMPT` para output formal, `pyproject.toml` + `uv.lock` en lugar de
+> `requirements.txt`, y `corpus.py` como fuente canónica de documentos.
+> Archivado: 2026-05-15.
+
+---
+
 # LegalDev RAG — Design Spec
 Date: 2026-05-09
 

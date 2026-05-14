@@ -271,23 +271,33 @@ Este ya está hecho — se implementó en P0.2. test_system_prompt_snapshot exis
 
 ### 10. README desactualizado en "Decisiones técnicas"
 
-- [ ] La sección dice que `descripcion_breve` se concatena al final de la query — ahora va al principio
-- [ ] Repasar la sección entera por inconsistencias similares
+- [x] La sección dice que `descripcion_breve` se concatena al final de la query — ahora va al principio
+- [x] Repasar la sección entera por inconsistencias similares
 
 **Notas:**
 
 ```
-[espacio]
+Corregido 2026-05-15:
+- Badge tests: 50 → 69
+- "Cómo funciona" Step 1: descripcion_breve al principio, sin "cookies" en la query principal
+- "Cómo funciona" Step 2: 3 aux searches (RGPD, cookies, CCII) + EXCLUSIONS
+- Proyecto estructura: añadido app/corpus.py
+- "Cuestionario estructurado": añadida frase sobre descripcion_breve liderando la query
+- "Query descriptiva + búsqueda auxiliar": reescrito párrafo final — patrón generalizado a
+  AUXILIARY_SEARCHES, tabla de 3 entradas, sección EXCLUSIONS
+- .env ejemplo: añadidos GROQ_MAX_TOKENS, RGPD_K, COLEGIADO_K
+- Variables tabla: filas para GROQ_MAX_TOKENS, RGPD_K, COLEGIADO_K
+- make test: 49 tests → 69 tests
 ```
 
 ---
 
 ### 11. `requirements.txt` → `pyproject.toml`
 
-- [ ] Migrar a `pyproject.toml` con `[project]` y `[project.optional-dependencies]`
-- [ ] Separar runtime de dev (pytest, pytest-cov, ruff)
-- [ ] Generar lockfile (`uv.lock` o `requirements.lock`)
-- [ ] Eliminar pytest de la imagen Docker
+- [x] Migrar a `pyproject.toml` con `[project]` y `[project.optional-dependencies]`
+- [x] Separar runtime de dev (pytest, pytest-cov, ruff)
+- [x] Generar lockfile (`uv.lock` o `requirements.lock`)
+- [x] Eliminar pytest de la imagen Docker
 
 **Por qué:** 17 dependencias planas, mezcla runtime/dev en la imagen Docker. Estándar 2026.
 
@@ -296,30 +306,44 @@ Este ya está hecho — se implementó en P0.2. test_system_prompt_snapshot exis
 **Notas:**
 
 ```
-[espacio]
+Implementado 2026-05-15:
+- pyproject.toml con [project.dependencies] runtime y [project.optional-dependencies] dev
+  (pytest, pytest-cov, ruff). [tool.uv] package=false — app web, no distributable.
+  [tool.pytest.ini_options] testpaths=["tests"]. [tool.ruff.lint] select E/F/I.
+- uv.lock generado: 164 paquetes (transitivos incluidos), Python >=3.11.
+- requirements.txt eliminado.
+- Dockerfile: pip install uv → uv sync --no-dev --frozen --system --no-cache.
+  pytest y pytest-cov nunca entran en la imagen.
+- Makefile: make dev/test/ingest/eval usan uv run.
+- README: setup actualizado a `uv sync`, Tech Stack añade línea de packaging,
+  estructura del proyecto actualizada.
+- 69 tests pasados con `uv run pytest`.
 ```
 
 ---
 
 ### 12. Spec original obsoleto
 
-- [ ] `docs/superpowers/specs/2026-05-09-legaldev-design.md` documenta arquitectura que ya no existe
-- [ ] **Opción A:** actualizar a la arquitectura actual
-- [ ] **Opción B (recomendada):** mover a `docs/archive/` con encabezado "Spec original — la implementación divergió"
+- [x] `docs/superpowers/specs/2026-05-09-legaldev-design.md` documenta arquitectura que ya no existe
+- [-] **Opción A:** actualizar a la arquitectura actual
+- [x] **Opción B (recomendada):** mover a `docs/archive/` con encabezado "Spec original — la implementación divergió"
 
 **Por qué:** documentos de diseño obsoletos en un repo activo desorientan más de lo que orientan.
 
 **Notas:**
 
 ```
-[espacio]
+Archivado 2026-05-15: movido a docs/archive/2026-05-09-legaldev-design.md con bloque
+de advertencia al inicio que lista las divergencias principales (embedding model,
+score threshold, AUXILIARY_SEARCHES, EXCLUSIONS, /v1/analyze, SYSTEM_PROMPT formal,
+pyproject.toml, corpus.py). El original en superpowers/specs/ fue eliminado.
 ```
 
 ---
 
 ### 13. Comentarios en código sobre auxiliares
 
-- [ ] Añadir comentario en `run_pipeline()` cerca de la lógica auxiliar:
+- [x] Añadir comentario en `run_pipeline()` cerca de la lógica auxiliar:
   ```python
   # Búsqueda auxiliar — ver README "Query descriptiva + búsqueda auxiliar por dominio"
   ```
@@ -329,54 +353,69 @@ Este ya está hecho — se implementó en P0.2. test_system_prompt_snapshot exis
 **Notas:**
 
 ```
-[espacio]
+Añadido 2026-05-15 en rag.py, línea antes del `for aux in AUXILIARY_SEARCHES:`.
 ```
 
 ---
 
 ### 14. Citas con página en el prompt
 
-- [ ] Modificar `SYSTEM_PROMPT` para forzar formato `> "[cita]" — {Nombre normativa}, p. {página}`
-- [ ] Probablemente se hace en el mismo PR que P0.2
+- [x] Modificar `SYSTEM_PROMPT` para forzar formato `> "[cita]" — {Nombre normativa}, p. {página}`
+- [x] Probablemente se hace en el mismo PR que P0.2
 
 **Por qué:** estás pasando `page + 1` a `_build_user_message` pero el prompt no pide la página, así que el LLM la omite la mayoría de veces. Para un documento formal, citas con página son no-negociables.
 
 **Notas:**
 
 ```
-[espacio]
+Implementado en P0.2 (ya cerrado). SYSTEM_PROMPT exige el formato
+`> "[cita]" — {Nombre normativa}, p. {página}` y tiene regla explícita de omitir
+", p. {página}" si la página no está disponible (no "p. None"). _build_user_message
+pasa `page + 1` (1-indexed) cuando el metadato existe. No requería cambios adicionales.
 ```
 
 ---
 
 ### 15. Mock residual en `conftest.py`
 
-- [ ] Línea: `mock_vectorstore.similarity_search.return_value = [mock_doc]`
-- [ ] Ya no se usa — `similarity_search_with_relevance_scores` reemplazó esto
-- [ ] Borrar
+- [x] Línea: `mock_vectorstore.similarity_search.return_value = [mock_doc]`
+- [x] Ya no se usa — `similarity_search_with_relevance_scores` reemplazó esto
+- [x] Borrar
 
 **Por qué:** ruido. Limpieza de 30 segundos.
 
 **Notas:**
 
 ```
-[espacio]
+Revisado 2026-05-15: la línea ya no existe en conftest.py — fue eliminada en un
+refactor anterior. Solo queda similarity_search_with_relevance_scores, que es correcto.
+No requirió cambios.
 ```
 
 ---
 
 ### 16. SECURITY.md y CONTRIBUTING.md
 
-- [ ] Crear `SECURITY.md` con canal de reporte de vulnerabilidades
-- [ ] Actualizar `CONTRIBUTING.md` con sección "Adding a new auxiliary search" (después de P1.5)
-- [ ] CONTRIBUTING ya cita `OVERFETCH_K` y `MIN_RELEVANCE_SCORE` pero no `COOKIES_K` ni la lógica auxiliar
+- [x] Crear `SECURITY.md` con canal de reporte de vulnerabilidades
+- [x] Actualizar `CONTRIBUTING.md` con sección "Adding a new auxiliary search" (después de P1.5)
+- [x] CONTRIBUTING ya cita `OVERFETCH_K` y `MIN_RELEVANCE_SCORE` pero no `COOKIES_K` ni la lógica auxiliar
 
 **Por qué:** sistema público que toca datos personales en el prompt sin canal de seguridad es una falta seria. CONTRIBUTING desactualizado bloquea contribuciones reales.
 
 **Notas:**
 
 ```
-[espacio]
+Implementado 2026-05-15:
+- SECURITY.md creado: scope (prompt injection, data exposure, deps), contacto email,
+  plazo 7 días, política de divulgación responsable, out-of-scope explícito.
+- CONTRIBUTING.md reescrito:
+  - Setup: pip/pytest/python → uv sync / make test / make ingest / make dev
+  - "New legal documents": corpus.py (REQUIRED_DOCS) + ingest.py (DOC_TYPE_MAP)
+  - "Retrieval improvements": añadidos RGPD_K, COOKIES_K, COLEGIADO_K; make eval
+  - "Prompt improvements": nota sobre snapshot test del hash
+  - Nueva sección "Adding a new auxiliary search" (4 pasos: config, AuxSearch, eval case, make eval)
+  - Nueva sección "Adding a new exclusion"
+  - PR guidelines: chroma_db/ solo si el PR añade/elimina documentos
 ```
 
 ---

@@ -1,13 +1,13 @@
 .PHONY: dev test ingest eval
 
 dev:
-	uvicorn app.main:app --reload
+	uv run uvicorn app.main:app --reload
 
 test:
-	pytest -v
+	uv run pytest -v
 
 ingest:
-	python app/ingest.py
+	uv run python app/ingest.py
 
 eval:
-	python tools/eval_retrieval.py
+	uv run python tools/eval_retrieval.py

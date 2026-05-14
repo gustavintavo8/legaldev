@@ -1,4 +1,5 @@
 import pytest
+
 from app.ingest import get_doc_type
 
 

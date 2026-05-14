@@ -9,7 +9,7 @@
 [![ChromaDB](https://img.shields.io/badge/ChromaDB-1.5-ff6b35)](https://www.trychroma.com/)
 [![Groq](https://img.shields.io/badge/Groq-Llama_4-f55036)](https://groq.com/)
 [![Railway](https://img.shields.io/badge/Deploy-Railway-0b0d0e?logo=railway)](https://railway.app/)
-[![Tests](https://img.shields.io/badge/Tests-50_passed-22c55e?logo=pytest)](./tests/)
+[![Tests](https://img.shields.io/badge/Tests-69_passed-22c55e?logo=pytest)](./tests/)
 
 [Highlights](#-highlights-técnicos) · [Cómo funciona](#-cómo-funciona) · [Tech Stack](#️-tech-stack) · [Decisiones técnicas](#-decisiones-técnicas) · [Instalación](#-instalación) · [API](#-api) · [Deploy](#-deploy)
 
@@ -32,15 +32,17 @@
 POST /v1/analyze (QuestionnaireInput)
           │
           ├─ 1. Build semantic query
-          │      tipo_proyecto + datos_personales + usa_ia + cookies + ccaa + ...
+          │      descripcion_breve + tipo_proyecto + datos_personales + usa_ia + ccaa + ...
           │
           ├─ 2. ChromaDB retrieval
           │      similarity_search_with_relevance_scores(query, k=100)
-          │      → filter chunks where score < 0.35
-          │      → if usa_cookies: auxiliary search "cookies consentimiento..." (k=6)
-          │         merge + deduplicate by content hash
+          │      → filter chunks where score < 0.35 → take top 12
+          │      → AUXILIARY_SEARCHES (conditional, deduped by content hash):
+          │         if tipos_datos_personales: search RGPD/LOPDGDD (k=6)
+          │         if usa_cookies: search cookies AEPD (k=6)
+          │         if colegiado: search CCII (k=6)
+          │      → EXCLUSIONS: ENS always removed; LPI if not contenido_digital
           │      → if no chunks pass: HTTP 404 (no coverage)
-          │      → take top 12 from main + up to 6 from cookies auxiliary
           │
           ├─ 3. LLM call (Groq · Llama 4 Scout · temperature=0)
           │      SystemPrompt: rules + mandatory citation format
@@ -73,6 +75,7 @@ Prompt framework   LangChain (loaders, splitters, Chroma wrapper)
 Rate limiting      slowapi (token bucket por IP)
 Validation         Pydantic v2 + pydantic-settings
 Testing            pytest · unittest.mock (sin llamadas reales a Groq ni ChromaDB)
+Packaging          pyproject.toml + uv.lock · dev/runtime separados
 Deploy             Railway via Dockerfile · chroma_db baked en imagen
 ```
 
@@ -118,7 +121,7 @@ Los documentos legales tienen artículos cortos y bien delimitados. Un chunk de 
 
 ### Cuestionario estructurado como interfaz de entrada
 
-En vez de texto libre ("tengo una app de salud para menores"), el cuestionario extrae campos específicos que se mapean directamente a términos legales en `_build_query()`. `usuarios_menores=True` → añade "usuarios menores de edad" a la query semántica, que dirigirá el retrieval hacia artículos del RGPD sobre menores y la guía AEPD correspondiente. `usa_ia=True + tipo_ia="generativa"` → "inteligencia artificial generativa", que apunta al EU AI Act. Esta traducción estructurada produce queries semánticamente ricas sin depender de que el usuario sepa qué palabras clave usar.
+En vez de texto libre ("tengo una app de salud para menores"), el cuestionario extrae campos específicos que se mapean directamente a términos legales en `_build_query()`. `descripcion_breve` encabeza la query — el texto del developer define el contexto base, y los campos estructurados añaden términos legales específicos a continuación. `usuarios_menores=True` → añade "usuarios menores de edad" a la query semántica, que dirigirá el retrieval hacia artículos del RGPD sobre menores y la guía AEPD correspondiente. `usa_ia=True + tipo_ia="generativa"` → "inteligencia artificial generativa", que apunta al EU AI Act. Esta traducción estructurada produce queries semánticamente ricas sin depender de que el usuario sepa qué palabras clave usar.
 
 ### Query descriptiva + búsqueda auxiliar por dominio
 
@@ -132,9 +135,15 @@ Medición sobre 5 cuestionarios representativos:
 | Ecommerce con cookies | #52 | #5 | #30 | #57 |
 | App de salud con IA (sin cookies) | #6 | #6 | #30 | sin cambio |
 
-La solución: la query principal no menciona "cookies" — describe el proyecto, sus datos y sus señales regulatorias generales. Cuando `usa_cookies=True`, una segunda búsqueda dirigida (`"cookies consentimiento banner rastreo política privacidad"`, `k=6`) recupera los chunks operativos de la guía AEPD y los añade al contexto tras deduplicar por hash de contenido. Ambas búsquedas aplican el mismo umbral `MIN_RELEVANCE_SCORE=0.35`.
+La solución: la query principal no menciona "cookies" — describe el proyecto, sus datos y sus señales regulatorias generales. El mismo problema se detectó para RGPD/LOPDGDD (posición #29 con `overfetch_k=100` en queries complejas) y para el Código Ético CCII. El patrón se generalizó a `AUXILIARY_SEARCHES`: una lista de búsquedas condicionales que se activan cuando su condición es verdadera, deduplicando por hash de contenido. Todas aplican el mismo umbral `MIN_RELEVANCE_SCORE=0.35`.
 
-Esto no es multi-query universal — solo se activa para el dominio cuya señal léxica demostró empíricamente ser tóxica para el ranking. "Menores", "salud" y "biométricos" fueron verificados y no presentan el mismo problema (sus guías son más cortas y su lexical match no satura el índice).
+| Aux search | Condición | Query |
+|------------|-----------|-------|
+| RGPD/LOPDGDD | `tipos_datos_personales != ["ninguno"]` | `"protección datos personales responsable tratamiento..."` |
+| Cookies AEPD | `usa_cookies=True` | `"cookies consentimiento banner rastreo..."` |
+| CCII | `colegiado=True` | `"código deontológico ingeniero informático..."` |
+
+Complementario a esto, `EXCLUSIONS` elimina chunks de normativas estructuralmente no aplicables antes de pasar el contexto al LLM: ENS (sector público, campo no disponible en el cuestionario) y LPI (solo cuando `contenido_digital=False`). "Menores", "salud" y "biométricos" fueron verificados y no presentan el mismo problema de saturación léxica.
 
 ### Groq en vez de OpenAI
 
@@ -151,7 +160,8 @@ legaldev/
 │   ├── rag.py         # Pipeline: query building, retrieval, score filter, LLM call
 │   ├── ingest.py      # Script de indexación offline (no importado por la app)
 │   ├── models.py      # QuestionnaireInput, RAGResponse (Pydantic)
-│   └── config.py      # Settings desde .env (pydantic-settings)
+│   ├── config.py      # Settings desde .env (pydantic-settings)
+│   └── corpus.py      # REQUIRED_DOCS: lista canónica de documentos indexados
 ├── docs/              # PDFs legales (no commiteados — solo en local)
 ├── tests/
 │   ├── conftest.py    # Fixtures y mocks (sin llamadas reales)
@@ -163,7 +173,8 @@ legaldev/
 ├── Dockerfile
 ├── docker-compose.yml
 ├── Makefile
-├── requirements.txt
+├── pyproject.toml     # Dependencias runtime + dev; lockfile en uv.lock
+├── uv.lock
 └── .env.example
 ```
 
@@ -182,7 +193,7 @@ legaldev/
 ```bash
 git clone https://github.com/gustavintavo8/legaldev
 cd legaldev
-pip install -r requirements.txt
+uv sync                # instala runtime + dev (pytest, ruff)
 cp .env.example .env   # añade tu GROQ_API_KEY
 ```
 
@@ -202,7 +213,7 @@ Genera `chroma_db/`. Si falta alguno de los 22 PDFs, el script aborta con un err
 
 ```bash
 make dev    # uvicorn app.main:app --reload → http://localhost:8000
-make test   # pytest -v (49 tests, sin Groq ni ChromaDB reales)
+make test   # pytest -v (69 tests, sin Groq ni ChromaDB reales)
 ```
 
 ---
@@ -214,10 +225,13 @@ GROQ_API_KEY=your_groq_api_key_here
 GROQ_MODEL=meta-llama/llama-4-scout-17b-16e-instruct
 GROQ_TIMEOUT=30
 GROQ_TEMPERATURE=0.0
+GROQ_MAX_TOKENS=4000
 CHROMA_DB_PATH=./chroma_db
 DOCS_PATH=./docs
 TOP_K_CHUNKS=12
 COOKIES_K=6
+RGPD_K=6
+COLEGIADO_K=6
 OVERFETCH_K=100
 MIN_RELEVANCE_SCORE=0.35
 RATE_LIMIT=10/minute
@@ -229,9 +243,12 @@ ALLOWED_ORIGINS=*
 | `GROQ_API_KEY` | API key de [GroqCloud](https://console.groq.com) | — |
 | `GROQ_MODEL` | Modelo de Groq a usar | `llama-4-scout-17b-16e-instruct` |
 | `GROQ_TEMPERATURE` | Temperatura del LLM (0 = determinista) | `0.0` |
+| `GROQ_MAX_TOKENS` | Límite de tokens en la respuesta del LLM | `4000` |
 | `MIN_RELEVANCE_SCORE` | Umbral mínimo de relevancia para chunks | `0.35` |
 | `TOP_K_CHUNKS` | Chunks de la query principal a incluir en el prompt | `12` |
-| `COOKIES_K` | Chunks adicionales de la búsqueda auxiliar de cookies | `6` |
+| `COOKIES_K` | Chunks de la búsqueda auxiliar de cookies | `6` |
+| `RGPD_K` | Chunks de la búsqueda auxiliar de RGPD/LOPDGDD | `6` |
+| `COLEGIADO_K` | Chunks de la búsqueda auxiliar del CCII | `6` |
 | `OVERFETCH_K` | Candidatos a recuperar antes de filtrar por score | `100` |
 | `RATE_LIMIT` | Límite de requests en `/v1/analyze` | `10/minute` |
 | `ALLOWED_ORIGINS` | CORS origins (coma-separados) | `*` |

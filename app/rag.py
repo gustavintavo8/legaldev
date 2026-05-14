@@ -9,9 +9,9 @@ from pathlib import Path
 from fastapi import HTTPException
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from app.models import QuestionnaireInput, RAGResponse
 from app.config import settings
 from app.corpus import REQUIRED_DOCS
+from app.models import QuestionnaireInput, RAGResponse
 
 INDEXED_NORMATIVAS: frozenset[str] = frozenset(Path(f).stem for f in REQUIRED_DOCS)
 
@@ -275,6 +275,7 @@ def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
 
     seen = {hashlib.md5(d.page_content.encode()).hexdigest() for d in docs}
 
+    # Búsqueda auxiliar — ver README "Query descriptiva + búsqueda auxiliar por dominio"
     for aux in AUXILIARY_SEARCHES:
         if aux.condition(input):
             for doc, score in state.vectorstore.similarity_search_with_relevance_scores(
