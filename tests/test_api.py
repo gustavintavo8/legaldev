@@ -83,3 +83,39 @@ def test_normativas_returns_deduplicated_list(client):
     assert data["total"] == 2
     assert "RGPD.pdf" in data["normativas"]
     assert "LOPDGDD.pdf" in data["normativas"]
+
+
+from unittest.mock import MagicMock, patch
+
+from app.main import _get_real_ip
+
+
+def _make_ip_request(xff=None, client_host="10.0.0.1"):
+    request = MagicMock()
+    request.headers.get.return_value = xff
+    request.client = MagicMock(host=client_host)
+    return request
+
+
+def test_get_real_ip_trust_disabled_ignores_xff():
+    request = _make_ip_request(xff="1.2.3.4", client_host="10.0.0.1")
+    with patch("app.main.settings") as s:
+        s.trust_proxy_headers = False
+        ip = _get_real_ip(request)
+    assert ip == "10.0.0.1"
+
+
+def test_get_real_ip_trust_enabled_reads_first_xff():
+    request = _make_ip_request(xff="1.2.3.4, 5.6.7.8", client_host="10.0.0.1")
+    with patch("app.main.settings") as s:
+        s.trust_proxy_headers = True
+        ip = _get_real_ip(request)
+    assert ip == "1.2.3.4"
+
+
+def test_get_real_ip_trust_enabled_no_xff_falls_back_to_client():
+    request = _make_ip_request(xff=None, client_host="10.0.0.1")
+    with patch("app.main.settings") as s:
+        s.trust_proxy_headers = True
+        ip = _get_real_ip(request)
+    assert ip == "10.0.0.1"

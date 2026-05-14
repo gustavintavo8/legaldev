@@ -23,11 +23,10 @@ CHROMA_COLLECTION = "legaldev"
 
 
 def _get_real_ip(request: Request) -> str:
-    # X-Forwarded-For: <client>, <proxy1>, <proxy2> — first value is the original client.
-    # Assumes a trusted proxy (Railway) sets this header; spoofeable without one.
-    xff = request.headers.get("x-forwarded-for")
-    if xff:
-        return xff.split(",")[0].strip()
+    if settings.trust_proxy_headers:
+        xff = request.headers.get("x-forwarded-for")
+        if xff:
+            return xff.split(",")[0].strip()
     return get_remote_address(request)
 
 
@@ -51,6 +50,12 @@ async def lifespan(app: FastAPI):
         timeout=settings.groq_timeout,
         temperature=settings.groq_temperature,
         max_tokens=settings.groq_max_tokens,
+    )
+    logger.info(
+        "Rate limit IP source: %s",
+        "X-Forwarded-For (TRUST_PROXY_HEADERS=true)"
+        if settings.trust_proxy_headers
+        else "direct connection IP (TRUST_PROXY_HEADERS=false)",
     )
     count = app.state.vectorstore._collection.count()
     if count == 0:
