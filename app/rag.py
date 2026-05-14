@@ -280,7 +280,10 @@ def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
     t0 = time.perf_counter()
 
     candidates = _search_with_timeout(
-        state.vectorstore, query, k=settings.overfetch_k, timeout=settings.chroma_timeout
+        state.vectorstore,
+        query,
+        k=settings.overfetch_k,
+        timeout=settings.chroma_timeout,
     )
     docs = [doc for doc, score in candidates if score >= settings.min_relevance_score][
         : settings.top_k_chunks
@@ -348,6 +351,7 @@ def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
     t_llm = time.perf_counter()
     normativas = list(retrieved_sources)
 
+    # PII policy: log only hash/length of free-text fields, never raw content
     logger.info(
         json.dumps(
             {

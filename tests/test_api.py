@@ -1,3 +1,8 @@
+from unittest.mock import MagicMock, patch
+
+from app.main import _get_real_ip
+
+
 def test_root(client):
     response = client.get("/")
     assert response.status_code == 200
@@ -83,11 +88,6 @@ def test_normativas_returns_deduplicated_list(client):
     assert data["total"] == 2
     assert "RGPD.pdf" in data["normativas"]
     assert "LOPDGDD.pdf" in data["normativas"]
-
-
-from unittest.mock import MagicMock, patch
-
-from app.main import _get_real_ip
 
 
 def _make_ip_request(xff=None, client_host="10.0.0.1"):

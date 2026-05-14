@@ -1,4 +1,6 @@
 import hashlib
+import logging
+import time
 from unittest.mock import MagicMock
 
 import pytest
@@ -420,7 +422,20 @@ def test_exclusions_list_has_ens_and_lpi():
     assert "Ley de Propiedad Intelectual" in stems
 
 
-import time
+def test_run_pipeline_does_not_log_descripcion_breve(caplog):
+    """PII policy: descripcion_breve must never appear in log output."""
+    docs = [_make_mock_doc("RGPD.pdf")]
+    state = _make_state(docs)
+
+    with caplog.at_level(logging.INFO, logger="app.rag"):
+        run_pipeline(
+            _make_input(
+                descripcion_breve="Datos muy sensibles no deben aparecer en logs"
+            ),
+            state,
+        )
+
+    assert "Datos muy sensibles no deben aparecer en logs" not in caplog.text
 
 
 def test_search_with_timeout_raises_503_on_slow_chroma():
