@@ -4,8 +4,10 @@ WORKDIR /app
 
 RUN pip install --no-cache-dir uv
 
+ENV UV_SYSTEM_PYTHON=1
+
 COPY pyproject.toml uv.lock ./
-RUN uv sync --no-dev --frozen --system --no-cache
+RUN uv sync --no-dev --frozen --no-cache
 
 # Pre-download embedding model into the image so startup makes zero HF Hub requests.
 # HF_HUB_OFFLINE=1 at runtime prevents any validation calls to huggingface.co.
