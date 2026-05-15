@@ -366,6 +366,22 @@ En Railway:
 
 ---
 
+---
+
+## ⚠️ Limitaciones conocidas
+
+- **Embeddings inglés-céntrico.** `all-MiniLM-L6-v2` fue entrenado mayoritariamente en inglés. Términos jurídicos españoles como "responsable del tratamiento" o "bases legitimadoras" pueden tener representaciones vectoriales subóptimas, afectando el recall en consultas con vocabulario muy técnico-legal.
+
+- **Corpus estático.** Las 22 normativas están indexadas a una fecha fija. LegalDev no detecta nuevas directivas, reglamentos delegados, ni modificaciones publicadas en el BOE o DOUE posteriores a la indexación. Siempre contrasta con fuentes oficiales actualizadas.
+
+- **El LLM puede alucinar pese al grounding.** El sistema obliga a citar textualmente fragmentos recuperados, pero un modelo a temperatura 0 puede interpolar o extrapolar más allá de lo que el chunk dice. Toda respuesta debe ser revisada por un profesional antes de actuar sobre ella.
+
+- **Cobertura limitada.** Solo están indexadas las 22 normativas de la base de conocimiento. Legislación autonómica específica, convenios colectivos sectoriales, circulares de la AEPD posteriores a 2024, o normativa de países fuera de la UE no están cubiertas.
+
+- **Rate limit spoofeable sin proxy de confianza.** El límite de 10 req/min se aplica por IP. Sin `TRUST_PROXY_HEADERS=true` y un proxy de confianza configurado, un atacante puede enviar headers `X-Forwarded-For` arbitrarios y bypassear el límite. Actívalo solo en entornos con proxy verificado (Railway, etc.).
+
+---
+
 ## 📄 Licencia
 
 MIT © 2026 gustavintavo8
