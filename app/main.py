@@ -118,8 +118,8 @@ app.add_middleware(RequestIDMiddleware)
 Instrumentator().instrument(app).expose(app)
 
 
-def _analyze_handler(input: QuestionnaireInput, request: Request) -> RAGResponse:
-    return run_pipeline(input, request.app.state)
+async def _analyze_handler(input: QuestionnaireInput, request: Request) -> RAGResponse:
+    return await run_pipeline(input, request.app.state)
 
 
 def _normativas_handler(request: Request) -> dict:
@@ -194,7 +194,7 @@ v1 = APIRouter(prefix="/v1", tags=["v1"])
 
 @v1.post("/analyze", response_model=RAGResponse)
 @limiter.limit(settings.rate_limit)
-def analyze_v1(
+async def analyze_v1(
     input: QuestionnaireInput,
     request: Request,
     response: FastAPIResponse,
@@ -205,7 +205,7 @@ def analyze_v1(
     if cached is not None:
         response.headers["X-Cache"] = "HIT"
         return cached
-    result = _analyze_handler(input, request)
+    result = await _analyze_handler(input, request)
     _cache.set(cache_key, result)
     response.headers["X-Cache"] = "MISS"
     return result

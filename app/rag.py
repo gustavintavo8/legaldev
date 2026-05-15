@@ -1,11 +1,10 @@
+import asyncio
 import hashlib
 import json
 import logging
 import re
 import time
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor
-from concurrent.futures import TimeoutError as RetrievalTimeout
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -184,18 +183,19 @@ def _render_coverage_section(not_retrieved: list[str]) -> str:
     return "\n".join(lines)
 
 
-def _search_with_timeout(vectorstore, query: str, k: int, timeout: float) -> list:
-    with ThreadPoolExecutor(max_workers=1) as executor:
-        future = executor.submit(
-            vectorstore.similarity_search_with_relevance_scores, query, k=k
+async def _search_with_timeout(vectorstore, query: str, k: int, timeout: float) -> list:
+    try:
+        return await asyncio.wait_for(
+            asyncio.to_thread(
+                vectorstore.similarity_search_with_relevance_scores, query, k=k
+            ),
+            timeout=timeout,
         )
-        try:
-            return future.result(timeout=timeout)
-        except RetrievalTimeout:
-            raise HTTPException(
-                status_code=503,
-                detail="ChromaDB retrieval timed out. Please try again.",
-            )
+    except asyncio.TimeoutError:
+        raise HTTPException(
+            status_code=503,
+            detail="ChromaDB retrieval timed out. Please try again.",
+        )
 
 
 def _build_query(input: QuestionnaireInput) -> str:
@@ -305,7 +305,7 @@ def _build_user_message(
     return "\n".join(lines)
 
 
-def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
+async def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
     query = _build_query(input)
     if _detect_injection(input.descripcion_breve):
         logger.warning(
@@ -319,7 +319,7 @@ def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
         )
     t0 = time.perf_counter()
 
-    candidates = _search_with_timeout(
+    candidates = await _search_with_timeout(
         state.vectorstore,
         query,
         k=settings.overfetch_k,
@@ -333,7 +333,7 @@ def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
     for aux in AUXILIARY_SEARCHES:
         if aux.condition(input):
             _metrics.aux_search_triggered.labels(type=aux.name).inc()
-            for doc, score in _search_with_timeout(
+            for doc, score in await _search_with_timeout(
                 state.vectorstore, aux.query, k=aux.k, timeout=settings.chroma_timeout
             ):
                 if score >= settings.min_relevance_score:
