@@ -36,6 +36,24 @@ jobs:
       - name: Install dependencies
         run: uv export --no-hashes --frozen --extra dev -o /tmp/ci-deps.txt && pip install -r /tmp/ci-deps.txt
       - name: Run tests with coverage
-        run: pytest -v --cov=app --cov-report=term-missing --cov-fail-under=80
+        run: pytest -v -m "not slow" --cov=app --cov-report=term-missing --cov-fail-under=80
+        env:
+          GROQ_API_KEY: test-key-not-real
+
+  test-slow:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install uv
+        run: pip install uv
+      - name: Install dependencies
+        run: uv export --no-hashes --frozen --extra dev -o /tmp/ci-deps.txt && pip install -r /tmp/ci-deps.txt
+      - name: Run slow tests
+        run: pytest tests/test_e2e.py -v -m slow
         env:
           GROQ_API_KEY: test-key-not-real

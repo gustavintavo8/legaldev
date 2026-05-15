@@ -27,6 +27,7 @@ dev = [
     "pytest==9.0.3",
     "pytest-cov==7.1.0",
     "ruff>=0.4",
+    "fpdf2>=2.8",
 ]
 
 [tool.uv]
@@ -34,6 +35,7 @@ package = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["slow: marks tests as slow (deselect with '-m not slow')"]
 
 [tool.ruff]
 target-version = "py311"
