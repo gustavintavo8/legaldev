@@ -12,7 +12,10 @@ ENV PATH="/app/.venv/bin:$PATH"
 
 # Pre-download embedding model into the image so startup makes zero HF Hub requests.
 # HF_HUB_OFFLINE=1 at runtime prevents any validation calls to huggingface.co.
-RUN python -c "from sentence_transformers import SentenceTransformer, CrossEncoder; SentenceTransformer('all-MiniLM-L6-v2'); CrossEncoder('BAAI/bge-reranker-base')"
+RUN python -c "from sentence_transformers import SentenceTransformer, CrossEncoder; SentenceTransformer('all-MiniLM-L6-v2'); CrossEncoder('BAAI/bge-reranker-base')" && \
+    find /root/.cache/huggingface -name "*.lock" -delete && \
+    find /root/.cache/huggingface -name "*.incomplete" -delete && \
+    rm -rf /tmp/*
 
 ENV HF_HUB_OFFLINE=1
 
