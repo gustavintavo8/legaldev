@@ -99,3 +99,23 @@ def client(mock_doc):
 
         with TestClient(app) as c:
             yield c
+
+
+@pytest.fixture(autouse=True)
+def clear_response_cache():
+    from app import cache as _cache
+
+    _cache.clear()
+    yield
+    _cache.clear()
+
+
+@pytest.fixture(autouse=True)
+def reset_rate_limiter():
+    yield
+    try:
+        import app.main as main_module
+
+        main_module.limiter._storage.reset()
+    except Exception:
+        pass

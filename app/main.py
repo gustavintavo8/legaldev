@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import APIRouter, FastAPI, Request
+from fastapi import Response as FastAPIResponse
 from fastapi.middleware.cors import CORSMiddleware
 from langchain_chroma import Chroma
 from langchain_groq import ChatGroq
@@ -13,6 +14,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
+from app import cache as _cache
 from app import store
 from app.config import settings
 from app.middleware import RequestIDMiddleware
@@ -178,8 +180,16 @@ v1 = APIRouter(prefix="/v1", tags=["v1"])
 
 @v1.post("/analyze", response_model=RAGResponse)
 @limiter.limit(settings.rate_limit)
-def analyze_v1(input: QuestionnaireInput, request: Request):
-    return _analyze_handler(input, request)
+def analyze_v1(input: QuestionnaireInput, request: Request, response: FastAPIResponse):
+    cache_key = _cache.make_key(input.model_dump_json())
+    cached = _cache.get(cache_key)
+    if cached is not None:
+        response.headers["X-Cache"] = "HIT"
+        return cached
+    result = _analyze_handler(input, request)
+    _cache.set(cache_key, result)
+    response.headers["X-Cache"] = "MISS"
+    return result
 
 
 app.include_router(v1)

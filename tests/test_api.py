@@ -135,6 +135,24 @@ def test_analyze_includes_corpus_version(client, sample_input_dict):
     assert response.json()["corpus_version"] == "abc123def456"
 
 
+def test_cache_miss_on_first_request(client, sample_input_dict):
+    response = client.post("/v1/analyze", json=sample_input_dict)
+    assert response.headers.get("x-cache") == "MISS"
+
+
+def test_cache_hit_on_second_identical_request(client, sample_input_dict):
+    client.post("/v1/analyze", json=sample_input_dict)
+    response = client.post("/v1/analyze", json=sample_input_dict)
+    assert response.headers.get("x-cache") == "HIT"
+
+
+def test_cache_hit_does_not_call_llm_again(client, sample_input_dict):
+    client.app.state.groq_client.invoke.reset_mock()
+    client.post("/v1/analyze", json=sample_input_dict)
+    client.post("/v1/analyze", json=sample_input_dict)
+    assert client.app.state.groq_client.invoke.call_count == 1
+
+
 def test_deep_health_returns_component_status(client):
     response = client.get("/health/deep")
     assert response.status_code == 200
