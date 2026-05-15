@@ -135,6 +135,34 @@ def test_analyze_includes_corpus_version(client, sample_input_dict):
     assert response.json()["corpus_version"] == "abc123def456"
 
 
+def test_feedback_endpoint_returns_201(client):
+    response = client.post("/v1/feedback", json={"request_id": "abc123", "rating": 5})
+    assert response.status_code == 201
+    assert response.json()["status"] == "ok"
+
+
+def test_feedback_invalid_rating_raises_422(client):
+    response = client.post("/v1/feedback", json={"request_id": "abc123", "rating": 6})
+    assert response.status_code == 422
+
+
+def test_feedback_persists_to_jsonl(client, tmp_path, monkeypatch):
+    import app.main as main_module
+
+    monkeypatch.setattr(main_module, "FEEDBACK_FILE", tmp_path / "feedback.jsonl")
+    client.post(
+        "/v1/feedback", json={"request_id": "abc123", "rating": 4, "comment": "Útil"}
+    )
+    lines = (tmp_path / "feedback.jsonl").read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 1
+    import json
+
+    entry = json.loads(lines[0])
+    assert entry["request_id"] == "abc123"
+    assert entry["rating"] == 4
+    assert entry["comment"] == "Útil"
+
+
 def test_cache_miss_on_first_request(client, sample_input_dict):
     response = client.post("/v1/analyze", json=sample_input_dict)
     assert response.headers.get("x-cache") == "MISS"

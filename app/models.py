@@ -75,3 +75,9 @@ class RAGResponse(BaseModel):
     chunks_utilizados: int
     disclaimer: str
     corpus_version: str = "unknown"
+
+
+class FeedbackInput(BaseModel):
+    request_id: str
+    rating: int = Field(ge=1, le=5)
+    comment: str | None = None

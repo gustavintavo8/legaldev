@@ -1,7 +1,9 @@
+import json as _json
 import logging
 import time as _time
 from contextlib import asynccontextmanager
 from pathlib import Path
+from pathlib import Path as _Path
 
 from fastapi import APIRouter, FastAPI, Request
 from fastapi import Response as FastAPIResponse
@@ -18,7 +20,7 @@ from app import cache as _cache
 from app import store
 from app.config import settings
 from app.middleware import RequestIDMiddleware
-from app.models import QuestionnaireInput, RAGResponse
+from app.models import FeedbackInput, QuestionnaireInput, RAGResponse
 from app.rag import run_pipeline
 
 logging.basicConfig(level=logging.INFO)
@@ -40,6 +42,8 @@ limiter = Limiter(key_func=_get_real_ip)
 
 _deep_health_cache: dict = {}
 _DEEP_HEALTH_TTL = 60.0
+
+FEEDBACK_FILE = _Path("feedback.jsonl")
 
 
 @asynccontextmanager
@@ -190,6 +194,14 @@ def analyze_v1(input: QuestionnaireInput, request: Request, response: FastAPIRes
     _cache.set(cache_key, result)
     response.headers["X-Cache"] = "MISS"
     return result
+
+
+@v1.post("/feedback", status_code=201)
+def feedback_v1(input: FeedbackInput):
+    entry = input.model_dump()
+    with FEEDBACK_FILE.open("a", encoding="utf-8") as f:
+        f.write(_json.dumps(entry) + "\n")
+    return {"status": "ok"}
 
 
 app.include_router(v1)
