@@ -8,7 +8,7 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.136-009688?logo=fastapi)](https://fastapi.tiangolo.com/)
 [![ChromaDB](https://img.shields.io/badge/ChromaDB-1.5-ff6b35)](https://www.trychroma.com/)
 [![Groq](https://img.shields.io/badge/Groq-Llama_4-f55036)](https://groq.com/)
-[![HF Spaces](https://img.shields.io/badge/Deploy-HF_Spaces-ffd21e?logo=huggingface&logoColor=black)](https://huggingface.co/spaces)
+[![HF Spaces](https://img.shields.io/badge/🤗_Space-LegalDev-yellow)](https://huggingface.co/spaces/gustavintavo8/legaldev)
 [![Tests](https://img.shields.io/badge/Tests-69_passed-22c55e?logo=pytest)](./tests/)
 
 [Highlights](#-highlights-técnicos) · [Cómo funciona](#-cómo-funciona) · [Tech Stack](#️-tech-stack) · [Decisiones técnicas](#-decisiones-técnicas) · [Instalación](#-instalación) · [API](#-api) · [Deploy](#-deploy)
@@ -36,11 +36,12 @@ POST /v1/analyze (QuestionnaireInput)
           │
           ├─ 2. ChromaDB retrieval
           │      similarity_search_with_relevance_scores(query, k=100)
-          │      → filter chunks where score < 0.35 → take top 12
+          │      → filter chunks where score < 0.40
           │      → AUXILIARY_SEARCHES (conditional, deduped by content hash):
           │         if tipos_datos_personales: search RGPD/LOPDGDD (k=6)
           │         if usa_cookies: search cookies AEPD (k=6)
           │         if colegiado: search CCII (k=6)
+          │      → Cross-encoder rerank (BAAI/bge-reranker-base) → keep top 12
           │      → EXCLUSIONS: ENS always removed; LPI if not contenido_digital
           │      → if no chunks pass: HTTP 404 (no coverage)
           │
@@ -57,7 +58,8 @@ POST /v1/analyze (QuestionnaireInput)
 
 **Indexación offline** (una vez, antes del Docker build):
 ```
-docs/*.pdf → PyPDFLoader → RecursiveCharacterTextSplitter(500/100)
+docs/*.pdf → PyPDFLoader → legal_splitter (Artículo/Art./Considerando boundaries
+           →                              → fallback RecursiveCharacterTextSplitter)
            → HuggingFaceEmbeddings(paraphrase-multilingual-MiniLM-L12-v2)
            → ChromaDB(./chroma_db)
 ```

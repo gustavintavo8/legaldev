@@ -101,7 +101,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="LegalDev",
-    version="0.1.0",
+    version="0.2.0",
     description="Asistente RAG de normativa legal para developers en España",
     lifespan=lifespan,
 )
@@ -136,7 +136,7 @@ def _normativas_handler(request: Request) -> dict:
 def root():
     return {
         "name": "LegalDev",
-        "version": "0.1.0",
+        "version": "0.2.0",
         "description": "Asistente RAG de normativa legal para developers en España",
     }
 
