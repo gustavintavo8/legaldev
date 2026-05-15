@@ -5,6 +5,7 @@ Marked @pytest.mark.slow — not run in standard CI, only in the test-slow job.
 Run locally: pytest tests/test_e2e.py -v -m slow
 """
 
+import asyncio
 import tempfile
 from unittest.mock import MagicMock, patch
 
@@ -97,7 +98,7 @@ def test_e2e_pipeline_retrieves_from_real_chroma(tiny_pdf_dir):
             mock_settings.cookies_k = 3
             mock_settings.colegiado_k = 3
             mock_settings.chroma_timeout = 30.0
-            result = run_pipeline(inp, state)
+            result = asyncio.run(run_pipeline(inp, state))
 
         assert result.chunks_utilizados >= 1
         assert "TestNorm" in result.normativas_detectadas
