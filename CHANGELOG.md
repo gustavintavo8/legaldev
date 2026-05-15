@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.2.0] - 2026-05-15
 
 ### Added
 - Cross-encoder reranker (`BAAI/bge-reranker-base`) between overfetch and top-k slice, improving multi-normativa query precision
@@ -20,19 +20,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - E2E test against real ChromaDB (`tests/test_e2e.py`, `@pytest.mark.slow`), runs only on push to `main`
 - `TRUST_PROXY_HEADERS` env var (default `false`) — only trusts `X-Forwarded-For` when explicitly enabled
 - `ALLOWED_ORIGINS` validator — rejects `*,https://...` mixed configurations
-- Retrieval timeout via `ThreadPoolExecutor` — returns 503 instead of hanging on ChromaDB I/O
+- Retrieval timeout via `asyncio.wait_for` + `asyncio.to_thread` — returns 503 instead of hanging on ChromaDB I/O; `run_pipeline` is fully async
 - `app/store.py` wrapper for Chroma private API (`_collection.count`, `_collection.get`) — isolates breakage to one file
 - `indexed_normativas` populated from ChromaDB at startup, not from `REQUIRED_DOCS` list
 - Dockerfile layer order optimized: deps → model download → `chroma_db/` → `app/`
 - PII policy in logs: `descripcion_breve` logged as length + SHA-256 prefix, never raw
 - `X-API-Key` header authentication for `/v1/analyze`; open by default when `API_KEYS` env var is unset
 - Prompt injection detection: `descripcion_breve` scanned for suspicious patterns; logs `suspected_injection: true` without rejecting
+- `Makefile push-space` target — creates/resets `hf-space` branch with `README_hf.md` swapped in as `README.md`, force-pushes to `space` remote; see README for full workflow
+- `README_hf.md` — HF Spaces frontmatter file used only in the Space repo; `README.md` stays clean for GitHub
+- Git LFS tracking for `chroma_db/` binaries (`.sqlite3`, `.bin`) — required by Hugging Face Hub's 10 MB per-file limit
+- `HF_HOME`, `TRANSFORMERS_CACHE`, `SENTENCE_TRANSFORMERS_HOME` → `/tmp/huggingface` in Dockerfile — HF Spaces only allows writes to `/tmp` at runtime; baked model weights remain accessible without landing on a world-writable path
 
 ### Changed
-- `MIN_RELEVANCE_SCORE` default raised from `0.35` to `0.40` after multilingual model migration — sweep confirmed 100% recall at all thresholds 0.20–0.45 with the new model; 0.40 gives ~8% noise reduction at no recall cost
-  - `encode_kwargs={"normalize_embeddings": True}` added to every `HuggingFaceEmbeddings` instantiation (`app/ingest.py`, `app/main.py`, `tools/eval_retrieval.py`, `tests/test_e2e.py`) — prerequisite for valid scores: `paraphrase-multilingual-MiniLM-L12-v2` has no `Normalize` module in its pipeline, so without this kwarg embeddings are not unit vectors, L2 distances exceed √2, and LangChain's score formula produces negative values that break the threshold entirely
+- EMBEDDING_MODEL: `all-MiniLM-L6-v2` → `paraphrase-multilingual-MiniLM-L12-v2` — better recall on Spanish legal text; the switch was previously blocked by Railway's 512 MB RAM limit and became trivial once HF Spaces removed that constraint; see README for full rationale
+- `encode_kwargs={"normalize_embeddings": True}` added to every `HuggingFaceEmbeddings` instantiation (`app/ingest.py`, `app/main.py`, `tools/eval_retrieval.py`, `tests/test_e2e.py`) — `paraphrase-multilingual-MiniLM-L12-v2` has no `Normalize` module in its pipeline; without this kwarg embeddings are not unit vectors, L2 distances exceed √2, and LangChain's score formula produces negative values that break the threshold entirely
+- `MIN_RELEVANCE_SCORE` default raised from `0.35` to `0.40` — sweep with the new model confirmed 100% recall at all thresholds 0.20–0.45; 0.40 gives ~8% noise reduction at no recall cost
+- Deploy target: Railway → Hugging Face Spaces — Railway free tier RAM (512 MB) is too tight for `paraphrase-multilingual-MiniLM-L12-v2` (~500 MB at runtime); HF Spaces provides the headroom needed; see README for `make push-space` workflow
 - "Cobertura del análisis" section rendered in code (`_render_coverage_section`) rather than by LLM — deterministic, frees prompt tokens
 - `app/ingest.py` uses `split_document` from `legal_splitter` instead of inline `RecursiveCharacterTextSplitter`
+
+### Fixed
+- Dockerfile `rm -rf /tmp/*` replaced with targeted `find` deletion of `.lock` and `.incomplete` files — broad cleanup was deleting baked model weights, forcing a re-download on every cold start
+- `feedback.jsonl` removed from git tracking and added to `.gitignore` — file was committed with manual test entries from development
 
 ## [0.1.0] - 2026-05-09
 
