@@ -296,12 +296,6 @@ def _build_user_message(
         lines.append(f"\n### Fuente {i}: {source}{page_str}")
         lines.append(doc.page_content)
 
-    if not_retrieved:
-        lines.append("\n## Normativas indexadas no recuperadas")
-        lines.append("normativas_no_recuperadas:")
-        for name in not_retrieved:
-            lines.append(f"- {name}")
-
     return "\n".join(lines)
 
 

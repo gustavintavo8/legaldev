@@ -184,12 +184,34 @@ def test_build_user_message_sources_in_order():
 
 
 def test_build_user_message_includes_not_retrieved_section(sample_input):
+    # Coverage list is rendered by _render_coverage_section, not sent to LLM
     doc = _make_mock_doc("RGPD.pdf")
     not_retrieved = ["DORA (Reglamento UE 2022-2554)", "EU AI Act"]
     result = _build_user_message(sample_input, [doc], not_retrieved)
-    assert "normativas_no_recuperadas" in result
-    assert "DORA (Reglamento UE 2022-2554)" in result
-    assert "EU AI Act" in result
+    assert "normativas_no_recuperadas" not in result
+    assert "DORA (Reglamento UE 2022-2554)" not in result
+
+
+def test_build_user_message_never_includes_not_retrieved_list(sample_input):
+    """The LLM user message must not contain the not_retrieved list — coverage is rendered in code."""
+    doc = _make_mock_doc("RGPD.pdf")
+    not_retrieved = ["DORA (Reglamento UE 2022-2554)", "EU AI Act"]
+    result = _build_user_message(sample_input, [doc], not_retrieved)
+    assert "normativas_no_recuperadas" not in result
+    assert "DORA (Reglamento UE 2022-2554)" not in result
+
+
+def test_run_pipeline_llm_message_does_not_contain_not_retrieved_list(sample_input, mock_reranker):
+    """Integration: verify the actual message sent to Groq has no not_retrieved section."""
+    docs = [_make_mock_doc("RGPD.pdf")]
+    state = _make_state(docs)  # indexed_normativas = {"RGPD", "LOPDGDD"}, only RGPD retrieved
+
+    asyncio.run(run_pipeline(sample_input, state))
+
+    messages = state.groq_client.invoke.call_args.args[0]
+    user_content = messages[1].content
+    assert "normativas_no_recuperadas" not in user_content
+    assert "LOPDGDD" not in user_content  # LOPDGDD is not_retrieved, must not appear in LLM message
 
 
 def test_build_user_message_omits_not_retrieved_section_when_empty(sample_input):
