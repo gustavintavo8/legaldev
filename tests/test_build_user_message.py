@@ -2,10 +2,10 @@ import pytest
 
 from app.models import (
     Monetizacion,
+    QuestionnaireInput,
     TipoDatoPersonal,
     TipoIA,
     TipoProyecto,
-    QuestionnaireInput,
 )
 from app.rag import _build_user_message
 
@@ -58,9 +58,7 @@ def test_tipo_proyecto_serializes_as_string_value(tipo_proyecto, expected_value)
     ],
 )
 def test_tipo_ia_serializes_as_string_value(tipo_ia, expected_value):
-    msg = _build_user_message(
-        _make_input(usa_ia=True, tipo_ia=tipo_ia), [], []
-    )
+    msg = _build_user_message(_make_input(usa_ia=True, tipo_ia=tipo_ia), [], [])
     assert expected_value in msg
     assert "TipoIA" not in msg
 
@@ -74,8 +72,6 @@ def test_tipo_ia_serializes_as_string_value(tipo_ia, expected_value):
     ],
 )
 def test_tipo_dato_personal_serializes_as_string_value(dato, expected_value):
-    msg = _build_user_message(
-        _make_input(tipos_datos_personales=[dato]), [], []
-    )
+    msg = _build_user_message(_make_input(tipos_datos_personales=[dato]), [], [])
     assert expected_value in msg
     assert "TipoDatoPersonal" not in msg

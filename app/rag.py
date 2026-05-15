@@ -25,6 +25,22 @@ DISCLAIMER = (
     "en derecho digital."
 )
 
+_INJECTION_PATTERNS = [
+    "</descripcion_usuario>",
+    "ignore previous instructions",
+    "ignore all previous",
+    "you are now",
+    "disregard your",
+    "forget everything",
+    "new system prompt",
+    "act as",
+]
+
+
+def _detect_injection(text: str) -> bool:
+    lowered = text.lower()
+    return any(p.lower() in lowered for p in _INJECTION_PATTERNS)
+
 
 @dataclass(frozen=True)
 class AuxSearch:
@@ -284,6 +300,16 @@ def _build_user_message(
 
 def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
     query = _build_query(input)
+    if _detect_injection(input.descripcion_breve):
+        logger.warning(
+            json.dumps(
+                {
+                    "event": "suspected_injection",
+                    "request_id": request_id_var.get(),
+                    "suspected_injection": True,
+                }
+            )
+        )
     t0 = time.perf_counter()
 
     candidates = _search_with_timeout(
