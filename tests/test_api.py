@@ -133,3 +133,42 @@ def test_analyze_includes_corpus_version(client, sample_input_dict):
     response = client.post("/v1/analyze", json=sample_input_dict)
     assert response.status_code == 200
     assert response.json()["corpus_version"] == "abc123def456"
+
+
+def test_deep_health_returns_component_status(client):
+    response = client.get("/health/deep")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["chroma"] == "ok"
+    assert data["groq"] == "ok"
+    assert "corpus_version" in data
+
+
+def test_deep_health_detects_chroma_failure(client):
+    import app.main as main_module
+
+    main_module._deep_health_cache.clear()
+    client.app.state.vectorstore._collection.count.side_effect = Exception("disk error")
+    response = client.get("/health/deep")
+    data = response.json()
+    assert data["chroma"].startswith("error:")
+    # restore
+    client.app.state.vectorstore._collection.count.side_effect = None
+    client.app.state.vectorstore._collection.count.return_value = 1234
+    main_module._deep_health_cache.clear()
+
+
+def test_deep_health_detects_groq_failure(client):
+    import app.main as main_module
+
+    main_module._deep_health_cache.clear()
+    client.app.state.groq_client.invoke.side_effect = Exception("Groq down")
+    response = client.get("/health/deep")
+    data = response.json()
+    assert data["groq"].startswith("error:")
+    # restore
+    client.app.state.groq_client.invoke.side_effect = None
+    client.app.state.groq_client.invoke.return_value.content = (
+        "Respuesta de prueba sobre RGPD"
+    )
+    main_module._deep_health_cache.clear()

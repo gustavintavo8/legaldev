@@ -1,4 +1,5 @@
 import logging
+import time as _time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -34,6 +35,9 @@ def _get_real_ip(request: Request) -> str:
 
 
 limiter = Limiter(key_func=_get_real_ip)
+
+_deep_health_cache: dict = {}
+_DEEP_HEALTH_TTL = 60.0
 
 
 @asynccontextmanager
@@ -135,6 +139,38 @@ def health(request: Request):
 @app.get("/normativas")
 def normativas(request: Request):
     return _normativas_handler(request)
+
+
+@app.get("/health/deep")
+def health_deep(request: Request):
+    cached = _deep_health_cache.get("result")
+    if (
+        cached
+        and _time.monotonic() - _deep_health_cache.get("ts", 0.0) < _DEEP_HEALTH_TTL
+    ):
+        return cached
+
+    result: dict = {
+        "chroma": "ok",
+        "groq": "ok",
+        "corpus_version": request.app.state.corpus_version,
+    }
+
+    try:
+        store.count(request.app.state.vectorstore)
+    except Exception as e:
+        result["chroma"] = f"error: {type(e).__name__}"
+
+    try:
+        from langchain_core.messages import HumanMessage as _HumanMessage
+
+        request.app.state.groq_client.invoke([_HumanMessage(content="ping")])
+    except Exception as e:
+        result["groq"] = f"error: {type(e).__name__}"
+
+    _deep_health_cache["result"] = result
+    _deep_health_cache["ts"] = _time.monotonic()
+    return result
 
 
 v1 = APIRouter(prefix="/v1", tags=["v1"])
