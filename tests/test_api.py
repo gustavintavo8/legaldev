@@ -8,7 +8,7 @@ def test_root(client):
     assert response.status_code == 200
     data = response.json()
     assert data["name"] == "LegalDev"
-    assert data["version"] == "0.1.0"
+    assert data["version"] == "0.2.0"
     assert "description" in data
 
 
