@@ -8,7 +8,7 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.136-009688?logo=fastapi)](https://fastapi.tiangolo.com/)
 [![ChromaDB](https://img.shields.io/badge/ChromaDB-1.5-ff6b35)](https://www.trychroma.com/)
 [![Groq](https://img.shields.io/badge/Groq-Llama_4-f55036)](https://groq.com/)
-[![HF Spaces](https://img.shields.io/badge/Deploy-HF_Spaces-ffd21e?logo=huggingface&logoColor=black)](https://huggingface.co/spaces)
+[![HF Spaces](https://img.shields.io/badge/🤗_Space-LegalDev-yellow)](https://huggingface.co/spaces/gustavintavo8/legaldev)
 [![Tests](https://img.shields.io/badge/Tests-69_passed-22c55e?logo=pytest)](./tests/)
 
 [Highlights](#-highlights-técnicos) · [Cómo funciona](#-cómo-funciona) · [Tech Stack](#️-tech-stack) · [Decisiones técnicas](#-decisiones-técnicas) · [Instalación](#-instalación) · [API](#-api) · [Deploy](#-deploy)
