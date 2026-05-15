@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from pathlib import Path as _Path
 
-from fastapi import APIRouter, FastAPI, Request
+from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Request
 from fastapi import Response as FastAPIResponse
 from fastapi.middleware.cors import CORSMiddleware
 from langchain_chroma import Chroma
@@ -44,6 +44,16 @@ _deep_health_cache: dict = {}
 _DEEP_HEALTH_TTL = 60.0
 
 FEEDBACK_FILE = _Path("feedback.jsonl")
+
+
+def _verify_api_key(x_api_key: str | None = Header(default=None)) -> None:
+    key_set = settings.api_key_set
+    if not key_set:
+        return
+    if x_api_key is None:
+        raise HTTPException(status_code=401, detail="X-API-Key header required")
+    if x_api_key not in key_set:
+        raise HTTPException(status_code=403, detail="Invalid API key")
 
 
 @asynccontextmanager
@@ -184,7 +194,12 @@ v1 = APIRouter(prefix="/v1", tags=["v1"])
 
 @v1.post("/analyze", response_model=RAGResponse)
 @limiter.limit(settings.rate_limit)
-def analyze_v1(input: QuestionnaireInput, request: Request, response: FastAPIResponse):
+def analyze_v1(
+    input: QuestionnaireInput,
+    request: Request,
+    response: FastAPIResponse,
+    _: None = Depends(_verify_api_key),
+):
     cache_key = _cache.make_key(input.model_dump_json())
     cached = _cache.get(cache_key)
     if cached is not None:

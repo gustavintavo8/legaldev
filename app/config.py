@@ -23,6 +23,13 @@ class Settings(BaseSettings):
     allowed_origins: str = "*"
     trust_proxy_headers: bool = False
     chroma_timeout: float = 10.0
+    api_keys: str = ""
+
+    @property
+    def api_key_set(self) -> frozenset[str]:
+        if not self.api_keys.strip():
+            return frozenset()
+        return frozenset(k.strip() for k in self.api_keys.split(",") if k.strip())
 
     @field_validator("allowed_origins")
     @classmethod
