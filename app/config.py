@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     allowed_origins: str = "*"
     trust_proxy_headers: bool = False
     chroma_timeout: float = 10.0
+    log_level: str = "INFO"
     api_keys: str = ""
 
     @property

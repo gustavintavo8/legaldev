@@ -1,4 +1,3 @@
-import pytest
 
 from app.cache import _TTLCache, clear, get, make_key
 from app.cache import set as cache_set
