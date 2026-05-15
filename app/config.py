@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     colegiado_k: int = 6
     rgpd_k: int = 6
     overfetch_k: int = 100
+    reranker_top_k: int = 30
     groq_timeout: int = 30
     groq_temperature: float = 0.0
     groq_max_tokens: int = 4000

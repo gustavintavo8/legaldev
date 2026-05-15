@@ -11,6 +11,7 @@ from pathlib import Path
 from fastapi import HTTPException
 from langchain_core.messages import HumanMessage, SystemMessage
 
+from app import reranker as _reranker
 from app.config import settings
 from app.middleware import request_id_var
 from app.models import QuestionnaireInput, RAGResponse
@@ -286,9 +287,7 @@ def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
         k=settings.overfetch_k,
         timeout=settings.chroma_timeout,
     )
-    docs = [doc for doc, score in candidates if score >= settings.min_relevance_score][
-        : settings.top_k_chunks
-    ]
+    docs = [doc for doc, score in candidates if score >= settings.min_relevance_score]
 
     seen = {hashlib.md5(d.page_content.encode()).hexdigest() for d in docs}
 
@@ -303,6 +302,8 @@ def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
                     if h not in seen:
                         seen.add(h)
                         docs.append(doc)
+
+    docs = _reranker.rerank(query, docs, top_k=settings.top_k_chunks)
 
     t_retrieval = time.perf_counter()
 

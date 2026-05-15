@@ -111,6 +111,17 @@ def clear_response_cache():
 
 
 @pytest.fixture(autouse=True)
+def mock_reranker():
+    from unittest.mock import patch
+
+    with patch(
+        "app.reranker.rerank",
+        side_effect=lambda query, docs, top_k: docs[:top_k],
+    ):
+        yield
+
+
+@pytest.fixture(autouse=True)
 def reset_rate_limiter():
     yield
     try:
