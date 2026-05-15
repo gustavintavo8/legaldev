@@ -23,9 +23,7 @@ from app.middleware import RequestIDMiddleware
 from app.models import FeedbackInput, QuestionnaireInput, RAGResponse
 from app.rag import run_pipeline
 
-logging.basicConfig(
-    level=getattr(logging, settings.log_level.upper(), logging.INFO)
-)
+logging.basicConfig(level=getattr(logging, settings.log_level.upper(), logging.INFO))
 logger = logging.getLogger(__name__)
 
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"

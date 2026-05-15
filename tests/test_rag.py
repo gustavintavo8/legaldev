@@ -201,17 +201,23 @@ def test_build_user_message_never_includes_not_retrieved_list(sample_input):
     assert "DORA (Reglamento UE 2022-2554)" not in result
 
 
-def test_run_pipeline_llm_message_does_not_contain_not_retrieved_list(sample_input, mock_reranker):
+def test_run_pipeline_llm_message_does_not_contain_not_retrieved_list(
+    sample_input, mock_reranker
+):
     """Integration: verify the actual message sent to Groq has no not_retrieved section."""
     docs = [_make_mock_doc("RGPD.pdf")]
-    state = _make_state(docs)  # indexed_normativas = {"RGPD", "LOPDGDD"}, only RGPD retrieved
+    state = _make_state(
+        docs
+    )  # indexed_normativas = {"RGPD", "LOPDGDD"}, only RGPD retrieved
 
     asyncio.run(run_pipeline(sample_input, state))
 
     messages = state.groq_client.invoke.call_args.args[0]
     user_content = messages[1].content
     assert "normativas_no_recuperadas" not in user_content
-    assert "LOPDGDD" not in user_content  # LOPDGDD is not_retrieved, must not appear in LLM message
+    assert (
+        "LOPDGDD" not in user_content
+    )  # LOPDGDD is not_retrieved, must not appear in LLM message
 
 
 def test_build_user_message_omits_not_retrieved_section_when_empty(sample_input):
@@ -280,7 +286,9 @@ def test_run_pipeline_groq_error_raises_503(sample_input, mock_reranker):
     assert exc_info.value.status_code == 503
 
 
-def test_run_pipeline_calls_relevance_search_with_correct_k(sample_input, mock_reranker):
+def test_run_pipeline_calls_relevance_search_with_correct_k(
+    sample_input, mock_reranker
+):
     docs = [_make_mock_doc()]
     state = _make_state(docs)
 
@@ -330,12 +338,14 @@ def test_run_pipeline_colegiado_none_no_ccii_auxiliary_search(mock_reranker):
     docs = [_make_mock_doc("RGPD.pdf")]
     state = _make_state(docs)
 
-    asyncio.run(run_pipeline(
-        _make_input(
-            colegiado=None, tipos_datos_personales=["ninguno"], usa_cookies=False
-        ),
-        state,
-    ))
+    asyncio.run(
+        run_pipeline(
+            _make_input(
+                colegiado=None, tipos_datos_personales=["ninguno"], usa_cookies=False
+            ),
+            state,
+        )
+    )
 
     assert state.vectorstore.similarity_search_with_relevance_scores.call_count == 1
 
@@ -370,12 +380,14 @@ def test_run_pipeline_rgpd_aux_search_triggers_with_personal_data(mock_reranker)
     state.indexed_normativas = frozenset({"RGPD"})
     state.corpus_version = "test-corpus-v1"
 
-    asyncio.run(run_pipeline(
-        _make_input(
-            tipos_datos_personales=["email"], usa_cookies=False, colegiado=None
-        ),
-        state,
-    ))
+    asyncio.run(
+        run_pipeline(
+            _make_input(
+                tipos_datos_personales=["email"], usa_cookies=False, colegiado=None
+            ),
+            state,
+        )
+    )
 
     assert state.vectorstore.similarity_search_with_relevance_scores.call_count == 2
 
@@ -384,12 +396,14 @@ def test_run_pipeline_rgpd_aux_search_no_trigger_for_ninguno(mock_reranker):
     docs = [_make_mock_doc("RGPD.pdf")]
     state = _make_state(docs)
 
-    asyncio.run(run_pipeline(
-        _make_input(
-            tipos_datos_personales=["ninguno"], usa_cookies=False, colegiado=None
-        ),
-        state,
-    ))
+    asyncio.run(
+        run_pipeline(
+            _make_input(
+                tipos_datos_personales=["ninguno"], usa_cookies=False, colegiado=None
+            ),
+            state,
+        )
+    )
 
     assert state.vectorstore.similarity_search_with_relevance_scores.call_count == 1
 
@@ -461,12 +475,14 @@ def test_run_pipeline_does_not_log_descripcion_breve(caplog, mock_reranker):
     state = _make_state(docs)
 
     with caplog.at_level(logging.INFO, logger="app.rag"):
-        asyncio.run(run_pipeline(
-            _make_input(
-                descripcion_breve="Datos muy sensibles no deben aparecer en logs"
-            ),
-            state,
-        ))
+        asyncio.run(
+            run_pipeline(
+                _make_input(
+                    descripcion_breve="Datos muy sensibles no deben aparecer en logs"
+                ),
+                state,
+            )
+        )
 
     assert "Datos muy sensibles no deben aparecer en logs" not in caplog.text
 
@@ -531,7 +547,10 @@ def test_run_pipeline_invokes_reranker_with_correct_top_k(sample_input):
 
     mock_rerank.assert_called_once()
     call_args = mock_rerank.call_args
-    assert call_args.kwargs.get("top_k") == settings.top_k_chunks or call_args.args[2] == settings.top_k_chunks
+    assert (
+        call_args.kwargs.get("top_k") == settings.top_k_chunks
+        or call_args.args[2] == settings.top_k_chunks
+    )
 
 
 def test_run_pipeline_respects_reranker_output_order(sample_input):
