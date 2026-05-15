@@ -382,6 +382,22 @@ En Railway:
 
 ---
 
+## 📓 Qué aprendí construyendo esto
+
+- **Splitter vs. retrieval: el orden importa.** Empecé con `RecursiveCharacterTextSplitter(500/100)` y los resultados parecían aceptables. Al inspeccionar chunks reales, vi que partía artículos por la mitad: un chunk terminaba con "...el responsable del trata-" y el siguiente empezaba con "miento deberá...". El reranker mejoraba eso pero no lo resolvía. Escribir el `legal_splitter.py` con regex por límites de artículo subió el recall en los casos de evaluación más que cualquier otro cambio individual.
+
+- **Saturación léxica en retrieval multidocumento.** Para un proyecto con `tipos_datos_personales=["nombre","email"]` y `usa_cookies=true`, la query principal siempre recuperaba chunks de cookies bien rankeados, desplazando a RGPD/LOPDGDD. No era un fallo del modelo: era dilución semántica por vocabulario compartido. La solución fue añadir búsquedas auxiliares por dominio (query especializada + k propio). Aprendí que en RAG sobre corpus heterogéneos, una sola query generalmente no basta.
+
+- **El threshold de 0.35 no era arbitrario — pero tampoco lo sabía.** Antes del sweep, ese número era una intuición. Implementar `--sweep` y ver la tabla de recall vs. ruido para 0.20–0.45 me confirmó que 0.35 estaba en el knee de la curva: por debajo hay mucho ruido sin ganancia real de recall, por encima se pierde cobertura en normativas de nicho. Ahora tengo datos que lo justifican.
+
+- **Las APIs privadas de librerías son una trampa silenciosa.** `vectorstore._collection.count()` y `._collection.get(...)` funcionaban perfectamente. El problema era que podían romperse en cualquier minor release sin warning. Encapsularlas en `app/store.py` no fue un refactor de diseño — fue seguro de mantenimiento. Si ChromaDB cambia la API interna, hay exactamente un lugar para arreglarlo.
+
+- **Los tests aislados del rate limiter son más difíciles de lo que parecen.** Añadir la caché de respuestas al test suite hizo que tests de middleware anteriores empezaran a fallar con 429. El problema era que los tests extra de caché agotaban el límite de 10 req/min antes de que corrieran los tests de middleware. La solución fue un fixture `autouse` que resetea el storage del limiter tras cada test. Aprendí que los efectos globales de estado (rate limiter, caché, registry de Prometheus) necesitan cleanup explícito en cada test, no solo al principio de la sesión.
+
+- **Windows y ChromaDB en tests temporales: los archivos se niegan a borrarse.** En el test E2E, el `TemporaryDirectory` fallaba con `PermissionError` al limpiarse porque SQLite y HNSWLIB (el motor de índices de Chroma) mantenían file handles abiertos. `ignore_cleanup_errors=True` (Python 3.12+) resuelve el síntoma, pero el origen es que ChromaDB no cierra todos sus handles en `__del__`. Es el tipo de bug que solo aparece en Windows y que no encontrarás en la documentación — lo encontré inspeccionando el traceback completo del error.
+
+---
+
 ## 📄 Licencia
 
 MIT © 2026 gustavintavo8
