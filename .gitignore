@@ -11,3 +11,5 @@ build/
 venv/
 .claude/
 *.log
+feedback.jsonl
+feedback*.jsonl
