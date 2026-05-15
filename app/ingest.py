@@ -9,9 +9,9 @@ from dotenv import load_dotenv
 from langchain_chroma import Chroma
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.corpus import REQUIRED_DOCS
+from app.legal_splitter import split_document
 
 load_dotenv()
 
@@ -77,7 +77,6 @@ def main() -> None:
     _check_required_docs(docs_dir)
 
     pdf_files = sorted(docs_dir.glob("*.pdf"))
-    splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=100)
     embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
     all_chunks = []
 
@@ -86,11 +85,12 @@ def main() -> None:
         doc_type = get_doc_type(filename)
         loader = PyPDFLoader(str(pdf_path))
         pages = loader.load()
-        chunks = splitter.split_documents(pages)
-
-        for chunk in chunks:
-            chunk.metadata["source"] = filename
-            chunk.metadata["doc_type"] = doc_type
+        page_chunks = []
+        for page in pages:
+            page.metadata["source"] = filename
+            page.metadata["doc_type"] = doc_type
+            page_chunks.extend(split_document(page))
+        chunks = page_chunks
 
         logger.info(
             "Indexing %s → %d chunks (doc_type=%s)", filename, len(chunks), doc_type
