@@ -13,3 +13,4 @@ venv/
 *.log
 feedback.jsonl
 feedback*.jsonl
+.agents/
