@@ -1,6 +1,7 @@
 import hashlib
 import json
 import logging
+import re
 import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
@@ -39,7 +40,13 @@ _INJECTION_PATTERNS = [
 
 def _detect_injection(text: str) -> bool:
     lowered = text.lower()
-    return any(p.lower() in lowered for p in _INJECTION_PATTERNS)
+    for p in _INJECTION_PATTERNS:
+        if p == "act as":
+            if re.search(r"\bact as\b", lowered):
+                return True
+        elif p.lower() in lowered:
+            return True
+    return False
 
 
 @dataclass(frozen=True)
