@@ -63,8 +63,48 @@ def sample_input_dict():
     }
 
 
+@pytest.fixture(autouse=True)
+def _isolate_global_state():
+    """Reset process-global state between every test.
+
+    Covers the two pieces of in-process state that leak between tests:
+    - TTL response cache (would cause spurious cache-HIT in unrelated tests)
+    - Rate limiter storage (would cause 429s after ~10 calls in the same process)
+
+    The reranker mock is opt-in — see the mock_reranker fixture. Tests that
+    call run_pipeline directly must request mock_reranker explicitly.
+    """
+    from app import cache as _cache
+
+    _cache.clear()
+    yield
+    _cache.clear()
+    try:
+        import app.main as main_module
+
+        main_module.limiter._storage.reset()
+    except Exception:
+        pass
+
+
 @pytest.fixture
-def client(mock_doc):
+def mock_reranker():
+    """Opt-in mock for app.reranker.rerank.
+
+    Requested automatically by the client fixture (covers all HTTP-based tests).
+    Tests that call run_pipeline directly must request this fixture by name.
+    """
+    from unittest.mock import patch
+
+    with patch(
+        "app.reranker.rerank",
+        side_effect=lambda query, docs, top_k: docs[:top_k],
+    ):
+        yield
+
+
+@pytest.fixture
+def client(mock_doc, mock_reranker):
     from unittest.mock import patch
 
     with (
@@ -99,34 +139,3 @@ def client(mock_doc):
 
         with TestClient(app) as c:
             yield c
-
-
-@pytest.fixture(autouse=True)
-def clear_response_cache():
-    from app import cache as _cache
-
-    _cache.clear()
-    yield
-    _cache.clear()
-
-
-@pytest.fixture(autouse=True)
-def mock_reranker():
-    from unittest.mock import patch
-
-    with patch(
-        "app.reranker.rerank",
-        side_effect=lambda query, docs, top_k: docs[:top_k],
-    ):
-        yield
-
-
-@pytest.fixture(autouse=True)
-def reset_rate_limiter():
-    yield
-    try:
-        import app.main as main_module
-
-        main_module.limiter._storage.reset()
-    except Exception:
-        pass

@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import logging
 import time
@@ -183,12 +184,40 @@ def test_build_user_message_sources_in_order():
 
 
 def test_build_user_message_includes_not_retrieved_section(sample_input):
+    # Coverage list is rendered by _render_coverage_section, not sent to LLM
     doc = _make_mock_doc("RGPD.pdf")
     not_retrieved = ["DORA (Reglamento UE 2022-2554)", "EU AI Act"]
     result = _build_user_message(sample_input, [doc], not_retrieved)
-    assert "normativas_no_recuperadas" in result
-    assert "DORA (Reglamento UE 2022-2554)" in result
-    assert "EU AI Act" in result
+    assert "normativas_no_recuperadas" not in result
+    assert "DORA (Reglamento UE 2022-2554)" not in result
+
+
+def test_build_user_message_never_includes_not_retrieved_list(sample_input):
+    """The LLM user message must not contain the not_retrieved list — coverage is rendered in code."""
+    doc = _make_mock_doc("RGPD.pdf")
+    not_retrieved = ["DORA (Reglamento UE 2022-2554)", "EU AI Act"]
+    result = _build_user_message(sample_input, [doc], not_retrieved)
+    assert "normativas_no_recuperadas" not in result
+    assert "DORA (Reglamento UE 2022-2554)" not in result
+
+
+def test_run_pipeline_llm_message_does_not_contain_not_retrieved_list(
+    sample_input, mock_reranker
+):
+    """Integration: verify the actual message sent to Groq has no not_retrieved section."""
+    docs = [_make_mock_doc("RGPD.pdf")]
+    state = _make_state(
+        docs
+    )  # indexed_normativas = {"RGPD", "LOPDGDD"}, only RGPD retrieved
+
+    asyncio.run(run_pipeline(sample_input, state))
+
+    messages = state.groq_client.invoke.call_args.args[0]
+    user_content = messages[1].content
+    assert "normativas_no_recuperadas" not in user_content
+    assert (
+        "LOPDGDD" not in user_content
+    )  # LOPDGDD is not_retrieved, must not appear in LLM message
 
 
 def test_build_user_message_omits_not_retrieved_section_when_empty(sample_input):
@@ -220,14 +249,14 @@ def _make_state(docs, llm_response="Respuesta de prueba", score=0.85):
     return state
 
 
-def test_run_pipeline_returns_rag_response(sample_input):
+def test_run_pipeline_returns_rag_response(sample_input, mock_reranker):
     docs = [
         _make_mock_doc("RGPD.pdf"),
         _make_mock_doc("LOPDGDD.pdf", "normativa_española"),
     ]
     state = _make_state(docs, "Debes implementar consentimiento explícito.")
 
-    result = run_pipeline(sample_input, state)
+    result = asyncio.run(run_pipeline(sample_input, state))
 
     assert result.respuesta_completa == "Debes implementar consentimiento explícito."
     assert result.chunks_utilizados == 2
@@ -236,13 +265,13 @@ def test_run_pipeline_returns_rag_response(sample_input):
     assert "LOPDGDD" in result.normativas_detectadas
 
 
-def test_run_pipeline_normativas_deduplicadas(sample_input):
+def test_run_pipeline_normativas_deduplicadas(sample_input, mock_reranker):
     docs = [_make_mock_doc("RGPD.pdf"), _make_mock_doc("RGPD.pdf")]
-    result = run_pipeline(sample_input, _make_state(docs))
+    result = asyncio.run(run_pipeline(sample_input, _make_state(docs)))
     assert result.normativas_detectadas.count("RGPD") == 1
 
 
-def test_run_pipeline_groq_error_raises_503(sample_input):
+def test_run_pipeline_groq_error_raises_503(sample_input, mock_reranker):
     state = MagicMock()
     state.vectorstore.similarity_search_with_relevance_scores.return_value = [
         (_make_mock_doc(), 0.85)
@@ -252,16 +281,18 @@ def test_run_pipeline_groq_error_raises_503(sample_input):
     state.corpus_version = "test-corpus-v1"
 
     with pytest.raises(Exception) as exc_info:
-        run_pipeline(sample_input, state)
+        asyncio.run(run_pipeline(sample_input, state))
 
     assert exc_info.value.status_code == 503
 
 
-def test_run_pipeline_calls_relevance_search_with_correct_k(sample_input):
+def test_run_pipeline_calls_relevance_search_with_correct_k(
+    sample_input, mock_reranker
+):
     docs = [_make_mock_doc()]
     state = _make_state(docs)
 
-    run_pipeline(sample_input, state)
+    asyncio.run(run_pipeline(sample_input, state))
 
     # Verify the main search (first call) uses overfetch_k — aux searches may also fire
     first_call = (
@@ -270,7 +301,7 @@ def test_run_pipeline_calls_relevance_search_with_correct_k(sample_input):
     assert first_call.kwargs.get("k") == settings.overfetch_k
 
 
-def test_run_pipeline_no_relevant_docs_raises_404(sample_input):
+def test_run_pipeline_no_relevant_docs_raises_404(sample_input, mock_reranker):
     state = MagicMock()
     state.vectorstore.similarity_search_with_relevance_scores.return_value = [
         (_make_mock_doc(), 0.05)
@@ -279,12 +310,12 @@ def test_run_pipeline_no_relevant_docs_raises_404(sample_input):
     state.corpus_version = "test-corpus-v1"
 
     with pytest.raises(Exception) as exc_info:
-        run_pipeline(sample_input, state)
+        asyncio.run(run_pipeline(sample_input, state))
 
     assert exc_info.value.status_code == 404
 
 
-def test_run_pipeline_colegiado_triggers_auxiliary_search():
+def test_run_pipeline_colegiado_triggers_auxiliary_search(mock_reranker):
     # colegiado=True + default tipos_datos_personales=["email"] → rgpd + ccii aux fire
     docs = [_make_mock_doc("RGPD.pdf")]
     state = MagicMock()
@@ -297,27 +328,29 @@ def test_run_pipeline_colegiado_triggers_auxiliary_search():
     state.indexed_normativas = frozenset({"RGPD"})
     state.corpus_version = "test-corpus-v1"
 
-    run_pipeline(_make_input(colegiado=True), state)
+    asyncio.run(run_pipeline(_make_input(colegiado=True), state))
 
     assert state.vectorstore.similarity_search_with_relevance_scores.call_count == 3
 
 
-def test_run_pipeline_colegiado_none_no_ccii_auxiliary_search():
+def test_run_pipeline_colegiado_none_no_ccii_auxiliary_search(mock_reranker):
     # colegiado=None, ninguno → only main search fires
     docs = [_make_mock_doc("RGPD.pdf")]
     state = _make_state(docs)
 
-    run_pipeline(
-        _make_input(
-            colegiado=None, tipos_datos_personales=["ninguno"], usa_cookies=False
-        ),
-        state,
+    asyncio.run(
+        run_pipeline(
+            _make_input(
+                colegiado=None, tipos_datos_personales=["ninguno"], usa_cookies=False
+            ),
+            state,
+        )
     )
 
     assert state.vectorstore.similarity_search_with_relevance_scores.call_count == 1
 
 
-def test_run_pipeline_filters_below_threshold(sample_input):
+def test_run_pipeline_filters_below_threshold(sample_input, mock_reranker):
     high_doc = _make_mock_doc("RGPD.pdf")
     low_doc = _make_mock_doc("LOPDGDD.pdf", "normativa_española")
     state = MagicMock()
@@ -329,14 +362,14 @@ def test_run_pipeline_filters_below_threshold(sample_input):
     state.indexed_normativas = frozenset({"RGPD", "LOPDGDD"})
     state.corpus_version = "test-corpus-v1"
 
-    result = run_pipeline(sample_input, state)
+    result = asyncio.run(run_pipeline(sample_input, state))
 
     assert result.chunks_utilizados == 1
     assert "RGPD" in result.normativas_detectadas
     assert "LOPDGDD" not in result.normativas_detectadas
 
 
-def test_run_pipeline_rgpd_aux_search_triggers_with_personal_data():
+def test_run_pipeline_rgpd_aux_search_triggers_with_personal_data(mock_reranker):
     docs = [_make_mock_doc("RGPD.pdf")]
     state = MagicMock()
     state.vectorstore.similarity_search_with_relevance_scores.side_effect = [
@@ -347,31 +380,35 @@ def test_run_pipeline_rgpd_aux_search_triggers_with_personal_data():
     state.indexed_normativas = frozenset({"RGPD"})
     state.corpus_version = "test-corpus-v1"
 
-    run_pipeline(
-        _make_input(
-            tipos_datos_personales=["email"], usa_cookies=False, colegiado=None
-        ),
-        state,
+    asyncio.run(
+        run_pipeline(
+            _make_input(
+                tipos_datos_personales=["email"], usa_cookies=False, colegiado=None
+            ),
+            state,
+        )
     )
 
     assert state.vectorstore.similarity_search_with_relevance_scores.call_count == 2
 
 
-def test_run_pipeline_rgpd_aux_search_no_trigger_for_ninguno():
+def test_run_pipeline_rgpd_aux_search_no_trigger_for_ninguno(mock_reranker):
     docs = [_make_mock_doc("RGPD.pdf")]
     state = _make_state(docs)
 
-    run_pipeline(
-        _make_input(
-            tipos_datos_personales=["ninguno"], usa_cookies=False, colegiado=None
-        ),
-        state,
+    asyncio.run(
+        run_pipeline(
+            _make_input(
+                tipos_datos_personales=["ninguno"], usa_cookies=False, colegiado=None
+            ),
+            state,
+        )
     )
 
     assert state.vectorstore.similarity_search_with_relevance_scores.call_count == 1
 
 
-def test_run_pipeline_excludes_ens_always():
+def test_run_pipeline_excludes_ens_always(mock_reranker):
     ens_doc = _make_mock_doc("Real Decreto 311-2022 ENS.pdf")
     rgpd_doc = _make_mock_doc("RGPD.pdf")
     state = MagicMock()
@@ -383,14 +420,14 @@ def test_run_pipeline_excludes_ens_always():
     state.indexed_normativas = frozenset({"Real Decreto 311-2022 ENS", "RGPD"})
     state.corpus_version = "test-corpus-v1"
 
-    result = run_pipeline(_make_input(), state)
+    result = asyncio.run(run_pipeline(_make_input(), state))
 
     assert result.chunks_utilizados == 1
     assert "Real Decreto 311-2022 ENS" not in result.normativas_detectadas
     assert "RGPD" in result.normativas_detectadas
 
 
-def test_run_pipeline_excludes_lpi_when_no_contenido_digital():
+def test_run_pipeline_excludes_lpi_when_no_contenido_digital(mock_reranker):
     lpi_doc = _make_mock_doc("Ley de Propiedad Intelectual.pdf")
     rgpd_doc = _make_mock_doc("RGPD.pdf")
     state = MagicMock()
@@ -402,13 +439,13 @@ def test_run_pipeline_excludes_lpi_when_no_contenido_digital():
     state.indexed_normativas = frozenset({"Ley de Propiedad Intelectual", "RGPD"})
     state.corpus_version = "test-corpus-v1"
 
-    result = run_pipeline(_make_input(contenido_digital=False), state)
+    result = asyncio.run(run_pipeline(_make_input(contenido_digital=False), state))
 
     assert result.chunks_utilizados == 1
     assert "Ley de Propiedad Intelectual" not in result.normativas_detectadas
 
 
-def test_run_pipeline_keeps_lpi_when_contenido_digital():
+def test_run_pipeline_keeps_lpi_when_contenido_digital(mock_reranker):
     lpi_doc = _make_mock_doc("Ley de Propiedad Intelectual.pdf")
     rgpd_doc = _make_mock_doc("RGPD.pdf")
     state = MagicMock()
@@ -420,7 +457,7 @@ def test_run_pipeline_keeps_lpi_when_contenido_digital():
     state.indexed_normativas = frozenset({"Ley de Propiedad Intelectual", "RGPD"})
     state.corpus_version = "test-corpus-v1"
 
-    result = run_pipeline(_make_input(contenido_digital=True), state)
+    result = asyncio.run(run_pipeline(_make_input(contenido_digital=True), state))
 
     assert result.chunks_utilizados == 2
     assert "Ley de Propiedad Intelectual" in result.normativas_detectadas
@@ -432,17 +469,19 @@ def test_exclusions_list_has_ens_and_lpi():
     assert "Ley de Propiedad Intelectual" in stems
 
 
-def test_run_pipeline_does_not_log_descripcion_breve(caplog):
+def test_run_pipeline_does_not_log_descripcion_breve(caplog, mock_reranker):
     """PII policy: descripcion_breve must never appear in log output."""
     docs = [_make_mock_doc("RGPD.pdf")]
     state = _make_state(docs)
 
     with caplog.at_level(logging.INFO, logger="app.rag"):
-        run_pipeline(
-            _make_input(
-                descripcion_breve="Datos muy sensibles no deben aparecer en logs"
-            ),
-            state,
+        asyncio.run(
+            run_pipeline(
+                _make_input(
+                    descripcion_breve="Datos muy sensibles no deben aparecer en logs"
+                ),
+                state,
+            )
         )
 
     assert "Datos muy sensibles no deben aparecer en logs" not in caplog.text
@@ -459,22 +498,22 @@ def test_render_coverage_section_empty_returns_empty_string():
     assert _render_coverage_section([]) == ""
 
 
-def test_run_pipeline_appends_coverage_section_when_not_retrieved():
+def test_run_pipeline_appends_coverage_section_when_not_retrieved(mock_reranker):
     # state.indexed_normativas = {"RGPD", "LOPDGDD"}, only RGPD retrieved → LOPDGDD in coverage
     docs = [_make_mock_doc("RGPD.pdf")]
     state = _make_state(docs, llm_response="Respuesta LLM.")
-    result = run_pipeline(_make_input(), state)
+    result = asyncio.run(run_pipeline(_make_input(), state))
     assert "## Cobertura del análisis" in result.respuesta_completa
     assert "LOPDGDD" in result.respuesta_completa
 
 
-def test_run_pipeline_no_coverage_section_when_all_retrieved():
+def test_run_pipeline_no_coverage_section_when_all_retrieved(mock_reranker):
     docs = [
         _make_mock_doc("RGPD.pdf"),
         _make_mock_doc("LOPDGDD.pdf", "normativa_española"),
     ]
     state = _make_state(docs, llm_response="Respuesta LLM.")
-    result = run_pipeline(_make_input(), state)
+    result = asyncio.run(run_pipeline(_make_input(), state))
     assert "## Cobertura del análisis" not in result.respuesta_completa
 
 
@@ -491,6 +530,42 @@ def test_search_with_timeout_raises_503_on_slow_chroma():
     )  # 50ms — longer than the 10ms timeout below
 
     with pytest.raises(Exception) as exc_info:
-        _search_with_timeout(vs, "query", k=10, timeout=0.01)
+        asyncio.run(_search_with_timeout(vs, "query", k=10, timeout=0.01))
 
     assert exc_info.value.status_code == 503
+
+
+def test_run_pipeline_invokes_reranker_with_correct_top_k(sample_input):
+    """Deleting the rerank call in run_pipeline breaks this test."""
+    from unittest.mock import patch as _patch
+
+    docs = [_make_mock_doc("RGPD.pdf")]
+    state = _make_state(docs)
+
+    with _patch("app.reranker.rerank", return_value=docs) as mock_rerank:
+        asyncio.run(run_pipeline(sample_input, state))
+
+    mock_rerank.assert_called_once()
+    call_args = mock_rerank.call_args
+    assert (
+        call_args.kwargs.get("top_k") == settings.top_k_chunks
+        or call_args.args[2] == settings.top_k_chunks
+    )
+
+
+def test_run_pipeline_respects_reranker_output_order(sample_input):
+    """Reranker output order must be preserved as the LLM context order."""
+    from unittest.mock import patch as _patch
+
+    doc_a = _make_mock_doc("RGPD.pdf")
+    doc_b = _make_mock_doc("LOPDGDD.pdf", "normativa_española")
+    state = _make_state([doc_a, doc_b])
+
+    with _patch("app.reranker.rerank", return_value=[doc_b, doc_a]):
+        asyncio.run(run_pipeline(sample_input, state))
+
+    messages = state.groq_client.invoke.call_args.args[0]
+    user_content = messages[1].content
+    assert user_content.index("Fuente 1: LOPDGDD.pdf") < user_content.index(
+        "Fuente 2: RGPD.pdf"
+    )

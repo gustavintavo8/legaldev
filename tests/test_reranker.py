@@ -1,13 +1,5 @@
 from unittest.mock import MagicMock, patch
 
-import pytest
-
-
-@pytest.fixture(autouse=True)
-def mock_reranker():
-    # Override conftest autouse mock — these tests exercise the real rerank function
-    yield
-
 
 def _make_doc(content: str):
     doc = MagicMock()

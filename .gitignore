@@ -1,13 +1,36 @@
+# Entornos y dependencias
 .env
+.venv/
+venv/
+
+# Python
 __pycache__/
 *.pyc
 *.pyo
-.pytest_cache/
-docs/*.pdf
 *.egg-info/
 dist/
 build/
-.venv/
-venv/
+
+# Tests y cobertura
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Linters / herramientas
+.ruff_cache/
+
+# Datos locales (no son código)
+feedback.jsonl
+feedback*.jsonl
+
+# Documentos fuente (generados, no versionables)
+docs/*.pdf
+
+# Tooling de desarrollo local (no es parte del proyecto)
+.agents/
 .claude/
+skills-lock.json
+docs/superpowers/
+
+# Logs
 *.log
