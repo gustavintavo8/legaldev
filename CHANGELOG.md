@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Cross-encoder reranker (`BAAI/bge-reranker-base`) between overfetch and top-k slice, improving multi-normativa query precision
+- Article-boundary legal splitter (`app/legal_splitter.py`) — regex splits on `Artículo`/`Considerando`/`Art.` boundaries, falls back to `RecursiveCharacterTextSplitter`
+- `GET /health/deep` endpoint — pings Chroma and Groq, TTL-cached 60 s
+- `POST /v1/feedback` endpoint — persists `{request_id, rating, comment}` to `feedback.jsonl`
+- TTL in-memory response cache for `/v1/analyze` with `X-Cache: HIT/MISS` header
+- `X-Request-ID` header on every response; `request_id` injected into all structured logs via `contextvars`
+- Corpus version hash (`chroma_db/.corpus_version`) exposed in `/health` and `RAGResponse`
+- Prometheus custom metrics: `legaldev_chunks_retrieved`, `legaldev_top_score`, `legaldev_retrieval_duration_seconds`, `legaldev_llm_duration_seconds`, `legaldev_404_no_coverage_total`, `legaldev_aux_search_triggered_total{type}`
+- `POST /v1/analyze` threshold sweep tool (`python tools/eval_retrieval.py --sweep`) with results in `tools/eval_results.md`
+- E2E test against real ChromaDB (`tests/test_e2e.py`, `@pytest.mark.slow`), runs only on push to `main`
+- `TRUST_PROXY_HEADERS` env var (default `false`) — only trusts `X-Forwarded-For` when explicitly enabled
+- `ALLOWED_ORIGINS` validator — rejects `*,https://...` mixed configurations
+- Retrieval timeout via `ThreadPoolExecutor` — returns 503 instead of hanging on ChromaDB I/O
+- `app/store.py` wrapper for Chroma private API (`_collection.count`, `_collection.get`) — isolates breakage to one file
+- `indexed_normativas` populated from ChromaDB at startup, not from `REQUIRED_DOCS` list
+- Dockerfile layer order optimized: deps → model download → `chroma_db/` → `app/`
+- PII policy in logs: `descripcion_breve` logged as length + SHA-256 prefix, never raw
+- `X-API-Key` header authentication for `/v1/analyze`; open by default when `API_KEYS` env var is unset
+- Prompt injection detection: `descripcion_breve` scanned for suspicious patterns; logs `suspected_injection: true` without rejecting
+
+### Changed
+- "Cobertura del análisis" section rendered in code (`_render_coverage_section`) rather than by LLM — deterministic, frees prompt tokens
+- `app/ingest.py` uses `split_document` from `legal_splitter` instead of inline `RecursiveCharacterTextSplitter`
+
 ## [0.1.0] - 2026-05-09
 
 ### Added
