@@ -28,6 +28,12 @@ from app.config import settings
 from app.models import QuestionnaireInput
 from app.rag import AUXILIARY_SEARCHES, _build_query
 
+_SUPPORTED_MODELS = [
+    "all-MiniLM-L6-v2",
+    "paraphrase-multilingual-MiniLM-L12-v2",
+    "BAAI/bge-m3",
+]
+
 
 def _load_cases(yaml_path: Path) -> tuple[dict, list[dict]]:
     with yaml_path.open(encoding="utf-8") as f:
@@ -127,22 +133,32 @@ def _write_eval_results(rows: list[tuple], path: Path) -> None:
     print(f"Results written to {path}")
 
 
-def main():
+def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="LegalDev retrieval evaluator")
     parser.add_argument(
         "--sweep",
         action="store_true",
         help="Sweep thresholds 0.20–0.45 and write tools/eval_results.md",
     )
-    args = parser.parse_args()
+    parser.add_argument(
+        "--model",
+        default="all-MiniLM-L6-v2",
+        choices=_SUPPORTED_MODELS,
+        help="Embedding model to evaluate (default: all-MiniLM-L6-v2)",
+    )
+    return parser
+
+
+def main():
+    args = _build_parser().parse_args()
 
     cases_path = Path(__file__).parent / "eval_cases.yaml"
     base_input, cases = _load_cases(cases_path)
 
-    print("Cargando embeddings y ChromaDB...")
+    print(f"Cargando embeddings ({args.model}) y ChromaDB...")
     vs = Chroma(
         persist_directory=settings.chroma_db_path,
-        embedding_function=HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2"),
+        embedding_function=HuggingFaceEmbeddings(model_name=args.model),
         collection_name="legaldev",
     )
 
@@ -159,8 +175,8 @@ def main():
     threshold = settings.min_relevance_score
 
     print(
-        f"\nRetrieval eval — threshold={threshold}  overfetch_k={settings.overfetch_k}"
-        f"  casos={len(cases)}\n"
+        f"\nRetrieval eval — model={args.model}  threshold={threshold}"
+        f"  overfetch_k={settings.overfetch_k}  casos={len(cases)}\n"
     )
 
     _run_standard_eval(cases, base_input, vs, threshold)
