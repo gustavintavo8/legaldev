@@ -11,6 +11,7 @@ from pathlib import Path
 from fastapi import HTTPException
 from langchain_core.messages import HumanMessage, SystemMessage
 
+from app import metrics as _metrics
 from app import reranker as _reranker
 from app.config import settings
 from app.middleware import request_id_var
@@ -37,6 +38,7 @@ class AuxSearch:
     condition: Callable[[QuestionnaireInput], bool]
     query: str
     k: int
+    name: str = ""
 
 
 AUXILIARY_SEARCHES: list[AuxSearch] = [
@@ -44,16 +46,19 @@ AUXILIARY_SEARCHES: list[AuxSearch] = [
         condition=lambda inp: any(d != "ninguno" for d in inp.tipos_datos_personales),
         query="protección datos personales responsable tratamiento privacidad consentimiento derechos interesado",
         k=settings.rgpd_k,
+        name="rgpd",
     ),
     AuxSearch(
         condition=lambda inp: inp.usa_cookies,
         query="cookies consentimiento banner rastreo política privacidad",
         k=settings.cookies_k,
+        name="cookies",
     ),
     AuxSearch(
         condition=lambda inp: bool(inp.colegiado),
         query="código deontológico ingeniero informático colegiado responsabilidad profesional",
         k=settings.colegiado_k,
+        name="colegiado",
     ),
 ]
 
@@ -294,6 +299,7 @@ def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
     # Búsqueda auxiliar — ver README "Query descriptiva + búsqueda auxiliar por dominio"
     for aux in AUXILIARY_SEARCHES:
         if aux.condition(input):
+            _metrics.aux_search_triggered.labels(type=aux.name).inc()
             for doc, score in _search_with_timeout(
                 state.vectorstore, aux.query, k=aux.k, timeout=settings.chroma_timeout
             ):
@@ -306,6 +312,7 @@ def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
     docs = _reranker.rerank(query, docs, top_k=settings.top_k_chunks)
 
     t_retrieval = time.perf_counter()
+    _metrics.retrieval_duration.observe(t_retrieval - t0)
 
     excluded_stems = {exc.stem for exc in EXCLUSIONS if exc.condition(input)}
     if excluded_stems:
@@ -327,6 +334,7 @@ def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
                 }
             )
         )
+        _metrics.no_coverage_total.inc()
         raise HTTPException(
             status_code=404,
             detail="No se encontraron normativas aplicables a este tipo de proyecto en la base de conocimiento.",
@@ -352,6 +360,10 @@ def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
         )
 
     t_llm = time.perf_counter()
+    _metrics.llm_duration.observe(t_llm - t_retrieval)
+    _metrics.chunks_retrieved.observe(len(docs))
+    if candidates:
+        _metrics.top_score.observe(candidates[0][1])
     normativas = list(retrieved_sources)
 
     # PII policy: log only hash/length of free-text fields, never raw content
