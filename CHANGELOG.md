@@ -29,6 +29,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Prompt injection detection: `descripcion_breve` scanned for suspicious patterns; logs `suspected_injection: true` without rejecting
 
 ### Changed
+- `MIN_RELEVANCE_SCORE` default raised from `0.35` to `0.40` after multilingual model migration — sweep confirmed 100% recall at all thresholds 0.20–0.45 with the new model; 0.40 gives ~8% noise reduction at no recall cost
+  - `encode_kwargs={"normalize_embeddings": True}` added to every `HuggingFaceEmbeddings` instantiation (`app/ingest.py`, `app/main.py`, `tools/eval_retrieval.py`, `tests/test_e2e.py`) — prerequisite for valid scores: `paraphrase-multilingual-MiniLM-L12-v2` has no `Normalize` module in its pipeline, so without this kwarg embeddings are not unit vectors, L2 distances exceed √2, and LangChain's score formula produces negative values that break the threshold entirely
 - "Cobertura del análisis" section rendered in code (`_render_coverage_section`) rather than by LLM — deterministic, frees prompt tokens
 - `app/ingest.py` uses `split_document` from `legal_splitter` instead of inline `RecursiveCharacterTextSplitter`
 

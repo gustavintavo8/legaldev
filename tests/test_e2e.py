@@ -52,7 +52,10 @@ def test_e2e_pipeline_retrieves_from_real_chroma(tiny_pdf_dir):
     chunks = splitter.split_documents(pages)
 
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as chroma_dir:
-        embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+        embeddings = HuggingFaceEmbeddings(
+            model_name="paraphrase-multilingual-MiniLM-L12-v2",
+            encode_kwargs={"normalize_embeddings": True},
+        )
         vs = Chroma.from_documents(
             documents=chunks,
             embedding=embeddings,

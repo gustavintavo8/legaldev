@@ -8,7 +8,7 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.136-009688?logo=fastapi)](https://fastapi.tiangolo.com/)
 [![ChromaDB](https://img.shields.io/badge/ChromaDB-1.5-ff6b35)](https://www.trychroma.com/)
 [![Groq](https://img.shields.io/badge/Groq-Llama_4-f55036)](https://groq.com/)
-[![Railway](https://img.shields.io/badge/Deploy-Railway-0b0d0e?logo=railway)](https://railway.app/)
+[![HF Spaces](https://img.shields.io/badge/Deploy-HF_Spaces-ffd21e?logo=huggingface&logoColor=black)](https://huggingface.co/spaces)
 [![Tests](https://img.shields.io/badge/Tests-69_passed-22c55e?logo=pytest)](./tests/)
 
 [Highlights](#-highlights-técnicos) · [Cómo funciona](#-cómo-funciona) · [Tech Stack](#️-tech-stack) · [Decisiones técnicas](#-decisiones-técnicas) · [Instalación](#-instalación) · [API](#-api) · [Deploy](#-deploy)
@@ -58,7 +58,7 @@ POST /v1/analyze (QuestionnaireInput)
 **Indexación offline** (una vez, antes del Docker build):
 ```
 docs/*.pdf → PyPDFLoader → RecursiveCharacterTextSplitter(500/100)
-           → HuggingFaceEmbeddings(all-MiniLM-L6-v2)
+           → HuggingFaceEmbeddings(paraphrase-multilingual-MiniLM-L12-v2)
            → ChromaDB(./chroma_db)
 ```
 
@@ -69,14 +69,14 @@ docs/*.pdf → PyPDFLoader → RecursiveCharacterTextSplitter(500/100)
 ```
 API framework      FastAPI 0.136 + uvicorn
 Vector store       ChromaDB 1.5 (local, SQLite-backed)
-Embeddings         sentence-transformers · all-MiniLM-L6-v2 (~80 MB)
+Embeddings         sentence-transformers · paraphrase-multilingual-MiniLM-L12-v2 (~500 MB)
 LLM                Groq API · meta-llama/llama-4-scout-17b-16e-instruct
 Prompt framework   LangChain (loaders, splitters, Chroma wrapper)
 Rate limiting      slowapi (token bucket por IP)
 Validation         Pydantic v2 + pydantic-settings
 Testing            pytest · unittest.mock (sin llamadas reales a Groq ni ChromaDB)
 Packaging          pyproject.toml + uv.lock · dev/runtime separados
-Deploy             Railway via Dockerfile · chroma_db baked en imagen
+Deploy             Hugging Face Spaces (Docker SDK) · chroma_db baked en imagen
 ```
 
 ---
@@ -95,13 +95,19 @@ Para un corpus de 22 documentos con ~14.300 chunks fijos que no cambian en runti
 
 La indexación de 22 PDFs tarda ~45 segundos e implica descargar el modelo de sentence-transformers (~80 MB) la primera vez. Ejecutar `ingest.py` en startup de la API añadiría ese overhead a cada cold start en Railway. La solución es generar el `chroma_db/` localmente, commitearlo al repo, y bakearlo en la imagen Docker. La API solo hace retrieval — carga el modelo de embeddings para las queries (~2s) y ya está. El `chroma_db/` pesa ~100 MB en el repo (vectores HNSW + SQLite); es el trade-off consciente que hacemos a cambio de cold starts < 3s sin infraestructura adicional.
 
-### all-MiniLM-L6-v2 en vez de paraphrase-multilingual-MiniLM-L12-v2
+### paraphrase-multilingual-MiniLM-L12-v2 en vez de all-MiniLM-L6-v2
 
-El modelo multilingual daría mejores embeddings para texto en español, pero ocupa ~500 MB de RAM. El free tier de Railway tiene 512 MB — crasheaba en startup. `all-MiniLM-L6-v2` ocupa ~80 MB y funciona suficientemente bien en español gracias al overlap léxico entre idiomas en su corpus de entrenamiento. Es un trade-off consciente: calidad de embeddings vs viabilidad en free tier. Si el proyecto escala a un plan con más RAM, el cambio de modelo es una línea en `EMBEDDING_MODEL`.
+Originalmente usábamos `all-MiniLM-L6-v2` (~80 MB): el modelo multilingual (~500 MB) crasheaba en el free tier de Railway (512 MB de RAM). Al migrar a Hugging Face Spaces, ese límite dejó de ser el cuello de botella, y el cambio de modelo pasó de bloqueado a trivial.
+
+`paraphrase-multilingual-MiniLM-L12-v2` fue entrenado en 50+ idiomas con texto nativo en español — mejora el recall en consultas con terminología jurídica española ("responsable del tratamiento", "bases legitimadoras", "interés legítimo"). `all-MiniLM-L6-v2` funcionaba gracias al overlap léxico español-inglés en su corpus, pero las representaciones de pares como "protección de datos" / "data protection" eran subóptimas para búsqueda semántica estricta. El cambio es una sola línea en `EMBEDDING_MODEL` — y exige re-indexar el `chroma_db/` porque los vectores generados por un modelo no son compatibles con los del otro.
 
 ### Score threshold como guardia anti-alucinación
 
-Sin umbral, el retriever siempre devuelve `k` chunks aunque la query tenga poca cobertura en la base de documentos. El LLM, ante chunks poco relevantes, tiende a completar con conocimiento paramétrico — inventando obligaciones plausibles pero no fundamentadas. El umbral de 0.35 (configurable vía `MIN_RELEVANCE_SCORE`) hace que si ningún chunk supera ese score, la API devuelva HTTP 404 con "no se encontraron normativas aplicables" en vez de pasarle contexto basura al modelo.
+Sin umbral, el retriever siempre devuelve `k` chunks aunque la query tenga poca cobertura en la base de documentos. El LLM, ante chunks poco relevantes, tiende a completar con conocimiento paramétrico — inventando obligaciones plausibles pero no fundamentadas. El umbral de 0.40 (configurable vía `MIN_RELEVANCE_SCORE`) hace que si ningún chunk supera ese score, la API devuelva HTTP 404 con "no se encontraron normativas aplicables" en vez de pasarle contexto basura al modelo.
+
+> **Prerrequisito: embeddings normalizados.** La escala del score `[-0.41, 1]` solo es válida cuando los embeddings son vectores unitarios. LangChain-Chroma calcula el score con la fórmula `1 - d/√2`, donde `d` es la distancia L2. Para vectores de norma 1, `d ∈ [0, 2]` y el score queda acotado en `[-0.41, 1]`. Sin normalización, `d` puede superar `√2` y el score se vuelve indefinidamente negativo — cualquier threshold falla y el retrieval devuelve vacío.
+>
+> No todos los modelos de `sentence-transformers` incluyen un módulo `Normalize` al final de su pipeline: `all-MiniLM-L6-v2` sí lo lleva; `paraphrase-multilingual-MiniLM-L12-v2` no. Por eso **todo `HuggingFaceEmbeddings` instanciado en este proyecto debe incluir `encode_kwargs={"normalize_embeddings": True}`**. Quien añada un modelo nuevo debe verificar si su pipeline termina en `Normalize` — si no, el kwarg es obligatorio o los scores serán inútiles.
 
 ### Temperatura 0 para respuestas legales
 
@@ -317,23 +323,67 @@ curl http://localhost:8000/health
 
 ---
 
-## 🚢 Deploy en Railway
+## 🚢 Deploy en Hugging Face Spaces
 
-El `chroma_db/` está commiteado y el Dockerfile lo copia a la imagen. Railway nunca ejecuta `ingest.py` — el vector store ya está listo en el build.
+El `chroma_db/` está commiteado y el Dockerfile lo copia a la imagen. HF Spaces nunca ejecuta `ingest.py` — el vector store ya está listo en el build.
+
+> ⚠️ El `chroma_db/` debe coincidir con el `EMBEDDING_MODEL` configurado. Tras cambiar el modelo de embeddings, re-indexar es obligatorio.
+
+### Estrategia dos READMEs
+
+HF Spaces requiere frontmatter YAML en `README.md` del Space. GitHub y HF son repos distintos (remotes separados), así que mantenemos dos ficheros:
+
+- `README.md` — este fichero, para GitHub (sin frontmatter).
+- `README_hf.md` — frontmatter + descripción breve, solo para el Space.
+
+El truco: una rama local `hf-space` = `main` + un commit de intercambio de README. `make push-space` la regenera y la empuja al remote `space`. El `README.md` original y el `README_hf.md` nunca llegan tal cual al Space — solo el `README.md` ya swappeado.
+
+### Primer despliegue
 
 ```bash
-# 1. Generar el índice localmente (con todos los PDFs en docs/)
+# 1. Crea el Space en https://huggingface.co/spaces (SDK: Docker, puerto: 8000)
+#    Añade el repo del Space como remote:
+git remote add space https://huggingface.co/spaces/<username>/legaldev
+
+# 2. Genera el índice localmente (necesitas los 22 PDFs en docs/ y GROQ_API_KEY):
 make ingest
 
-# 2. Commitear el chroma_db actualizado
-git add chroma_db/ && git commit -m "chore: rebuild index"
-git push
+# 3. Verifica tamaño antes de commitear (ningún archivo debe superar 50 MB):
+du -sh chroma_db/
+find chroma_db -size +50M   # si hay salida, NO continuar
+
+# 4. Evalúa el retrieval con el nuevo modelo y revisa tools/eval_results.md:
+python tools/eval_retrieval.py --sweep --model paraphrase-multilingual-MiniLM-L12-v2
+
+# 5. Commitea el índice:
+git add chroma_db/ && git commit -m "chore: rebuild ChromaDB index with multilingual model"
+git push   # GitHub main
+
+# 6. Añade GROQ_API_KEY como Secret en la UI del Space (Settings → Secrets)
+
+# 7. Push al Space (swap automático de README):
+make push-space
 ```
 
-En Railway:
-1. Conecta el repo → Railway detecta el `Dockerfile` automáticamente
-2. Añade `GROQ_API_KEY` en Settings → Variables
-3. Deploy automático en cada push a `main`
+### Actualizaciones posteriores
+
+```bash
+# Solo si cambias PDFs o modelo (requiere re-indexación):
+make ingest
+git add chroma_db/ && git commit -m "chore: rebuild index"
+git push            # GitHub main
+make push-space     # HF Space (re-genera hf-space sobre el main actualizado)
+```
+
+### Qué hace make push-space
+
+1. Verifica que no haya cambios sin commitear.
+2. Sitúa la rama `hf-space` exactamente en `main` (descartando el swap commit anterior).
+3. Copia `README_hf.md` → `README.md` y crea el commit de intercambio.
+4. Empuja `hf-space` como `main` del remote `space` con `--force-with-lease`.
+5. Vuelve a la rama original.
+
+El `README.md` de GitHub nunca se toca; `README_hf.md` no llega al Space (solo se usa como fuente del copy).
 
 ---
 
@@ -370,7 +420,7 @@ En Railway:
 
 ## ⚠️ Limitaciones conocidas
 
-- **Embeddings inglés-céntrico.** `all-MiniLM-L6-v2` fue entrenado mayoritariamente en inglés. Términos jurídicos españoles como "responsable del tratamiento" o "bases legitimadoras" pueden tener representaciones vectoriales subóptimas, afectando el recall en consultas con vocabulario muy técnico-legal.
+- **Modelo de embeddings pesado.** `paraphrase-multilingual-MiniLM-L12-v2` ocupa ~500 MB de RAM en runtime. En entornos con menos de 700 MB disponibles el startup puede fallar o ser muy lento. Ajusta el plan de hosting o usa `all-MiniLM-L6-v2` (~80 MB) si la memoria es crítica (requiere re-indexar el `chroma_db/`).
 
 - **Corpus estático.** Las 22 normativas están indexadas a una fecha fija. LegalDev no detecta nuevas directivas, reglamentos delegados, ni modificaciones publicadas en el BOE o DOUE posteriores a la indexación. Siempre contrasta con fuentes oficiales actualizadas.
 

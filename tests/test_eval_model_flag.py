@@ -21,11 +21,11 @@ def test_model_flag_accepted():
     assert args.model == "paraphrase-multilingual-MiniLM-L12-v2"
 
 
-def test_default_model_is_minilm():
+def test_default_model_is_multilingual():
     er = _load_eval_retrieval()
     parser = er._build_parser()
     args = parser.parse_args([])
-    assert args.model == "all-MiniLM-L6-v2"
+    assert args.model == "paraphrase-multilingual-MiniLM-L12-v2"
 
 
 def test_invalid_model_rejected():

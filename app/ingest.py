@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 DOCS_PATH = os.getenv("DOCS_PATH", "./docs")
 CHROMA_DB_PATH = os.getenv("CHROMA_DB_PATH", "./chroma_db")
-EMBEDDING_MODEL = "all-MiniLM-L6-v2"
+EMBEDDING_MODEL = "paraphrase-multilingual-MiniLM-L12-v2"
 COLLECTION_NAME = "legaldev"
 
 DOC_TYPE_MAP = {
@@ -77,7 +77,9 @@ def main() -> None:
     _check_required_docs(docs_dir)
 
     pdf_files = sorted(docs_dir.glob("*.pdf"))
-    embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
+    embeddings = HuggingFaceEmbeddings(
+        model_name=EMBEDDING_MODEL, encode_kwargs={"normalize_embeddings": True}
+    )
     all_chunks = []
 
     for pdf_path in pdf_files:

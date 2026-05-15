@@ -142,9 +142,9 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--model",
-        default="all-MiniLM-L6-v2",
+        default="paraphrase-multilingual-MiniLM-L12-v2",
         choices=_SUPPORTED_MODELS,
-        help="Embedding model to evaluate (default: all-MiniLM-L6-v2)",
+        help="Embedding model to evaluate (default: paraphrase-multilingual-MiniLM-L12-v2)",
     )
     return parser
 
@@ -158,7 +158,9 @@ def main():
     print(f"Cargando embeddings ({args.model}) y ChromaDB...")
     vs = Chroma(
         persist_directory=settings.chroma_db_path,
-        embedding_function=HuggingFaceEmbeddings(model_name=args.model),
+        embedding_function=HuggingFaceEmbeddings(
+            model_name=args.model, encode_kwargs={"normalize_embeddings": True}
+        ),
         collection_name="legaldev",
     )
 
