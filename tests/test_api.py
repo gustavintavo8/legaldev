@@ -24,7 +24,7 @@ def test_analyze_returns_rag_response(client, sample_input_dict):
     response = client.post("/v1/analyze", json=sample_input_dict)
     assert response.status_code == 200
     data = response.json()
-    assert data["respuesta_completa"] == "Respuesta de prueba sobre RGPD"
+    assert data["respuesta_completa"].startswith("Respuesta de prueba sobre RGPD")
     assert "normativas_detectadas" in data
     assert data["chunks_utilizados"] == 1
     assert "disclaimer" in data
@@ -72,7 +72,9 @@ def test_analyze_prompt_injection_tag_in_descripcion(client, sample_input_dict):
 
     # Pipeline processes normally — mock LLM response is unchanged
     assert response.status_code == 200
-    assert response.json()["respuesta_completa"] == "Respuesta de prueba sobre RGPD"
+    assert response.json()["respuesta_completa"].startswith(
+        "Respuesta de prueba sobre RGPD"
+    )
 
     # descripcion_breve is always sandboxed inside <descripcion_usuario> tags in the user message
     messages = client.app.state.groq_client.invoke.call_args.args[0]

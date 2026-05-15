@@ -13,6 +13,7 @@ from app.rag import (
     SYSTEM_PROMPT,
     _build_query,
     _build_user_message,
+    _render_coverage_section,
     run_pipeline,
 )
 
@@ -20,7 +21,7 @@ from app.rag import (
 def test_system_prompt_snapshot():
     digest = hashlib.sha256(SYSTEM_PROMPT.encode()).hexdigest()
     assert (
-        digest == "83d3b5fde54b05b62d138f359b95bdd2fcc52067019f6541186b97bebd088de3"
+        digest == "c62d57755ffe2a8f926dfd720f9fd4f64085898b8d1eca8292c98a258ffb2129"
     ), f"SYSTEM_PROMPT changed — update this hash consciously. New hash: {digest}"
 
 
@@ -445,6 +446,40 @@ def test_run_pipeline_does_not_log_descripcion_breve(caplog):
         )
 
     assert "Datos muy sensibles no deben aparecer en logs" not in caplog.text
+
+
+def test_render_coverage_section_with_normativas():
+    result = _render_coverage_section(["DORA", "EU AI Act"])
+    assert "## Cobertura del análisis" in result
+    assert "DORA" in result
+    assert "EU AI Act" in result
+
+
+def test_render_coverage_section_empty_returns_empty_string():
+    assert _render_coverage_section([]) == ""
+
+
+def test_run_pipeline_appends_coverage_section_when_not_retrieved():
+    # state.indexed_normativas = {"RGPD", "LOPDGDD"}, only RGPD retrieved → LOPDGDD in coverage
+    docs = [_make_mock_doc("RGPD.pdf")]
+    state = _make_state(docs, llm_response="Respuesta LLM.")
+    result = run_pipeline(_make_input(), state)
+    assert "## Cobertura del análisis" in result.respuesta_completa
+    assert "LOPDGDD" in result.respuesta_completa
+
+
+def test_run_pipeline_no_coverage_section_when_all_retrieved():
+    docs = [
+        _make_mock_doc("RGPD.pdf"),
+        _make_mock_doc("LOPDGDD.pdf", "normativa_española"),
+    ]
+    state = _make_state(docs, llm_response="Respuesta LLM.")
+    result = run_pipeline(_make_input(), state)
+    assert "## Cobertura del análisis" not in result.respuesta_completa
+
+
+def test_system_prompt_does_not_contain_cobertura_section():
+    assert "Cobertura del análisis" not in SYSTEM_PROMPT
 
 
 def test_search_with_timeout_raises_503_on_slow_chroma():
