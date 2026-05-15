@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     groq_timeout: int = 30
     groq_temperature: float = 0.0
     groq_max_tokens: int = 4000
-    min_relevance_score: float = 0.35
+    min_relevance_score: float = 0.40
     rate_limit: str = "10/minute"
     allowed_origins: str = "*"
     trust_proxy_headers: bool = False

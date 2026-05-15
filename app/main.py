@@ -26,7 +26,7 @@ from app.rag import run_pipeline
 logging.basicConfig(level=getattr(logging, settings.log_level.upper(), logging.INFO))
 logger = logging.getLogger(__name__)
 
-EMBEDDING_MODEL = "all-MiniLM-L6-v2"
+EMBEDDING_MODEL = "paraphrase-multilingual-MiniLM-L12-v2"
 CHROMA_COLLECTION = "legaldev"
 
 
@@ -59,7 +59,9 @@ def _verify_api_key(x_api_key: str | None = Header(default=None)) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Loading embedding model: %s", EMBEDDING_MODEL)
-    app.state.embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
+    app.state.embeddings = HuggingFaceEmbeddings(
+        model_name=EMBEDDING_MODEL, encode_kwargs={"normalize_embeddings": True}
+    )
     logger.info("Connecting to ChromaDB at %s", settings.chroma_db_path)
     app.state.vectorstore = Chroma(
         persist_directory=settings.chroma_db_path,
