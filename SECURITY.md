@@ -4,7 +4,7 @@
 
 If you discover a security vulnerability in LegalDev, **do not open a public GitHub issue**. Report it privately instead:
 
-- **Email**: gustavintavo1202@gmail.com
+- **Email**: gustavintavo1202+legaldev-security@gmail.com
 - **Subject**: `[SECURITY] LegalDev — <short description>`
 
 Include a description of the issue and its potential impact, steps to reproduce, and any proof-of-concept payload if applicable. You will receive a response within **7 days**. Confirmed issues will be patched as soon as possible.
