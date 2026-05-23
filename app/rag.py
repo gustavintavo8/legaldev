@@ -322,6 +322,7 @@ async def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
     docs = [doc for doc, score in candidates if score >= settings.min_relevance_score]
 
     seen = {hashlib.md5(d.page_content.encode()).hexdigest() for d in docs}
+    _main_n = len(docs)
 
     # Búsqueda auxiliar — ver README "Query descriptiva + búsqueda auxiliar por dominio"
     for aux in AUXILIARY_SEARCHES:
@@ -336,7 +337,8 @@ async def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
                         seen.add(h)
                         docs.append(doc)
 
-    docs = _reranker.rerank(query, docs, top_k=settings.top_k_chunks)
+    pre_rerank = docs[: settings.reranker_top_k] + docs[_main_n:]
+    docs = _reranker.rerank(query, pre_rerank, top_k=settings.top_k_chunks)
 
     t_retrieval = time.perf_counter()
     _metrics.retrieval_duration.observe(t_retrieval - t0)
@@ -405,6 +407,7 @@ async def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
                     input.descripcion_breve.encode()
                 ).hexdigest()[:8],
                 "chunks_fetched": len(candidates),
+                "chunks_reranked": len(pre_rerank),
                 "chunks_passed": len(docs),
                 "top_score": round(candidates[0][1], 3) if candidates else None,
                 "sources": sorted({doc.metadata.get("source", "?") for doc in docs}),
