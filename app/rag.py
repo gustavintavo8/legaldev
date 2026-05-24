@@ -134,6 +134,18 @@ EXCLUSIONS: list[Exclusion] = [
         ),
         stem="LOPDGDD",
     ),
+    # DSA — KNOWN RESIDUAL FP (not excluded here, intentional):
+    # Digital Services Act (Reglamento UE 2022-2065) appears in cookies-webapp
+    # (4 chunks, scores 0.44–0.47) and query-compleja (2 chunks, scores 0.61–0.68)
+    # despite not applying legally in either case. DSA regulates intermediary
+    # platforms hosting third-party content or facilitating user-to-user transactions;
+    # it does NOT apply to closed systems or internal management tools.
+    # The retriever picks it up due to semantic overlap between DSA's language on
+    # user monitoring/tracking and queries that mention location data or cookies.
+    # Not excluded via proxy (e.g. acceso_publico) because that would silently drop
+    # DSA from legitimate B2B marketplaces with acceso_publico=False.
+    # Pending: add es_plataforma_intermediaria field to QuestionnaireInput, or accept
+    # as residual FP until a clean domain signal is available.
 ]
 
 SYSTEM_PROMPT = """\
