@@ -28,7 +28,7 @@ from langchain_huggingface import HuggingFaceEmbeddings
 
 from app.config import settings
 from app.models import QuestionnaireInput
-from app.rag import AUXILIARY_SEARCHES, _build_query
+from app.rag import AUXILIARY_SEARCHES, EXCLUSIONS, _build_query
 
 _SUPPORTED_MODELS = [
     "all-MiniLM-L6-v2",
@@ -71,6 +71,11 @@ def run_case(case: dict, base_input: dict, vs, threshold: float) -> dict:
                 if h not in seen:
                     seen.add(h)
                     docs.append(doc)
+
+    # Mirror production: apply EXCLUSIONS post-retrieval (same as run_pipeline)
+    excluded = {exc.stem for exc in EXCLUSIONS if exc.condition(inp)}
+    if excluded:
+        docs = [d for d in docs if Path(d.metadata.get("source", "")).stem not in excluded]
 
     retrieved_stems = {
         Path(d.metadata["source"]).stem for d in docs if "source" in d.metadata

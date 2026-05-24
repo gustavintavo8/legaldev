@@ -112,6 +112,40 @@ EXCLUSIONS: list[Exclusion] = [
         condition=lambda inp: not inp.contenido_digital,
         stem="Ley de Propiedad Intelectual",
     ),
+    # IA-specific guides: only relevant when the project explicitly uses AI,
+    # and only the agentic guide when tipo_ia == "agentes".
+    # Without these conditions both docs bleed into non-IA projects via the
+    # aux[rgpd] query ("tratamiento de datos" overlaps with their content).
+    Exclusion(
+        condition=lambda inp: not inp.usa_ia,
+        stem="Adecuación al RGPD de tratamientos que incorporan IA - AEPD",
+    ),
+    Exclusion(
+        condition=lambda inp: not (inp.usa_ia and inp.tipo_ia == "agentes"),
+        stem="IA Agentica desde la perspectiva de proteccion de datos - AEPD",
+    ),
+    # LOPDGDD: exclude only when there are no personal data AND no registered users.
+    # This avoids LOPDGDD noise in fully off-topic projects while keeping it
+    # for the "confused developer" case (no declared data but users exist).
+    Exclusion(
+        condition=lambda inp: (
+            not any(d != "ninguno" for d in inp.tipos_datos_personales)
+            and not inp.tiene_usuarios_registrados
+        ),
+        stem="LOPDGDD",
+    ),
+    # DSA — KNOWN RESIDUAL FP (not excluded here, intentional):
+    # Digital Services Act (Reglamento UE 2022-2065) appears in cookies-webapp
+    # (4 chunks, scores 0.44–0.47) and query-compleja (2 chunks, scores 0.61–0.68)
+    # despite not applying legally in either case. DSA regulates intermediary
+    # platforms hosting third-party content or facilitating user-to-user transactions;
+    # it does NOT apply to closed systems or internal management tools.
+    # The retriever picks it up due to semantic overlap between DSA's language on
+    # user monitoring/tracking and queries that mention location data or cookies.
+    # Not excluded via proxy (e.g. acceso_publico) because that would silently drop
+    # DSA from legitimate B2B marketplaces with acceso_publico=False.
+    # Pending: add es_plataforma_intermediaria field to QuestionnaireInput, or accept
+    # as residual FP until a clean domain signal is available.
 ]
 
 SYSTEM_PROMPT = """\
