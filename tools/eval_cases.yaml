@@ -25,7 +25,9 @@ cases:
     expected:
       - RGPD
       - LOPDGDD
-    negative_expected: []  # TODO: definir dominio
+    negative_expected:
+      - Adecuación al RGPD de tratamientos que incorporan IA - AEPD
+      - IA Agentica desde la perspectiva de proteccion de datos - AEPD
 
   - label: datos-sensibles-salud
     notes: "Datos de salud — categoría especial Art. 9 RGPD"
@@ -34,7 +36,9 @@ cases:
     expected:
       - RGPD
       - LOPDGDD
-    negative_expected: []  # TODO: definir dominio
+    negative_expected:
+      - Adecuación al RGPD de tratamientos que incorporan IA - AEPD
+      - IA Agentica desde la perspectiva de proteccion de datos - AEPD
 
   - label: ia-generativa
     notes: "App con IA generativa — aplica EU AI Act"
@@ -44,7 +48,10 @@ cases:
       tipos_datos_personales: [email]
     expected:
       - EU AI Act
-    negative_expected: []  # TODO: definir dominio
+    negative_expected:
+      - IA Agentica desde la perspectiva de proteccion de datos - AEPD
+      # Adecuación RGPD+IA NO es negativo aquí — legítima para proyectos generativos
+      # Fix futuro debe filtrar IA Agéntica por tipo_ia=agentes, no por usa_ia
 
   - label: ia-agente
     notes: "App con IA agéntica — EU AI Act + guía AEPD sobre IA agéntica"
@@ -55,7 +62,7 @@ cases:
     expected:
       - EU AI Act
       - IA Agentica desde la perspectiva de proteccion de datos - AEPD
-    negative_expected: []  # TODO: definir dominio
+    negative_expected: []
 
   - label: menores-datos-personales
     notes: "App con usuarios menores — protección reforzada RGPD Art. 8"
@@ -65,7 +72,9 @@ cases:
     expected:
       - RGPD
       - LOPDGDD
-    negative_expected: []  # TODO: definir dominio
+    negative_expected:
+      - Adecuación al RGPD de tratamientos que incorporan IA - AEPD
+      - IA Agentica desde la perspectiva de proteccion de datos - AEPD
 
   - label: cookies-webapp
     notes: "App con cookies — búsqueda auxiliar activa (usa_cookies=True)"
@@ -73,7 +82,11 @@ cases:
       usa_cookies: true
     expected:
       - Guía sobre uso de cookies - AEPD
-    negative_expected: []  # TODO: definir dominio
+      - LSSI
+    negative_expected:
+      - Adecuación al RGPD de tratamientos que incorporan IA - AEPD
+      - IA Agentica desde la perspectiva de proteccion de datos - AEPD
+      - Digital Services Act (Reglamento UE 2022-2065)
 
   - label: ccii-ingeniero-colegiado
     notes: "Ingeniero informático colegiado — búsqueda auxiliar CCII"
@@ -82,7 +95,9 @@ cases:
       es_empresa: false
     expected:
       - Código Ético y Deontológico CCII
-    negative_expected: []  # TODO: definir dominio
+    negative_expected:
+      - IA Agentica desde la perspectiva de proteccion de datos - AEPD
+      # LSSI (14 chunks) NO es FP — legítima para colegiado con servicios web con usuarios
 
   - label: query-compleja-rgpd-colegiado-ia
     notes: "Query compleja — colegiado + IA + 4 tipos de datos. RGPD requiere búsqueda auxiliar."
@@ -97,22 +112,38 @@ cases:
     expected:
       - RGPD
       - LOPDGDD
-    negative_expected: []  # TODO: definir dominio
+    negative_expected:
+      - Digital Services Act (Reglamento UE 2022-2065)
 
   - label: sin-datos-personales
-    notes: "Sin datos personales — retrieval mínimo esperado"
+    notes: >
+      Caso "developer confundido": declara tipos_datos_personales=[ninguno] pero
+      tiene_usuarios_registrados=true — registro implica email = dato personal.
+      Objetivo: verificar que el sistema es conservador (RGPD/LOPDGDD pueden
+      aparecer legítimamente). Negativos: solo docs de IA, que no aplican en
+      ningún escenario sin usa_ia.
     off_topic: true
     overrides:
       tipos_datos_personales: [ninguno]
     expected: []
-    negative_expected: []  # TODO: definir dominio
+    negative_expected:
+      - Adecuación al RGPD de tratamientos que incorporan IA - AEPD
+      - IA Agentica desde la perspectiva de proteccion de datos - AEPD
 
   - label: off-topic-recetas
-    notes: "App de recetas sin usuarios — fuera del alcance legal"
+    notes: >
+      App fuera de dominio legal: sin usuarios registrados, sin datos personales.
+      Negativos activos hoy: LOPDGDD (9 chunks) y Adecuación RGPD+IA (1 chunk).
+      Negativos preventivos (0 chunks hoy, guardia ante regresiones si el umbral baja):
+      RGPD e IA Agéntica AEPD.
     off_topic: true
     overrides:
       descripcion_breve: "App de recetas de cocina sin usuarios registrados"
       tipos_datos_personales: [ninguno]
       tiene_usuarios_registrados: false
     expected: []
-    negative_expected: []  # TODO: definir dominio
+    negative_expected:
+      - LOPDGDD
+      - Adecuación al RGPD de tratamientos que incorporan IA - AEPD
+      - RGPD
+      - IA Agentica desde la perspectiva de proteccion de datos - AEPD
