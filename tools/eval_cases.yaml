@@ -25,6 +25,7 @@ cases:
     expected:
       - RGPD
       - LOPDGDD
+    negative_expected: []  # TODO: definir dominio
 
   - label: datos-sensibles-salud
     notes: "Datos de salud — categoría especial Art. 9 RGPD"
@@ -33,6 +34,7 @@ cases:
     expected:
       - RGPD
       - LOPDGDD
+    negative_expected: []  # TODO: definir dominio
 
   - label: ia-generativa
     notes: "App con IA generativa — aplica EU AI Act"
@@ -42,6 +44,7 @@ cases:
       tipos_datos_personales: [email]
     expected:
       - EU AI Act
+    negative_expected: []  # TODO: definir dominio
 
   - label: ia-agente
     notes: "App con IA agéntica — EU AI Act + guía AEPD sobre IA agéntica"
@@ -52,6 +55,7 @@ cases:
     expected:
       - EU AI Act
       - IA Agentica desde la perspectiva de proteccion de datos - AEPD
+    negative_expected: []  # TODO: definir dominio
 
   - label: menores-datos-personales
     notes: "App con usuarios menores — protección reforzada RGPD Art. 8"
@@ -61,6 +65,7 @@ cases:
     expected:
       - RGPD
       - LOPDGDD
+    negative_expected: []  # TODO: definir dominio
 
   - label: cookies-webapp
     notes: "App con cookies — búsqueda auxiliar activa (usa_cookies=True)"
@@ -68,6 +73,7 @@ cases:
       usa_cookies: true
     expected:
       - Guía sobre uso de cookies - AEPD
+    negative_expected: []  # TODO: definir dominio
 
   - label: ccii-ingeniero-colegiado
     notes: "Ingeniero informático colegiado — búsqueda auxiliar CCII"
@@ -76,6 +82,7 @@ cases:
       es_empresa: false
     expected:
       - Código Ético y Deontológico CCII
+    negative_expected: []  # TODO: definir dominio
 
   - label: query-compleja-rgpd-colegiado-ia
     notes: "Query compleja — colegiado + IA + 4 tipos de datos. RGPD requiere búsqueda auxiliar."
@@ -90,6 +97,7 @@ cases:
     expected:
       - RGPD
       - LOPDGDD
+    negative_expected: []  # TODO: definir dominio
 
   - label: sin-datos-personales
     notes: "Sin datos personales — retrieval mínimo esperado"
@@ -97,6 +105,7 @@ cases:
     overrides:
       tipos_datos_personales: [ninguno]
     expected: []
+    negative_expected: []  # TODO: definir dominio
 
   - label: off-topic-recetas
     notes: "App de recetas sin usuarios — fuera del alcance legal"
@@ -106,3 +115,4 @@ cases:
       tipos_datos_personales: [ninguno]
       tiene_usuarios_registrados: false
     expected: []
+    negative_expected: []  # TODO: definir dominio

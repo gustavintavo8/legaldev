@@ -36,5 +36,5 @@ def test_sweep_returns_one_row_per_threshold():
 
     rows = sweep(vs, base_input, cases)
     assert len(rows) == 6  # 0.20, 0.25, 0.30, 0.35, 0.40, 0.45
-    for threshold, avg_recall, avg_noise in rows:
+    for threshold, avg_recall, avg_fp, avg_noise in rows:
         assert 0.0 <= threshold <= 1.0
