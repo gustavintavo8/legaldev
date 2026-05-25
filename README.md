@@ -42,7 +42,10 @@ POST /v1/analyze (QuestionnaireInput)
           │         if usa_cookies: search cookies AEPD (k=6)
           │         if colegiado: search CCII (k=6)
           │      → Cross-encoder rerank (BAAI/bge-reranker-base) → keep top 12
-          │      → EXCLUSIONS: ENS always removed; LPI if not contenido_digital
+          │      → EXCLUSIONS (5): ENS always; LPI if !contenido_digital; Adecuación RGPD+IA
+          │         and IA Agéntica AEPD if !usa_ia / !agentes; LOPDGDD if no data and no users
+          │      → INJECTIONS (4): RGPD if personal data; EU AI Act if usa_ia; LSSI if
+          │         cookies or public web; IA Agéntica AEPD if agentes
           │      → if no chunks pass: HTTP 404 (no coverage)
           │
           ├─ 3. LLM call (Groq · Llama 4 Scout · temperature=0)
@@ -151,7 +154,32 @@ La solución: la query principal no menciona "cookies" — describe el proyecto,
 | Cookies AEPD | `usa_cookies=True` | `"cookies consentimiento banner rastreo..."` |
 | CCII | `colegiado=True` | `"código deontológico ingeniero informático..."` |
 
-Complementario a esto, `EXCLUSIONS` elimina chunks de normativas estructuralmente no aplicables antes de pasar el contexto al LLM: ENS (sector público, campo no disponible en el cuestionario) y LPI (solo cuando `contenido_digital=False`). "Menores", "salud" y "biométricos" fueron verificados y no presentan el mismo problema de saturación léxica.
+### Filtrado post-reranker: EXCLUSIONS e INJECTIONS
+
+El reranker (CrossEncoder) selecciona los fragmentos más accionables para el developer, pero esa optimización tiene un efecto colateral: prefiere las guías explicativas de la AEPD sobre el texto legal puro de los reglamentos, porque son más útiles para responder "¿qué tengo que cumplir?". El resultado es que la propia normativa que aplica puede no llegar a la respuesta, y que documentos temáticamente cercanos se cuelan aunque no apliquen al proyecto.
+
+Para resolverlo, dos capas de reglas deterministas operan después del reranker, ambas condicionadas por los campos del cuestionario:
+
+**EXCLUSIONS** (5 reglas) eliminan documentos que no aplican al proyecto: el ENS (siempre — regula sector público, dato no capturado), la Ley de Propiedad Intelectual (salvo contenido digital), los dos documentos de IA de la AEPD (salvo que el proyecto use IA, y en el caso de IA Agéntica, salvo que sea específicamente de tipo agentes), y la LOPDGDD en proyectos sin datos personales ni usuarios registrados.
+
+**INJECTIONS** (4 reglas) garantizan la normativa que sí aplica, inyectando sus mejores fragmentos (ya presentes en los candidatos del retrieval, sin búsquedas nuevas) después del reranker: el RGPD cuando hay datos personales, el EU AI Act cuando se usa IA, la LSSI en webs públicas o con cookies, y la guía de IA Agéntica cuando el proyecto es de agentes.
+
+La distinción de fondo: **qué leyes aplican es una cuestión de reglas, no de similitud semántica.** El reranker decide qué fragmentos son útiles; las reglas de dominio deciden qué normativa es obligatoria.
+
+### Evaluación: gold standard con precision y fidelidad a producción
+
+El retrieval se evalúa contra un gold standard de 11 casos que cubren las combinaciones representativas del cuestionario (datos personales, IA, cookies, colegiación, proyectos fuera de dominio). Cada caso define no solo qué normativas deben aparecer (recall) sino cuáles no deben aparecer (precision, vía `negative_expected`).
+
+La decisión de diseño más importante de esta evaluación fue hacerla fiel a producción. Una primera versión medía el recall sobre los ~100 candidatos del retrieval vectorial, pero producción aplica un recorte (`reranker_top_k=25`), el CrossEncoder y las exclusiones antes de construir la respuesta. Ese desfase hacía que el eval reportara como "recuperados" documentos que producción descartaba silenciosamente. Al alinear el eval con el pipeline real, salió a la luz que el RGPD —la normativa más básica del sistema— solo llegaba a la respuesta en 2 de 10 casos: rankeaba en posiciones 46-90 del retrieval vectorial y el reranker lo descartaba en favor de las guías. El problema no era visible porque el instrumento de medida no replicaba el sistema medido.
+
+Esto motivó la arquitectura de EXCLUSIONS + INJECTIONS. Resultados, medidos sobre el eval ya fiel:
+
+| Métrica | Antes | Después |
+|---|---|---|
+| Recall (normativa aplicable presente) | 2/10 | 11/11 |
+| Falsos positivos | 16 | 2 |
+
+Los falsos positivos se redujeron mediante las EXCLUSIONS condicionales; el recall se garantizó mediante las INJECTIONS. La lección: un sistema de evaluación que no replica producción no solo es incompleto, es activamente engañoso, porque genera confianza falsa.
 
 ### Groq en vez de OpenAI
 
@@ -431,6 +459,10 @@ El `README.md` de GitHub nunca se toca; `README_hf.md` no llega al Space (solo s
 - **Cobertura limitada.** Solo están indexadas las 22 normativas de la base de conocimiento. Legislación autonómica específica, convenios colectivos sectoriales, circulares de la AEPD posteriores a 2024, o normativa de países fuera de la UE no están cubiertas.
 
 - **Rate limit spoofeable sin proxy de confianza.** El límite de 10 req/min se aplica por IP. Sin `TRUST_PROXY_HEADERS=true` y un proxy de confianza configurado, un atacante puede enviar headers `X-Forwarded-For` arbitrarios y bypassear el límite. Actívalo solo en entornos con proxy verificado (Railway, etc.).
+
+- **DSA como falso positivo residual.** En dos casos (web con cookies, y una plataforma de gestión con seguimiento de usuarios), el retrieval trae el Digital Services Act por proximidad semántica —vocabulario de "monitorización", "plataforma", "usuarios"— aunque jurídicamente no aplica: el DSA regula la intermediación entre terceros, no la recogida de datos en sistemas cerrados. No se excluye por regla porque el proxy disponible (`acceso_publico=False`) suprimiría también marketplaces B2B privados donde el DSA sí aplica. Cerrarlo correctamente requeriría un campo explícito `es_plataforma_intermediaria` en el cuestionario. Es una decisión consciente, no un descuido.
+
+- **Latencia del reranking.** El CrossEncoder corre sobre CPU (HF Spaces, tier gratuito), donde reranquear los candidatos del CrossEncoder (25 de la query principal más los resultados auxiliares, típicamente ~30-40 en total) tarda del orden de 25 segundos en frío. El cap de la query principal (`reranker_top_k=25`) equilibra recall y latencia, pero el cuello de botella es estructural al hardware: un cross-encoder sobre CPU compartida no es instantáneo. Las vías de mejora —reducir el reranker, o migrar a CPU dedicada— quedan pendientes.
 
 ---
 
