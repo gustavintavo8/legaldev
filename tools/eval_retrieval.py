@@ -26,9 +26,10 @@ import yaml
 from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
 
+from app import reranker as _reranker
 from app.config import settings
 from app.models import QuestionnaireInput
-from app.rag import AUXILIARY_SEARCHES, EXCLUSIONS, _build_query
+from app.rag import AUXILIARY_SEARCHES, EXCLUSIONS, INJECTIONS, _build_query
 
 _SUPPORTED_MODELS = [
     "all-MiniLM-L6-v2",
@@ -59,9 +60,12 @@ def run_case(case: dict, base_input: dict, vs, threshold: float) -> dict:
     inp = _make_input(base_input, case.get("overrides"))
     expected: list[str] = case.get("expected", [])
     negative_expected: list[str] = case.get("negative_expected", [])
+    query = _build_query(inp)
 
-    # Main query
-    docs = _retrieve(vs, _build_query(inp), settings.overfetch_k, threshold)
+    # Main query — keep raw candidates for injection (mirrors run_pipeline)
+    candidates = vs.similarity_search_with_relevance_scores(query, k=settings.overfetch_k)
+    docs = [doc for doc, score in candidates if score >= threshold]
+    main_n = len(docs)
     seen = {hashlib.md5(d.page_content.encode()).hexdigest() for d in docs}
 
     for aux in AUXILIARY_SEARCHES:
@@ -72,10 +76,33 @@ def run_case(case: dict, base_input: dict, vs, threshold: float) -> dict:
                     seen.add(h)
                     docs.append(doc)
 
-    # Mirror production: apply EXCLUSIONS post-retrieval (same as run_pipeline)
+    # Mirror production: pre_rerank slicing + CrossEncoder (same as run_pipeline)
+    pre_rerank = docs[:settings.reranker_top_k] + docs[main_n:]
+    docs = _reranker.rerank(query, pre_rerank, top_k=settings.top_k_chunks)
+
+    # Mirror production: apply EXCLUSIONS post-reranker (same as run_pipeline)
     excluded = {exc.stem for exc in EXCLUSIONS if exc.condition(inp)}
     if excluded:
         docs = [d for d in docs if Path(d.metadata.get("source", "")).stem not in excluded]
+
+    # Mirror production: INJECTIONS (uses candidates from main query)
+    seen_inj = {hashlib.md5(d.page_content.encode()).hexdigest() for d in docs}
+    for inj in INJECTIONS:
+        if not inj.condition(inp):
+            continue
+        if inj.stem in excluded:
+            continue
+        target = [
+            doc
+            for doc, score in candidates
+            if Path(doc.metadata.get("source", "")).stem == inj.stem
+            and score >= threshold
+        ][: inj.k]
+        for doc in target:
+            h = hashlib.md5(doc.page_content.encode()).hexdigest()
+            if h not in seen_inj:
+                seen_inj.add(h)
+                docs.append(doc)
 
     retrieved_stems = {
         Path(d.metadata["source"]).stem for d in docs if "source" in d.metadata
