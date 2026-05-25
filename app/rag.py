@@ -178,8 +178,9 @@ INJECTIONS: list[Injection] = [
         k=3,
     ),
     Injection(
-        condition=lambda inp: inp.usa_cookies or (
-            inp.tipo_proyecto in _LSSI_WEB_TYPES and inp.acceso_publico
+        condition=lambda inp: (
+            inp.usa_cookies
+            or (inp.tipo_proyecto in _LSSI_WEB_TYPES and inp.acceso_publico)
         ),
         stem="LSSI",
         k=2,
