@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-05-25
+
+### Added
+- INJECTIONS: garantía determinista de normativa aplicable post-reranker (RGPD, EU AI Act, LSSI, IA Agéntica) según campos del cuestionario.
+- EXCLUSIONS condicionales para documentos de IA (Adecuación RGPD+IA, IA Agéntica) y LOPDGDD en proyectos sin datos ni usuarios.
+- Gold standard de evaluación con precision (`negative_expected`) además de recall.
+- Caso de evaluación `lssi-web-publica`.
+
+### Changed
+- El evaluador (`eval_retrieval.py`) ahora replica el pipeline completo de producción (recorte `reranker_top_k`, CrossEncoder, exclusiones), corrigiendo una fidelidad optimista que ocultaba misses de recall.
+
+### Fixed
+- Recall de normativa fundamental (RGPD, EU AI Act, LSSI): de 2/10 a 11/11.
+- Falsos positivos de documentos de IA en proyectos sin IA: de 16 a 2 (2 residuales de DSA, documentados).
+
 ## [0.2.0] - 2026-05-15
 
 ### Added
