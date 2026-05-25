@@ -112,8 +112,25 @@ cases:
     expected:
       - RGPD
       - LOPDGDD
+      - LSSI
     negative_expected:
       - Digital Services Act (Reglamento UE 2022-2065)
+
+  - label: lssi-web-publica
+    notes: >
+      Web publica sin cookies — ejerce la rama LSSI acceso_publico.
+      Condicion: tipo_proyecto=app_web AND acceso_publico=True (no usa_cookies).
+      Verifica que la inyeccion de LSSI funciona por la rama acceso_publico,
+      no por cookies.
+    overrides:
+      acceso_publico: true
+      usa_cookies: false
+    expected:
+      - RGPD
+      - LSSI
+    negative_expected:
+      - Adecuación al RGPD de tratamientos que incorporan IA - AEPD
+      - IA Agentica desde la perspectiva de proteccion de datos - AEPD
 
   - label: sin-datos-personales
     notes: >

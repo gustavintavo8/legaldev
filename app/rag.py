@@ -148,6 +148,50 @@ EXCLUSIONS: list[Exclusion] = [
     # as residual FP until a clean domain signal is available.
 ]
 
+_LSSI_WEB_TYPES = frozenset({"app_web", "ecommerce", "saas"})
+
+
+@dataclass(frozen=True)
+class Injection:
+    """Garantiza normativas obligatorias post-reranker.
+
+    Espejo de Exclusion: si EXCLUSION quita docs no aplicables,
+    INJECTION garantiza docs obligatorios que el CrossEncoder
+    sistematicamente infravalora frente a guias divulgativas.
+    La condicion indica cuando inyectar.
+    """
+
+    condition: Callable[[QuestionnaireInput], bool]
+    stem: str
+    k: int
+
+
+INJECTIONS: list[Injection] = [
+    Injection(
+        condition=lambda inp: any(d != "ninguno" for d in inp.tipos_datos_personales),
+        stem="RGPD",
+        k=3,
+    ),
+    Injection(
+        condition=lambda inp: inp.usa_ia,
+        stem="EU AI Act",
+        k=3,
+    ),
+    Injection(
+        condition=lambda inp: inp.usa_cookies or (
+            inp.tipo_proyecto in _LSSI_WEB_TYPES and inp.acceso_publico
+        ),
+        stem="LSSI",
+        k=2,
+    ),
+    Injection(
+        condition=lambda inp: bool(inp.usa_ia and inp.tipo_ia == "agentes"),
+        stem="IA Agentica desde la perspectiva de proteccion de datos - AEPD",
+        k=2,
+    ),
+]
+
+
 SYSTEM_PROMPT = """\
 Eres LegalDev, un asistente especializado en normativa legal aplicable a proyectos de software en España y la Unión Europea.
 
@@ -385,6 +429,29 @@ async def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
             if Path(doc.metadata.get("source", "")).stem not in excluded_stems
         ]
 
+    seen_injected = {hashlib.md5(d.page_content.encode()).hexdigest() for d in docs}
+    injected_stems: list[str] = []
+    for inj in INJECTIONS:
+        if not inj.condition(input):
+            continue
+        if inj.stem in excluded_stems:
+            continue
+        target = [
+            doc
+            for doc, score in candidates
+            if Path(doc.metadata.get("source", "")).stem == inj.stem
+            and score >= settings.min_relevance_score
+        ][: inj.k]
+        added = 0
+        for doc in target:
+            h = hashlib.md5(doc.page_content.encode()).hexdigest()
+            if h not in seen_injected:
+                seen_injected.add(h)
+                docs.append(doc)
+                added += 1
+        if added:
+            injected_stems.append(inj.stem)
+
     if not docs:
         logger.info(
             json.dumps(
@@ -445,6 +512,7 @@ async def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
                 "chunks_passed": len(docs),
                 "top_score": round(candidates[0][1], 3) if candidates else None,
                 "sources": sorted({doc.metadata.get("source", "?") for doc in docs}),
+                "injected_stems": injected_stems,
                 "retrieval_ms": round((t_retrieval - t0) * 1000),
                 "llm_ms": round((t_llm - t_retrieval) * 1000),
             }
