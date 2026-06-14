@@ -96,6 +96,7 @@ def test_e2e_pipeline_retrieves_from_real_chroma(tiny_pdf_dir):
         ):
             mock_settings.min_relevance_score = 0.0
             mock_settings.overfetch_k = 20
+            mock_settings.reranker_top_k = 25
             mock_settings.top_k_chunks = 5
             mock_settings.rgpd_k = 3
             mock_settings.cookies_k = 3

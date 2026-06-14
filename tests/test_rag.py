@@ -569,3 +569,45 @@ def test_run_pipeline_respects_reranker_output_order(sample_input):
     assert user_content.index("Fuente 1: LOPDGDD.pdf") < user_content.index(
         "Fuente 2: RGPD.pdf"
     )
+
+
+def test_pre_rerank_no_duplicates_when_main_n_below_reranker_top_k():
+    """H4 regression: aux docs must not appear twice in pre_rerank when _main_n < reranker_top_k.
+
+    Setup: 3 main docs (below reranker_top_k=25) + 2 new aux docs from cookies search.
+    Before fix: pre_rerank = (3 main + 2 aux) + 2 aux = 7 docs with 2 duplicates.
+    After fix:  pre_rerank = 3 main + 2 aux = 5 unique docs.
+    """
+    from unittest.mock import patch as _patch
+
+    main_docs = [_make_mock_doc(f"doc{i}.pdf") for i in range(3)]
+    aux_doc_a = _make_mock_doc("LSSI.pdf", "normativa_española")
+    aux_doc_b = _make_mock_doc("Guía sobre uso de cookies - AEPD.pdf", "guia_aepd")
+
+    state = MagicMock()
+    state.vectorstore.similarity_search_with_relevance_scores.side_effect = [
+        [(doc, 0.85) for doc in main_docs],  # main search: 3 docs
+        [(aux_doc_a, 0.85), (aux_doc_b, 0.85)],  # cookies aux: 2 new docs
+    ]
+    state.groq_client.invoke.return_value = MagicMock(content="ok")
+    state.indexed_normativas = frozenset()
+    state.corpus_version = "test"
+
+    with _patch("app.reranker.rerank", return_value=main_docs[:1]) as mock_rerank:
+        asyncio.run(
+            run_pipeline(
+                _make_input(
+                    usa_cookies=True,
+                    tipos_datos_personales=["ninguno"],
+                    colegiado=None,
+                ),
+                state,
+            )
+        )
+
+    docs_sent = mock_rerank.call_args.args[1]
+    hashes = [hashlib.md5(d.page_content.encode()).hexdigest() for d in docs_sent]
+    assert len(hashes) == len(set(hashes)), (
+        f"pre_rerank had duplicates: {len(hashes) - len(set(hashes))} dups"
+    )
+    assert len(docs_sent) == len(main_docs) + 2  # 3 main + 2 aux, no duplicates

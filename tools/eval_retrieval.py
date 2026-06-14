@@ -77,7 +77,7 @@ def run_case(case: dict, base_input: dict, vs, threshold: float) -> dict:
                     docs.append(doc)
 
     # Mirror production: pre_rerank slicing + CrossEncoder (same as run_pipeline)
-    pre_rerank = docs[:settings.reranker_top_k] + docs[main_n:]
+    pre_rerank = docs[: min(settings.reranker_top_k, main_n)] + docs[main_n:]
     docs = _reranker.rerank(query, pre_rerank, top_k=settings.top_k_chunks)
 
     # Mirror production: apply EXCLUSIONS post-reranker (same as run_pipeline)
