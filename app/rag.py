@@ -416,7 +416,7 @@ async def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
                         seen.add(h)
                         docs.append(doc)
 
-    pre_rerank = docs[: settings.reranker_top_k] + docs[_main_n:]
+    pre_rerank = docs[: min(settings.reranker_top_k, _main_n)] + docs[_main_n:]
     docs = _reranker.rerank(query, pre_rerank, top_k=settings.top_k_chunks)
 
     t_retrieval = time.perf_counter()
