@@ -41,6 +41,30 @@ class Monetizacion(StrEnum):
     NINGUNA = "ninguna"
 
 
+# Valores deben coincidir carácter a carácter con los value= del <select id="ccaa">
+# en legaldev-web/index.html. Si se añade una opción al frontend, añadirla aquí también.
+class ComunidadAutonoma(StrEnum):
+    ANDALUCIA     = "Andalucía"
+    ARAGON        = "Aragón"
+    ASTURIAS      = "Asturias"
+    BALEARES      = "Baleares"
+    CANARIAS      = "Canarias"
+    CANTABRIA     = "Cantabria"
+    CASTILLA_LM   = "Castilla-La Mancha"
+    CASTILLA_LEON = "Castilla y León"
+    CATALUNA      = "Cataluña"
+    CEUTA         = "Ceuta"
+    EXTREMADURA   = "Extremadura"
+    GALICIA       = "Galicia"
+    LA_RIOJA      = "La Rioja"
+    MADRID        = "Madrid"
+    MELILLA       = "Melilla"
+    MURCIA        = "Murcia"
+    NAVARRA       = "Navarra"
+    PAIS_VASCO    = "País Vasco"
+    VALENCIA      = "Valencia"
+
+
 class QuestionnaireInput(BaseModel):
     tipo_proyecto: TipoProyecto
     descripcion_breve: str = Field(max_length=500)
@@ -58,7 +82,7 @@ class QuestionnaireInput(BaseModel):
     monetizacion: Monetizacion | None = None
     contenido_digital: bool
 
-    ccaa: str
+    ccaa: ComunidadAutonoma
     es_empresa: bool
     colegiado: bool | None = None
 
