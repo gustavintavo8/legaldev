@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-06-16
+
+### Security
+- Cerrada vía de inyección de prompt en el campo `ccaa` (ahora enum cerrado de comunidades autónomas, validado por Pydantic).
+
+### Fixed
+- Eliminados chunks duplicados en `pre_rerank` en proyectos de baja señal.
+- El reranker y la llamada a Groq ya no bloquean el event loop; el servidor responde a otras peticiones (incl. `/health`) durante un análisis.
+
 ## [0.3.0] - 2026-05-25
 
 ### Added
