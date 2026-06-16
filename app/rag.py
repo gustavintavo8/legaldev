@@ -417,7 +417,9 @@ async def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
                         docs.append(doc)
 
     pre_rerank = docs[: min(settings.reranker_top_k, _main_n)] + docs[_main_n:]
-    docs = _reranker.rerank(query, pre_rerank, top_k=settings.top_k_chunks)
+    docs = await asyncio.to_thread(
+        _reranker.rerank, query, pre_rerank, top_k=settings.top_k_chunks
+    )
 
     t_retrieval = time.perf_counter()
     _metrics.retrieval_duration.observe(t_retrieval - t0)
@@ -482,7 +484,7 @@ async def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
     ]
 
     try:
-        response = state.groq_client.invoke(messages)
+        response = await asyncio.to_thread(state.groq_client.invoke, messages)
     except Exception as e:
         logger.error("Groq API error: %s", e)
         raise HTTPException(
