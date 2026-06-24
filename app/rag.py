@@ -285,13 +285,17 @@ async def _search_with_timeout(
 ) -> list:
     """Wraps similarity_search_with_relevance_scores with a timeout.
 
-    When *where* is provided it is forwarded to Chroma as a metadata filter,
-    enabling per-source retrieval without a relevance-score gate (used by
-    INJECTIONS to guarantee delivery regardless of domain proximity).
+    When *where* is provided it is forwarded to Chroma as a metadata filter
+    (via the langchain_chroma API's ``filter=`` kwarg), enabling per-source
+    retrieval without a relevance-score gate (used by INJECTIONS to guarantee
+    delivery regardless of domain proximity).
     """
     kwargs: dict = {"k": k}
     if where is not None:
-        kwargs["where"] = where
+        # langchain_chroma exposes metadata filtering via ``filter=``, not
+        # ``where=`` (which is the internal ChromaDB collection kwarg and causes
+        # a "multiple values" TypeError when passed through **kwargs).
+        kwargs["filter"] = where
     try:
         return await asyncio.wait_for(
             asyncio.to_thread(
@@ -407,6 +411,72 @@ def _build_user_message(
     return "\n".join(lines)
 
 
+def retrieve_docs_sync(
+    inp: QuestionnaireInput,
+    vs,
+    threshold: float,
+) -> list:
+    """Synchronous retrieval pipeline shared by eval and diagnostic tools.
+
+    Mirrors run_pipeline's retrieval phase exactly (main → aux → rerank →
+    exclusions → injections). Call this instead of duplicating the pipeline.
+
+    NOTE: run_pipeline wraps this logic with async timeouts and LLM calls.
+    When modifying retrieval logic in run_pipeline, update this function too,
+    and vice versa.
+    """
+    query = _build_query(inp)
+
+    # 1. Main candidates
+    candidates = vs.similarity_search_with_relevance_scores(query, k=settings.overfetch_k)
+    docs = [doc for doc, score in candidates if score >= threshold]
+    seen = {hashlib.md5(d.page_content.encode()).hexdigest() for d in docs}
+    _main_n = len(docs)
+
+    # 2. Auxiliary searches
+    for aux in AUXILIARY_SEARCHES:
+        if aux.condition(inp):
+            for doc, score in vs.similarity_search_with_relevance_scores(aux.query, k=aux.k):
+                if score >= threshold:
+                    h = hashlib.md5(doc.page_content.encode()).hexdigest()
+                    if h not in seen:
+                        seen.add(h)
+                        docs.append(doc)
+
+    # 3. pre_rerank + CrossEncoder rerank
+    pre_rerank = docs[: min(settings.reranker_top_k, _main_n)] + docs[_main_n:]
+    docs = _reranker.rerank(query, pre_rerank, top_k=settings.top_k_chunks)
+
+    # 4. Exclusions
+    excluded_stems = {exc.stem for exc in EXCLUSIONS if exc.condition(inp)}
+    if excluded_stems:
+        docs = [
+            doc
+            for doc in docs
+            if Path(doc.metadata.get("source", "")).stem not in excluded_stems
+        ]
+
+    # 5. Injections — unconditional filtered search, no score gate
+    seen_injected = {hashlib.md5(d.page_content.encode()).hexdigest() for d in docs}
+    for inj in INJECTIONS:
+        if not inj.condition(inp):
+            continue
+        if inj.stem in excluded_stems:
+            continue
+        # NOTE: keep in sync with run_pipeline's injection block in this file.
+        # Use filter= (langchain_chroma API) — not where= (internal Chroma API).
+        inj_raw = vs.similarity_search_with_relevance_scores(
+            query, k=inj.k, filter={"source": f"{inj.stem}.pdf"}
+        )
+        for doc, _score in inj_raw:
+            h = hashlib.md5(doc.page_content.encode()).hexdigest()
+            if h not in seen_injected:
+                seen_injected.add(h)
+                docs.append(doc)
+
+    return docs
+
+
 async def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
     query = _build_query(input)
     if _detect_injection(input.descripcion_breve):
@@ -461,6 +531,7 @@ async def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
             if Path(doc.metadata.get("source", "")).stem not in excluded_stems
         ]
 
+    # NOTE: keep in sync with retrieve_docs_sync() in this file (used by eval/diagnostic tools).
     seen_injected = {hashlib.md5(d.page_content.encode()).hexdigest() for d in docs}
     injected_stems: list[str] = []
     for inj in INJECTIONS:

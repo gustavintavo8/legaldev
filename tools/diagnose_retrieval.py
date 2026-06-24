@@ -165,6 +165,8 @@ def trace_pipeline(vs: Chroma, inp: QuestionnaireInput, label: str) -> dict:
         print(f"      Removed chunks: {excl_removed}")
 
     # -- 7. Injections --------------------------------------------------------
+    # Mirrors production run_pipeline injection logic (retrieve_docs_sync in rag.py).
+    # Uses source-filtered search — unconditional, no score gate.
     print(f"\n  [6] INJECTIONS:")
     seen_inj = {hashlib.md5(d.page_content.encode()).hexdigest() for d in docs_after_excl}
     injection_log: list[dict] = []
@@ -176,39 +178,26 @@ def trace_pipeline(vs: Chroma, inp: QuestionnaireInput, label: str) -> dict:
         if not fires or blocked:
             print()
             injection_log.append({"stem": inj.stem, "fires": fires, "blocked": blocked,
-                                   "candidates_above_thr": 0, "injected": 0})
+                                   "fetched": 0, "injected": 0})
             continue
-        # Find candidates above threshold for this stem
-        target_candidates = [
-            (doc, score) for doc, score in candidates_all
-            if _stem(doc) == inj.stem and score >= settings.min_relevance_score
-        ]
-        # Also check how many exist below threshold (to show what's being missed)
-        target_below = [
-            (doc, score) for doc, score in candidates_all
-            if _stem(doc) == inj.stem and score < settings.min_relevance_score
-        ]
-        target = target_candidates[: inj.k]
+        # Fetch chunks via source-filtered search — no score gate (unconditional injection)
+        # Use filter= (langchain_chroma API) — not where= (internal Chroma API).
+        inj_raw = vs.similarity_search_with_relevance_scores(
+            query, k=inj.k, filter={"source": f"{inj.stem}.pdf"}
+        )
         added = 0
-        for doc, _ in target:
+        for doc, score in inj_raw:
             h = hashlib.md5(doc.page_content.encode()).hexdigest()
             if h not in seen_inj:
                 seen_inj.add(h)
                 docs_final.append(doc)
                 added += 1
-        print(f"  cands>=thr={len(target_candidates)}  cands<thr={len(target_below)}"
-              f"  injected={added}")
-        if target_below:
-            print(f"        Best below-thr score for {inj.stem}: "
-                  f"{max(s for _, s in target_below):.4f}  "
-                  f"(threshold is {settings.min_relevance_score})")
+        print(f"  fetched={len(inj_raw)}  injected={added}")
         injection_log.append({
             "stem": inj.stem,
             "fires": fires,
             "blocked": blocked,
-            "candidates_above_thr": len(target_candidates),
-            "candidates_below_thr": len(target_below),
-            "best_below_score": round(max((s for _, s in target_below), default=0.0), 4),
+            "fetched": len(inj_raw),
             "injected": added,
         })
 

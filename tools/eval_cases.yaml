@@ -164,3 +164,43 @@ cases:
       - Adecuación al RGPD de tratamientos que incorporan IA - AEPD
       - RGPD
       - IA Agentica desde la perspectiva de proteccion de datos - AEPD
+
+  - label: probe-8-plantas-dominio-lejano
+    notes: >
+      Dominio lejano con datos personales (probe 8 original). Red social para plantas:
+      sin vocabulario legal, pero recoge nombre y email -> RGPD debe inyectarse
+      incondicionalmente. Este caso verifica el fix P3 (Task 2.1 Sprint 2):
+      la INJECTION no puede depender del score del dominio.
+      Stems verificados empíricamente: RGPD=3 chunks, LSSI=2 chunks (ambos inyectados).
+      LOPDGDD=1 chunk (no llega a >=2, no aparece en normativas_detectadas).
+    overrides:
+      descripcion_breve: "Red social para amantes de las plantas donde la gente comparte fotos y consejos sobre sus plantas"
+      tipos_datos_personales: [nombre, email]
+      tiene_usuarios_registrados: true
+      acceso_publico: true
+      usa_cookies: true
+    expected:
+      - RGPD
+      - LSSI
+    negative_expected:
+      - Adecuación al RGPD de tratamientos que incorporan IA - AEPD
+      - IA Agentica desde la perspectiva de proteccion de datos - AEPD
+
+  - label: sin-ia-sin-cookies-app-basica
+    notes: >
+      App básica sin IA, sin cookies, con datos personales básicos.
+      Verifica que el umbral P2a funciona: normativas con <2 chunks
+      no aparecen en normativas_detectadas (fix Task 2.2 Sprint 2).
+      RGPD debe aparecer (injection garantiza >=2 chunks para RGPD).
+      Stems verificados empíricamente: RGPD=3 chunks, LOPDGDD=3 chunks.
+      Sin 1-chunk normativas — P2a threshold no produce falsos positivos aquí.
+    overrides:
+      tipos_datos_personales: [email]
+      usa_ia: false
+      usa_cookies: false
+      acceso_publico: false
+    expected:
+      - RGPD
+    negative_expected:
+      - Adecuación al RGPD de tratamientos que incorporan IA - AEPD
+      - IA Agentica desde la perspectiva de proteccion de datos - AEPD

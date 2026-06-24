@@ -400,10 +400,10 @@ def test_run_pipeline_filters_below_threshold(sample_input, mock_reranker):
     low_doc = _make_mock_doc("LOPDGDD.pdf", "normativa_española")
     state = MagicMock()
 
-    # Injection calls pass where={"source": <stem>}; return [] for those to
+    # Injection calls pass filter={"source": <stem>}; return [] for those to
     # isolate the threshold-filtering behaviour being tested here.
     def _search_side_effect(*args, **kwargs):
-        if kwargs.get("where"):
+        if kwargs.get("filter"):
             return []
         return [(high_doc1, 0.8), (high_doc2, 0.8), (low_doc, 0.05)]
 
@@ -468,10 +468,10 @@ def test_run_pipeline_excludes_ens_always(mock_reranker):
     rgpd_doc2 = _make_mock_doc("RGPD.pdf")
     state = MagicMock()
 
-    # Injection calls pass where={"source": <stem>}; return [] to isolate
+    # Injection calls pass filter={"source": <stem>}; return [] to isolate
     # the exclusion behaviour being tested here.
     def _search_side_effect(*args, **kwargs):
-        if kwargs.get("where"):
+        if kwargs.get("filter"):
             return []
         return [(ens_doc, 0.85), (rgpd_doc1, 0.85), (rgpd_doc2, 0.85)]
 
@@ -494,10 +494,10 @@ def test_run_pipeline_excludes_lpi_when_no_contenido_digital(mock_reranker):
     rgpd_doc = _make_mock_doc("RGPD.pdf")
     state = MagicMock()
 
-    # Injection calls pass where={"source": <stem>}; return [] to isolate
+    # Injection calls pass filter={"source": <stem>}; return [] to isolate
     # the exclusion behaviour being tested here.
     def _search_side_effect(*args, **kwargs):
-        if kwargs.get("where"):
+        if kwargs.get("filter"):
             return []
         return [(lpi_doc, 0.85), (rgpd_doc, 0.85)]
 
@@ -700,7 +700,7 @@ def test_injection_delivers_rgpd_even_when_all_scores_below_threshold(mock_reran
     still collects user emails — all main-search scores below min_relevance_score,
     so docs=[] after threshold filtering.  Before the fix, the INJECTION loop
     gated on the same threshold → RGPD was never delivered.
-    After the fix, a filtered search (where={"source": "RGPD.pdf"}) is issued
+    After the fix, a filtered search (filter={"source": "RGPD.pdf"}) is issued
     unconditionally and injects the chunks regardless of domain scores.
 
     Task 2.2 (P2a): the injection returns k=3 chunks so RGPD clears the ≥2
@@ -717,10 +717,10 @@ def test_injection_delivers_rgpd_even_when_all_scores_below_threshold(mock_reran
 
     state = MagicMock()
     # All unfiltered calls return below-threshold scores.
-    # The filtered injection call (where={"source": "RGPD.pdf"}) returns 2 distinct
+    # The filtered injection call (filter={"source": "RGPD.pdf"}) returns 2 distinct
     # RGPD chunks (low score — ignored by injection path, but ≥2 satisfies P2a).
     def _search_side_effect(*args, **kwargs):
-        if kwargs.get("where") == {"source": "RGPD.pdf"}:
+        if kwargs.get("filter") == {"source": "RGPD.pdf"}:
             return [
                 (rgpd_chunk1, 0.10),
                 (rgpd_chunk2, 0.10),
@@ -779,11 +779,11 @@ def test_injection_delivers_ccii_when_colegiado(mock_reranker):
 
     state = MagicMock()
     # All unfiltered/auxiliary calls return low/no scores.
-    # The filtered injection call (where={"source": "Código Ético y Deontológico CCII.pdf"})
+    # The filtered injection call (filter={"source": "Código Ético y Deontológico CCII.pdf"})
     # returns 2 distinct CCII chunks (score ignored by injection path, but ≥2 satisfies P2a).
     def _search_side_effect(*args, **kwargs):
-        where = kwargs.get("where", {})
-        if where.get("source") == "Código Ético y Deontológico CCII.pdf":
+        filt = kwargs.get("filter", {})
+        if filt.get("source") == "Código Ético y Deontológico CCII.pdf":
             return [(ccii_chunk1, 0.10), (ccii_chunk2, 0.10)]
         return [(off_topic_doc, 0.05)]  # main/aux searches: all below threshold
 
