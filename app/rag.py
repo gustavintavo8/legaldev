@@ -199,6 +199,11 @@ INJECTIONS: list[Injection] = [
         stem="IA Agentica desde la perspectiva de proteccion de datos - AEPD",
         k=2,
     ),
+    Injection(
+        condition=lambda inp: bool(inp.colegiado),
+        stem="Código Ético y Deontológico CCII",
+        k=2,
+    ),
 ]
 
 
@@ -532,7 +537,7 @@ async def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
     # so header (normativas_detectadas) and body must use the same threshold.
     # Normativas with exactly 1 chunk are omitted — insufficient coverage for
     # reliable obligation extraction.  INJECTION rules (Task 2.1) guarantee that
-    # RGPD, EU AI Act, and LSSI always deliver ≥2 chunks when applicable.
+    # RGPD, EU AI Act, LSSI, and CCII always deliver ≥2 chunks when applicable.
     _chunks_per_norm: dict[str, int] = {}
     for doc in docs:
         stem = Path(doc.metadata["source"]).stem if "source" in doc.metadata else None

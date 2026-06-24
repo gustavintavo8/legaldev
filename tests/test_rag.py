@@ -269,6 +269,7 @@ def test_run_pipeline_returns_rag_response(sample_input, mock_reranker):
 
 
 def test_run_pipeline_normativas_deduplicadas(sample_input, mock_reranker):
+    # also covers P2a: 2 chunks → RGPD clears >=2 threshold
     docs = [_make_mock_doc("RGPD.pdf"), _make_mock_doc("RGPD.pdf")]
     result = asyncio.run(run_pipeline(sample_input, _make_state(docs)))
     assert result.normativas_detectadas.count("RGPD") == 1
@@ -353,14 +354,16 @@ def test_run_pipeline_no_relevant_docs_raises_404(mock_reranker):
 
 def test_run_pipeline_colegiado_triggers_auxiliary_search(mock_reranker):
     # colegiado=True + default tipos_datos_personales=["email"] → rgpd + ccii aux fire
-    # + RGPD injection fires (unconditional filtered search)
+    # + RGPD.pdf injection fires (unconditional filtered search)
+    # + CCII injection fires (unconditional filtered search, colegiado=True)
     docs = [_make_mock_doc("RGPD.pdf")]
     state = MagicMock()
     state.vectorstore.similarity_search_with_relevance_scores.side_effect = [
         [(docs[0], 0.85)],  # main search
         [],  # rgpd auxiliary
         [],  # ccii auxiliary
-        [],  # RGPD injection (filtered, unconditional)
+        [],  # RGPD.pdf injection (filtered, unconditional)
+        [],  # CCII injection (filtered, unconditional)
     ]
     state.groq_client.invoke.return_value = MagicMock(content="ok")
     state.indexed_normativas = frozenset({"RGPD"})
@@ -368,7 +371,7 @@ def test_run_pipeline_colegiado_triggers_auxiliary_search(mock_reranker):
 
     asyncio.run(run_pipeline(_make_input(colegiado=True), state))
 
-    assert state.vectorstore.similarity_search_with_relevance_scores.call_count == 4
+    assert state.vectorstore.similarity_search_with_relevance_scores.call_count == 5
 
 
 def test_run_pipeline_colegiado_none_no_ccii_auxiliary_search(mock_reranker):
@@ -419,13 +422,13 @@ def test_run_pipeline_filters_below_threshold(sample_input, mock_reranker):
 
 
 def test_run_pipeline_rgpd_aux_search_triggers_with_personal_data(mock_reranker):
-    # tipos_datos_personales=["email"] fires: rgpd aux + RGPD injection (filtered)
+    # tipos_datos_personales=["email"] fires: rgpd aux + RGPD.pdf injection (filtered)
     docs = [_make_mock_doc("RGPD.pdf")]
     state = MagicMock()
     state.vectorstore.similarity_search_with_relevance_scores.side_effect = [
         [(docs[0], 0.85)],  # main search
         [],  # rgpd auxiliary
-        [],  # RGPD injection (filtered, unconditional)
+        [],  # RGPD.pdf injection (filtered, unconditional)
     ]
     state.groq_client.invoke.return_value = MagicMock(content="ok")
     state.indexed_normativas = frozenset({"RGPD"})
@@ -507,6 +510,9 @@ def test_run_pipeline_excludes_lpi_when_no_contenido_digital(mock_reranker):
 
     result = asyncio.run(run_pipeline(_make_input(contenido_digital=False), state))
 
+    # LPI is excluded by the exclusion rule (no contenido_digital).
+    # RGPD has only 1 chunk here (injection returns [] above) → below the ≥2 threshold,
+    # so it is also absent from normativas_detectadas; only chunks_utilizados==1 confirms it passed reranker.
     assert result.chunks_utilizados == 1
     assert "Ley de Propiedad Intelectual" not in result.normativas_detectadas
 
@@ -741,7 +747,67 @@ def test_injection_delivers_rgpd_even_when_all_scores_below_threshold(mock_reran
         )
     )
 
-    assert "RGPD" in result.normativas_detectadas, (
-        "RGPD must be injected even when all domain scores are below the threshold"
+    assert result.normativas_detectadas == ["RGPD"], (
+        "RGPD must be injected even when all domain scores are below the threshold, "
+        "and no other normativa should appear in this fully-controlled scenario"
+    )
+    assert result.chunks_utilizados >= 2
+
+
+def test_injection_delivers_ccii_when_colegiado(mock_reranker):
+    """CCII injection fix: Código Ético y Deontológico CCII must be injected when
+    colegiado=True even if the auxiliary search only returned 1 chunk (below ≥2 threshold).
+
+    Before the fix: CCII could arrive via auxiliary search with only 1 chunk, missing
+    the ≥2 normativas_detectadas threshold — header/body diverge.
+    After the fix: an INJECTION rule guarantees k=2 CCII chunks via source-filtered
+    search, unconditionally clearing the threshold.
+    """
+    ccii_chunk1 = MagicMock()
+    ccii_chunk1.page_content = "CCII Art. 1 — principios deontológicos del ingeniero informático."
+    ccii_chunk1.metadata = {
+        "source": "Código Ético y Deontológico CCII.pdf",
+        "doc_type": "normativa_española",
+    }
+    ccii_chunk2 = MagicMock()
+    ccii_chunk2.page_content = "CCII Art. 5 — responsabilidad profesional y confidencialidad."
+    ccii_chunk2.metadata = {
+        "source": "Código Ético y Deontológico CCII.pdf",
+        "doc_type": "normativa_española",
+    }
+    off_topic_doc = _make_mock_doc("otra_normativa.pdf")
+
+    state = MagicMock()
+    # All unfiltered/auxiliary calls return low/no scores.
+    # The filtered injection call (where={"source": "Código Ético y Deontológico CCII.pdf"})
+    # returns 2 distinct CCII chunks (score ignored by injection path, but ≥2 satisfies P2a).
+    def _search_side_effect(*args, **kwargs):
+        where = kwargs.get("where", {})
+        if where.get("source") == "Código Ético y Deontológico CCII.pdf":
+            return [(ccii_chunk1, 0.10), (ccii_chunk2, 0.10)]
+        return [(off_topic_doc, 0.05)]  # main/aux searches: all below threshold
+
+    state.vectorstore.similarity_search_with_relevance_scores.side_effect = (
+        _search_side_effect
+    )
+    state.groq_client.invoke.return_value = MagicMock(content="ok")
+    state.indexed_normativas = frozenset({"Código Ético y Deontológico CCII"})
+    state.corpus_version = "test-corpus-v1"
+
+    result = asyncio.run(
+        run_pipeline(
+            _make_input(
+                descripcion_breve="Software de gestión para despacho de ingeniería informática colegiada",
+                tipos_datos_personales=["ninguno"],
+                usa_ia=False,
+                usa_cookies=False,
+                colegiado=True,
+            ),
+            state,
+        )
+    )
+
+    assert "Código Ético y Deontológico CCII" in result.normativas_detectadas, (
+        "CCII must be injected when colegiado=True to guarantee ≥2 chunks and clear the threshold"
     )
     assert result.chunks_utilizados >= 2
