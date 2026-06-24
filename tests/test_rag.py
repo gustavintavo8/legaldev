@@ -2,6 +2,7 @@ import asyncio
 import hashlib
 import logging
 import time
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -15,6 +16,7 @@ from app.rag import (
     _build_query,
     _build_user_message,
     _render_coverage_section,
+    retrieve_docs_sync,
     run_pipeline,
 )
 
@@ -515,6 +517,7 @@ def test_run_pipeline_excludes_lpi_when_no_contenido_digital(mock_reranker):
     # so it is also absent from normativas_detectadas; only chunks_utilizados==1 confirms it passed reranker.
     assert result.chunks_utilizados == 1
     assert "Ley de Propiedad Intelectual" not in result.normativas_detectadas
+    assert "RGPD" not in result.normativas_detectadas
 
 
 def test_run_pipeline_keeps_lpi_when_contenido_digital(mock_reranker):
@@ -811,3 +814,64 @@ def test_injection_delivers_ccii_when_colegiado(mock_reranker):
         "CCII must be injected when colegiado=True to guarantee ≥2 chunks and clear the threshold"
     )
     assert result.chunks_utilizados >= 2
+
+
+def test_retrieve_docs_sync_and_run_pipeline_produce_same_stems(mock_reranker):
+    """Synchrony guard: retrieve_docs_sync and run_pipeline must return the same normativa stems.
+
+    If someone changes the retrieval logic in one function but not the other, CI breaks.
+    This test uses personal data input to trigger RGPD injection and exercises both
+    the standard retrieval path and the injection mechanism.
+    """
+    # Create 2 RGPD chunks with distinct content so injection can return both
+    rgpd_chunk1 = MagicMock()
+    rgpd_chunk1.page_content = "RGPD Art. 5 — tratamiento lícito de datos."
+    rgpd_chunk1.metadata = {"source": "RGPD.pdf", "doc_type": "normativa_europea"}
+    rgpd_chunk2 = MagicMock()
+    rgpd_chunk2.page_content = "RGPD Art. 13 — información al interesado."
+    rgpd_chunk2.metadata = {"source": "RGPD.pdf", "doc_type": "normativa_europea"}
+
+    # Test input with personal data → RGPD injection fires
+    inp = _make_input(
+        tipos_datos_personales=["email"],
+        usa_ia=False,
+        usa_cookies=False,
+        colegiado=None,
+    )
+
+    # Mock vectorstore with deterministic side_effect
+    def _search_side_effect(*args, **kwargs):
+        # Injection call with filter={"source": "RGPD.pdf"}
+        if kwargs.get("filter") == {"source": "RGPD.pdf"}:
+            return [(rgpd_chunk1, 0.85), (rgpd_chunk2, 0.85)]
+        # Main search / aux searches: return empty to isolate injection behaviour
+        return []
+
+    # Call retrieve_docs_sync (synchronous path)
+    mock_vs_sync = MagicMock()
+    mock_vs_sync.similarity_search_with_relevance_scores.side_effect = _search_side_effect
+
+    threshold = settings.min_relevance_score
+    sync_docs = retrieve_docs_sync(inp, mock_vs_sync, threshold)
+    sync_stems = {
+        Path(doc.metadata.get("source", "")).stem for doc in sync_docs
+    }
+
+    # Call run_pipeline (async path) with fresh mock
+    mock_vs_pipeline = MagicMock()
+    mock_vs_pipeline.similarity_search_with_relevance_scores.side_effect = _search_side_effect
+
+    state = MagicMock()
+    state.vectorstore = mock_vs_pipeline
+    state.groq_client.invoke.return_value = MagicMock(content="ok")
+    state.indexed_normativas = frozenset({"RGPD"})
+    state.corpus_version = "test-corpus-v1"
+
+    result = asyncio.run(run_pipeline(inp, state))
+    # Extract stems from result's normativas_detectadas
+    pipeline_stems = set(result.normativas_detectadas)
+
+    assert sync_stems == pipeline_stems, (
+        f"retrieve_docs_sync returned {sync_stems} but run_pipeline returned {pipeline_stems}. "
+        "Retrieval logic must be synchronized between both functions."
+    )
