@@ -37,3 +37,6 @@ docs/superpowers/
 
 # Graphify tooling output
 graphify-out/
+
+# Git worktrees
+.worktrees/
