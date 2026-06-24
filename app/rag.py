@@ -55,6 +55,16 @@ class AuxSearch:
     Añadir una entrada cuando una normativa queda sistemáticamente enterrada por dilución
     léxica (e.g., "datos personales" domina el ranking y desplaza documentos de dominio
     específico). La condición acota la búsqueda: coste cero cuando no aplica.
+
+    NOTE (unification deferred — Task 2.1): AuxSearch and Injection both use
+    _search_with_timeout but differ in three important ways:
+      - AuxSearch: semantic query, score-gated, pre-reranker.
+      - Injection:  source-filtered (filter={"source": stem} via langchain_chroma API,
+                   passed as where= to _search_with_timeout which translates it), unconditional,
+                   post-reranker.
+    A common abstraction would need a discriminator field and conditional logic
+    that adds more complexity than it saves.  Revisit if a third fetch variant
+    emerges that shares enough structure to justify the abstraction.
     """
 
     condition: Callable[[QuestionnaireInput], bool]
@@ -190,6 +200,11 @@ INJECTIONS: list[Injection] = [
         stem="IA Agentica desde la perspectiva de proteccion de datos - AEPD",
         k=2,
     ),
+    Injection(
+        condition=lambda inp: bool(inp.colegiado),
+        stem="Código Ético y Deontológico CCII",
+        k=2,
+    ),
 ]
 
 
@@ -262,11 +277,30 @@ def _render_coverage_section(not_retrieved: list[str]) -> str:
     return "\n".join(lines)
 
 
-async def _search_with_timeout(vectorstore, query: str, k: int, timeout: float) -> list:
+async def _search_with_timeout(
+    vectorstore,
+    query: str,
+    k: int,
+    timeout: float,
+    where: dict | None = None,
+) -> list:
+    """Wraps similarity_search_with_relevance_scores with a timeout.
+
+    When *where* is provided it is forwarded to Chroma as a metadata filter
+    (via the langchain_chroma API's ``filter=`` kwarg), enabling per-source
+    retrieval without a relevance-score gate (used by INJECTIONS to guarantee
+    delivery regardless of domain proximity).
+    """
+    kwargs: dict = {"k": k}
+    if where is not None:
+        # langchain_chroma exposes metadata filtering via ``filter=``, not
+        # ``where=`` (which is the internal ChromaDB collection kwarg and causes
+        # a "multiple values" TypeError when passed through **kwargs).
+        kwargs["filter"] = where
     try:
         return await asyncio.wait_for(
             asyncio.to_thread(
-                vectorstore.similarity_search_with_relevance_scores, query, k=k
+                vectorstore.similarity_search_with_relevance_scores, query, **kwargs
             ),
             timeout=timeout,
         )
@@ -378,6 +412,76 @@ def _build_user_message(
     return "\n".join(lines)
 
 
+def retrieve_docs_sync(
+    inp: QuestionnaireInput,
+    vs,
+    threshold: float,
+) -> list:
+    """Synchronous retrieval pipeline shared by eval and diagnostic tools.
+
+    Mirrors run_pipeline's retrieval phase exactly (main → aux → rerank →
+    exclusions → injections). Call this instead of duplicating the pipeline.
+
+    NOTE: run_pipeline wraps this logic with async timeouts and LLM calls.
+    When modifying retrieval logic in run_pipeline, update this function too,
+    and vice versa.
+    """
+    query = _build_query(inp)
+
+    # 1. Main candidates
+    candidates = vs.similarity_search_with_relevance_scores(
+        query, k=settings.overfetch_k
+    )
+    docs = [doc for doc, score in candidates if score >= threshold]
+    seen = {hashlib.md5(d.page_content.encode()).hexdigest() for d in docs}
+    _main_n = len(docs)
+
+    # 2. Auxiliary searches
+    for aux in AUXILIARY_SEARCHES:
+        if aux.condition(inp):
+            for doc, score in vs.similarity_search_with_relevance_scores(
+                aux.query, k=aux.k
+            ):
+                if score >= threshold:
+                    h = hashlib.md5(doc.page_content.encode()).hexdigest()
+                    if h not in seen:
+                        seen.add(h)
+                        docs.append(doc)
+
+    # 3. pre_rerank + CrossEncoder rerank
+    pre_rerank = docs[: min(settings.reranker_top_k, _main_n)] + docs[_main_n:]
+    docs = _reranker.rerank(query, pre_rerank, top_k=settings.top_k_chunks)
+
+    # 4. Exclusions
+    excluded_stems = {exc.stem for exc in EXCLUSIONS if exc.condition(inp)}
+    if excluded_stems:
+        docs = [
+            doc
+            for doc in docs
+            if Path(doc.metadata.get("source", "")).stem not in excluded_stems
+        ]
+
+    # 5. Injections — unconditional filtered search, no score gate
+    seen_injected = {hashlib.md5(d.page_content.encode()).hexdigest() for d in docs}
+    for inj in INJECTIONS:
+        if not inj.condition(inp):
+            continue
+        if inj.stem in excluded_stems:
+            continue
+        # NOTE: keep in sync with run_pipeline's injection block in this file.
+        # Use filter= (langchain_chroma API) — not where= (internal Chroma API).
+        inj_raw = vs.similarity_search_with_relevance_scores(
+            query, k=inj.k, filter={"source": f"{inj.stem}.pdf"}
+        )
+        for doc, _score in inj_raw:
+            h = hashlib.md5(doc.page_content.encode()).hexdigest()
+            if h not in seen_injected:
+                seen_injected.add(h)
+                docs.append(doc)
+
+    return docs
+
+
 async def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
     query = _build_query(input)
     if _detect_injection(input.descripcion_breve):
@@ -432,6 +536,7 @@ async def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
             if Path(doc.metadata.get("source", "")).stem not in excluded_stems
         ]
 
+    # NOTE: keep in sync with retrieve_docs_sync() in this file (used by eval/diagnostic tools).
     seen_injected = {hashlib.md5(d.page_content.encode()).hexdigest() for d in docs}
     injected_stems: list[str] = []
     for inj in INJECTIONS:
@@ -439,14 +544,20 @@ async def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
             continue
         if inj.stem in excluded_stems:
             continue
-        target = [
-            doc
-            for doc, score in candidates
-            if Path(doc.metadata.get("source", "")).stem == inj.stem
-            and score >= settings.min_relevance_score
-        ][: inj.k]
+        # Fetch chunks unconditionally via a source-filtered search.
+        # Do NOT gate on min_relevance_score here: an INJECTION is a guarantee,
+        # not a suggestion.  Using where={"source": stem} lets Chroma return the
+        # top-k chunks for that document even when all domain scores are < 0.40
+        # (e.g. "red social para plantas" still needs RGPD if it collects emails).
+        inj_candidates = await _search_with_timeout(
+            state.vectorstore,
+            query,
+            k=inj.k,
+            timeout=settings.chroma_timeout,
+            where={"source": f"{inj.stem}.pdf"},
+        )
         added = 0
-        for doc in target:
+        for doc, _score in inj_candidates:
             h = hashlib.md5(doc.page_content.encode()).hexdigest()
             if h not in seen_injected:
                 seen_injected.add(h)
@@ -497,7 +608,18 @@ async def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
     _metrics.chunks_retrieved.observe(len(docs))
     if candidates:
         _metrics.top_score.observe(candidates[0][1])
-    normativas = list(retrieved_sources)
+    # P2a: only report a normativa if it has ≥2 retrieved chunks.
+    # The body section opener in SYSTEM_PROMPT requires ≥2 chunks to open a section,
+    # so header (normativas_detectadas) and body must use the same threshold.
+    # Normativas with exactly 1 chunk are omitted — insufficient coverage for
+    # reliable obligation extraction.  INJECTION rules (Task 2.1) guarantee that
+    # RGPD, EU AI Act, LSSI, and CCII always deliver ≥2 chunks when applicable.
+    _chunks_per_norm: dict[str, int] = {}
+    for doc in docs:
+        stem = Path(doc.metadata["source"]).stem if "source" in doc.metadata else None
+        if stem:
+            _chunks_per_norm[stem] = _chunks_per_norm.get(stem, 0) + 1
+    normativas = [stem for stem, count in _chunks_per_norm.items() if count >= 2]
 
     # PII policy: log only hash/length of free-text fields, never raw content
     logger.info(

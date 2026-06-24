@@ -14,7 +14,6 @@ opcionalmente negative_expected con stems que NO deben aparecer.
 
 import argparse
 import datetime
-import hashlib
 import os
 import sys
 from pathlib import Path
@@ -26,10 +25,9 @@ import yaml
 from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
 
-from app import reranker as _reranker
 from app.config import settings
 from app.models import QuestionnaireInput
-from app.rag import AUXILIARY_SEARCHES, EXCLUSIONS, INJECTIONS, _build_query
+from app.rag import retrieve_docs_sync
 
 _SUPPORTED_MODELS = [
     "all-MiniLM-L6-v2",
@@ -48,61 +46,12 @@ def _make_input(base: dict, overrides: dict) -> QuestionnaireInput:
     return QuestionnaireInput(**{**base, **(overrides or {})})
 
 
-def _retrieve(vs, query: str, k: int, threshold: float) -> list:
-    return [
-        doc
-        for doc, score in vs.similarity_search_with_relevance_scores(query, k=k)
-        if score >= threshold
-    ]
-
-
 def run_case(case: dict, base_input: dict, vs, threshold: float) -> dict:
     inp = _make_input(base_input, case.get("overrides"))
     expected: list[str] = case.get("expected", [])
     negative_expected: list[str] = case.get("negative_expected", [])
-    query = _build_query(inp)
 
-    # Main query — keep raw candidates for injection (mirrors run_pipeline)
-    candidates = vs.similarity_search_with_relevance_scores(query, k=settings.overfetch_k)
-    docs = [doc for doc, score in candidates if score >= threshold]
-    main_n = len(docs)
-    seen = {hashlib.md5(d.page_content.encode()).hexdigest() for d in docs}
-
-    for aux in AUXILIARY_SEARCHES:
-        if aux.condition(inp):
-            for doc in _retrieve(vs, aux.query, aux.k, threshold):
-                h = hashlib.md5(doc.page_content.encode()).hexdigest()
-                if h not in seen:
-                    seen.add(h)
-                    docs.append(doc)
-
-    # Mirror production: pre_rerank slicing + CrossEncoder (same as run_pipeline)
-    pre_rerank = docs[: min(settings.reranker_top_k, main_n)] + docs[main_n:]
-    docs = _reranker.rerank(query, pre_rerank, top_k=settings.top_k_chunks)
-
-    # Mirror production: apply EXCLUSIONS post-reranker (same as run_pipeline)
-    excluded = {exc.stem for exc in EXCLUSIONS if exc.condition(inp)}
-    if excluded:
-        docs = [d for d in docs if Path(d.metadata.get("source", "")).stem not in excluded]
-
-    # Mirror production: INJECTIONS (uses candidates from main query)
-    seen_inj = {hashlib.md5(d.page_content.encode()).hexdigest() for d in docs}
-    for inj in INJECTIONS:
-        if not inj.condition(inp):
-            continue
-        if inj.stem in excluded:
-            continue
-        target = [
-            doc
-            for doc, score in candidates
-            if Path(doc.metadata.get("source", "")).stem == inj.stem
-            and score >= threshold
-        ][: inj.k]
-        for doc in target:
-            h = hashlib.md5(doc.page_content.encode()).hexdigest()
-            if h not in seen_inj:
-                seen_inj.add(h)
-                docs.append(doc)
+    docs = retrieve_docs_sync(inp, vs, threshold)
 
     retrieved_stems = {
         Path(d.metadata["source"]).stem for d in docs if "source" in d.metadata
@@ -122,13 +71,11 @@ def run_case(case: dict, base_input: dict, vs, threshold: float) -> dict:
         "false_positives": false_positives,
         "recall": recall,
         "chunks": len(docs),
+        "retrieved_stems": retrieved_stems,
     }
 
 
-def _compute_noise(docs: list, expected: list[str]) -> int:
-    retrieved_stems = {
-        Path(d.metadata["source"]).stem for d in docs if "source" in d.metadata
-    }
+def _compute_noise(retrieved_stems: set[str], expected: list[str]) -> int:
     return len(retrieved_stems - set(expected))
 
 
@@ -142,9 +89,9 @@ def sweep(vs, base_input: dict, cases: list[dict]) -> list[tuple]:
             if r["recall"] is not None:
                 recalls.append(r["recall"])
             fps.append(len(r["false_positives"]))
-            inp = _make_input(base_input, case.get("overrides"))
-            docs = _retrieve(vs, _build_query(inp), settings.overfetch_k, t)
-            noises.append(_compute_noise(docs, case.get("expected", [])))
+            noises.append(
+                _compute_noise(r["retrieved_stems"], case.get("expected", []))
+            )
         avg_recall = sum(recalls) / len(recalls) if recalls else 0.0
         avg_fp = sum(fps) / len(fps) if fps else 0.0
         avg_noise = sum(noises) / len(noises) if noises else 0.0
@@ -206,7 +153,9 @@ def main():
 
     if args.sweep:
         rows = sweep(vs, base_input, cases)
-        print(f"\n{'Threshold':>10}  {'Avg Recall':>10}  {'Avg FP':>8}  {'Avg Noise':>10}")
+        print(
+            f"\n{'Threshold':>10}  {'Avg Recall':>10}  {'Avg FP':>8}  {'Avg Noise':>10}"
+        )
         print("-" * 46)
         for t, recall, avg_fp, noise in rows:
             print(f"{t:>10.2f}  {recall:>10.0%}  {avg_fp:>8.1f}  {noise:>10.1f}")
