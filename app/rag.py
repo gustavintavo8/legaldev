@@ -527,7 +527,18 @@ async def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
     _metrics.chunks_retrieved.observe(len(docs))
     if candidates:
         _metrics.top_score.observe(candidates[0][1])
-    normativas = list(retrieved_sources)
+    # P2a: only report a normativa if it has ≥2 retrieved chunks.
+    # The body section opener in SYSTEM_PROMPT requires ≥2 chunks to open a section,
+    # so header (normativas_detectadas) and body must use the same threshold.
+    # Normativas with exactly 1 chunk are omitted — insufficient coverage for
+    # reliable obligation extraction.  INJECTION rules (Task 2.1) guarantee that
+    # RGPD, EU AI Act, and LSSI always deliver ≥2 chunks when applicable.
+    _chunks_per_norm: dict[str, int] = {}
+    for doc in docs:
+        stem = Path(doc.metadata["source"]).stem if "source" in doc.metadata else None
+        if stem:
+            _chunks_per_norm[stem] = _chunks_per_norm.get(stem, 0) + 1
+    normativas = [stem for stem, count in _chunks_per_norm.items() if count >= 2]
 
     # PII policy: log only hash/length of free-text fields, never raw content
     logger.info(
