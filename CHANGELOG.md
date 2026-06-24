@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-06-24
+
+### Added
+- INJECTIONS incondicionales: la normativa aplicable se garantiza aunque el proyecto sea de dominio lejano (RGPD ahora se recupera en casos donde antes no). [P3]
+- 2 casos nuevos en la suite de evaluación (dominio lejano + 1-chunk).
+
+### Changed
+- normativas_detectadas usa umbral ≥2 chunks: coherencia entre la normativa del header y las secciones del cuerpo. [P2a]
+- Retrieval unificado en retrieve_docs_sync: el eval ejecuta ahora la misma lógica que producción (elimina la divergencia eval↔producción).
+
+### Fixed
+- filter= en la búsqueda de Chroma (antes where=): las INJECTIONS habrían lanzado TypeError con Chroma real.
+
 ## [0.3.1] - 2026-06-16
 
 ### Security
