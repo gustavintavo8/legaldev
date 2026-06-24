@@ -89,7 +89,9 @@ def sweep(vs, base_input: dict, cases: list[dict]) -> list[tuple]:
             if r["recall"] is not None:
                 recalls.append(r["recall"])
             fps.append(len(r["false_positives"]))
-            noises.append(_compute_noise(r["retrieved_stems"], case.get("expected", [])))
+            noises.append(
+                _compute_noise(r["retrieved_stems"], case.get("expected", []))
+            )
         avg_recall = sum(recalls) / len(recalls) if recalls else 0.0
         avg_fp = sum(fps) / len(fps) if fps else 0.0
         avg_noise = sum(noises) / len(noises) if noises else 0.0
@@ -151,7 +153,9 @@ def main():
 
     if args.sweep:
         rows = sweep(vs, base_input, cases)
-        print(f"\n{'Threshold':>10}  {'Avg Recall':>10}  {'Avg FP':>8}  {'Avg Noise':>10}")
+        print(
+            f"\n{'Threshold':>10}  {'Avg Recall':>10}  {'Avg FP':>8}  {'Avg Noise':>10}"
+        )
         print("-" * 46)
         for t, recall, avg_fp, noise in rows:
             print(f"{t:>10.2f}  {recall:>10.0%}  {avg_fp:>8.1f}  {noise:>10.1f}")

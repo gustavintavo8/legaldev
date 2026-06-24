@@ -719,6 +719,7 @@ def test_injection_delivers_rgpd_even_when_all_scores_below_threshold(mock_reran
     off_topic_doc = _make_mock_doc("otra_normativa.pdf")
 
     state = MagicMock()
+
     # All unfiltered calls return below-threshold scores.
     # The filtered injection call (filter={"source": "RGPD.pdf"}) returns 2 distinct
     # RGPD chunks (low score — ignored by injection path, but ≥2 satisfies P2a).
@@ -767,13 +768,17 @@ def test_injection_delivers_ccii_when_colegiado(mock_reranker):
     search, unconditionally clearing the threshold.
     """
     ccii_chunk1 = MagicMock()
-    ccii_chunk1.page_content = "CCII Art. 1 — principios deontológicos del ingeniero informático."
+    ccii_chunk1.page_content = (
+        "CCII Art. 1 — principios deontológicos del ingeniero informático."
+    )
     ccii_chunk1.metadata = {
         "source": "Código Ético y Deontológico CCII.pdf",
         "doc_type": "normativa_española",
     }
     ccii_chunk2 = MagicMock()
-    ccii_chunk2.page_content = "CCII Art. 5 — responsabilidad profesional y confidencialidad."
+    ccii_chunk2.page_content = (
+        "CCII Art. 5 — responsabilidad profesional y confidencialidad."
+    )
     ccii_chunk2.metadata = {
         "source": "Código Ético y Deontológico CCII.pdf",
         "doc_type": "normativa_española",
@@ -781,6 +786,7 @@ def test_injection_delivers_ccii_when_colegiado(mock_reranker):
     off_topic_doc = _make_mock_doc("otra_normativa.pdf")
 
     state = MagicMock()
+
     # All unfiltered/auxiliary calls return low/no scores.
     # The filtered injection call (filter={"source": "Código Ético y Deontológico CCII.pdf"})
     # returns 2 distinct CCII chunks (score ignored by injection path, but ≥2 satisfies P2a).
@@ -849,17 +855,19 @@ def test_retrieve_docs_sync_and_run_pipeline_produce_same_stems(mock_reranker):
 
     # Call retrieve_docs_sync (synchronous path)
     mock_vs_sync = MagicMock()
-    mock_vs_sync.similarity_search_with_relevance_scores.side_effect = _search_side_effect
+    mock_vs_sync.similarity_search_with_relevance_scores.side_effect = (
+        _search_side_effect
+    )
 
     threshold = settings.min_relevance_score
     sync_docs = retrieve_docs_sync(inp, mock_vs_sync, threshold)
-    sync_stems = {
-        Path(doc.metadata.get("source", "")).stem for doc in sync_docs
-    }
+    sync_stems = {Path(doc.metadata.get("source", "")).stem for doc in sync_docs}
 
     # Call run_pipeline (async path) with fresh mock
     mock_vs_pipeline = MagicMock()
-    mock_vs_pipeline.similarity_search_with_relevance_scores.side_effect = _search_side_effect
+    mock_vs_pipeline.similarity_search_with_relevance_scores.side_effect = (
+        _search_side_effect
+    )
 
     state = MagicMock()
     state.vectorstore = mock_vs_pipeline

@@ -429,7 +429,9 @@ def retrieve_docs_sync(
     query = _build_query(inp)
 
     # 1. Main candidates
-    candidates = vs.similarity_search_with_relevance_scores(query, k=settings.overfetch_k)
+    candidates = vs.similarity_search_with_relevance_scores(
+        query, k=settings.overfetch_k
+    )
     docs = [doc for doc, score in candidates if score >= threshold]
     seen = {hashlib.md5(d.page_content.encode()).hexdigest() for d in docs}
     _main_n = len(docs)
@@ -437,7 +439,9 @@ def retrieve_docs_sync(
     # 2. Auxiliary searches
     for aux in AUXILIARY_SEARCHES:
         if aux.condition(inp):
-            for doc, score in vs.similarity_search_with_relevance_scores(aux.query, k=aux.k):
+            for doc, score in vs.similarity_search_with_relevance_scores(
+                aux.query, k=aux.k
+            ):
                 if score >= threshold:
                     h = hashlib.md5(doc.page_content.encode()).hexdigest()
                     if h not in seen:
