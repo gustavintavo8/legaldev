@@ -55,6 +55,15 @@ class AuxSearch:
     Añadir una entrada cuando una normativa queda sistemáticamente enterrada por dilución
     léxica (e.g., "datos personales" domina el ranking y desplaza documentos de dominio
     específico). La condición acota la búsqueda: coste cero cuando no aplica.
+
+    NOTE (unification deferred — Task 2.1): AuxSearch and Injection both use
+    _search_with_timeout but differ in three important ways:
+      - AuxSearch: semantic query, score-gated, pre-reranker.
+      - Injection:  source-filtered (where={"source": stem}), unconditional,
+                   post-reranker.
+    A common abstraction would need a discriminator field and conditional logic
+    that adds more complexity than it saves.  Revisit if a third fetch variant
+    emerges that shares enough structure to justify the abstraction.
     """
 
     condition: Callable[[QuestionnaireInput], bool]
@@ -262,11 +271,26 @@ def _render_coverage_section(not_retrieved: list[str]) -> str:
     return "\n".join(lines)
 
 
-async def _search_with_timeout(vectorstore, query: str, k: int, timeout: float) -> list:
+async def _search_with_timeout(
+    vectorstore,
+    query: str,
+    k: int,
+    timeout: float,
+    where: dict | None = None,
+) -> list:
+    """Wraps similarity_search_with_relevance_scores with a timeout.
+
+    When *where* is provided it is forwarded to Chroma as a metadata filter,
+    enabling per-source retrieval without a relevance-score gate (used by
+    INJECTIONS to guarantee delivery regardless of domain proximity).
+    """
+    kwargs: dict = {"k": k}
+    if where is not None:
+        kwargs["where"] = where
     try:
         return await asyncio.wait_for(
             asyncio.to_thread(
-                vectorstore.similarity_search_with_relevance_scores, query, k=k
+                vectorstore.similarity_search_with_relevance_scores, query, **kwargs
             ),
             timeout=timeout,
         )
@@ -439,14 +463,20 @@ async def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
             continue
         if inj.stem in excluded_stems:
             continue
-        target = [
-            doc
-            for doc, score in candidates
-            if Path(doc.metadata.get("source", "")).stem == inj.stem
-            and score >= settings.min_relevance_score
-        ][: inj.k]
+        # Fetch chunks unconditionally via a source-filtered search.
+        # Do NOT gate on min_relevance_score here: an INJECTION is a guarantee,
+        # not a suggestion.  Using where={"source": stem} lets Chroma return the
+        # top-k chunks for that document even when all domain scores are < 0.40
+        # (e.g. "red social para plantas" still needs RGPD if it collects emails).
+        inj_candidates = await _search_with_timeout(
+            state.vectorstore,
+            query,
+            k=inj.k,
+            timeout=settings.chroma_timeout,
+            where={"source": inj.stem},
+        )
         added = 0
-        for doc in target:
+        for doc, _score in inj_candidates:
             h = hashlib.md5(doc.page_content.encode()).hexdigest()
             if h not in seen_injected:
                 seen_injected.add(h)

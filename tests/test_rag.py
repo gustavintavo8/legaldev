@@ -301,7 +301,16 @@ def test_run_pipeline_calls_relevance_search_with_correct_k(
     assert first_call.kwargs.get("k") == settings.overfetch_k
 
 
-def test_run_pipeline_no_relevant_docs_raises_404(sample_input, mock_reranker):
+def test_run_pipeline_no_relevant_docs_raises_404(mock_reranker):
+    # Use an input with no personal data / ia / cookies so no INJECTION fires.
+    # INJECTION fetches are unconditional when triggered; to test 404 we need a
+    # scenario where nothing injects chunks into an otherwise-empty result set.
+    inp = _make_input(
+        tipos_datos_personales=["ninguno"],
+        usa_ia=False,
+        usa_cookies=False,
+        colegiado=None,
+    )
     state = MagicMock()
     state.vectorstore.similarity_search_with_relevance_scores.return_value = [
         (_make_mock_doc(), 0.05)
@@ -310,19 +319,21 @@ def test_run_pipeline_no_relevant_docs_raises_404(sample_input, mock_reranker):
     state.corpus_version = "test-corpus-v1"
 
     with pytest.raises(Exception) as exc_info:
-        asyncio.run(run_pipeline(sample_input, state))
+        asyncio.run(run_pipeline(inp, state))
 
     assert exc_info.value.status_code == 404
 
 
 def test_run_pipeline_colegiado_triggers_auxiliary_search(mock_reranker):
     # colegiado=True + default tipos_datos_personales=["email"] → rgpd + ccii aux fire
+    # + RGPD injection fires (unconditional filtered search)
     docs = [_make_mock_doc("RGPD.pdf")]
     state = MagicMock()
     state.vectorstore.similarity_search_with_relevance_scores.side_effect = [
         [(docs[0], 0.85)],  # main search
         [],  # rgpd auxiliary
         [],  # ccii auxiliary
+        [],  # RGPD injection (filtered, unconditional)
     ]
     state.groq_client.invoke.return_value = MagicMock(content="ok")
     state.indexed_normativas = frozenset({"RGPD"})
@@ -330,7 +341,7 @@ def test_run_pipeline_colegiado_triggers_auxiliary_search(mock_reranker):
 
     asyncio.run(run_pipeline(_make_input(colegiado=True), state))
 
-    assert state.vectorstore.similarity_search_with_relevance_scores.call_count == 3
+    assert state.vectorstore.similarity_search_with_relevance_scores.call_count == 4
 
 
 def test_run_pipeline_colegiado_none_no_ccii_auxiliary_search(mock_reranker):
@@ -354,10 +365,17 @@ def test_run_pipeline_filters_below_threshold(sample_input, mock_reranker):
     high_doc = _make_mock_doc("RGPD.pdf")
     low_doc = _make_mock_doc("LOPDGDD.pdf", "normativa_española")
     state = MagicMock()
-    state.vectorstore.similarity_search_with_relevance_scores.return_value = [
-        (high_doc, 0.8),
-        (low_doc, 0.05),
-    ]
+
+    # Injection calls pass where={"source": <stem>}; return [] for those to
+    # isolate the threshold-filtering behaviour being tested here.
+    def _search_side_effect(*args, **kwargs):
+        if kwargs.get("where"):
+            return []
+        return [(high_doc, 0.8), (low_doc, 0.05)]
+
+    state.vectorstore.similarity_search_with_relevance_scores.side_effect = (
+        _search_side_effect
+    )
     state.groq_client.invoke.return_value = MagicMock(content="Respuesta filtrada")
     state.indexed_normativas = frozenset({"RGPD", "LOPDGDD"})
     state.corpus_version = "test-corpus-v1"
@@ -370,11 +388,13 @@ def test_run_pipeline_filters_below_threshold(sample_input, mock_reranker):
 
 
 def test_run_pipeline_rgpd_aux_search_triggers_with_personal_data(mock_reranker):
+    # tipos_datos_personales=["email"] fires: rgpd aux + RGPD injection (filtered)
     docs = [_make_mock_doc("RGPD.pdf")]
     state = MagicMock()
     state.vectorstore.similarity_search_with_relevance_scores.side_effect = [
         [(docs[0], 0.85)],  # main search
         [],  # rgpd auxiliary
+        [],  # RGPD injection (filtered, unconditional)
     ]
     state.groq_client.invoke.return_value = MagicMock(content="ok")
     state.indexed_normativas = frozenset({"RGPD"})
@@ -389,7 +409,7 @@ def test_run_pipeline_rgpd_aux_search_triggers_with_personal_data(mock_reranker)
         )
     )
 
-    assert state.vectorstore.similarity_search_with_relevance_scores.call_count == 2
+    assert state.vectorstore.similarity_search_with_relevance_scores.call_count == 3
 
 
 def test_run_pipeline_rgpd_aux_search_no_trigger_for_ninguno(mock_reranker):
@@ -412,10 +432,17 @@ def test_run_pipeline_excludes_ens_always(mock_reranker):
     ens_doc = _make_mock_doc("Real Decreto 311-2022 ENS.pdf")
     rgpd_doc = _make_mock_doc("RGPD.pdf")
     state = MagicMock()
-    state.vectorstore.similarity_search_with_relevance_scores.return_value = [
-        (ens_doc, 0.85),
-        (rgpd_doc, 0.85),
-    ]
+
+    # Injection calls pass where={"source": <stem>}; return [] to isolate
+    # the exclusion behaviour being tested here.
+    def _search_side_effect(*args, **kwargs):
+        if kwargs.get("where"):
+            return []
+        return [(ens_doc, 0.85), (rgpd_doc, 0.85)]
+
+    state.vectorstore.similarity_search_with_relevance_scores.side_effect = (
+        _search_side_effect
+    )
     state.groq_client.invoke.return_value = MagicMock(content="ok")
     state.indexed_normativas = frozenset({"Real Decreto 311-2022 ENS", "RGPD"})
     state.corpus_version = "test-corpus-v1"
@@ -431,10 +458,17 @@ def test_run_pipeline_excludes_lpi_when_no_contenido_digital(mock_reranker):
     lpi_doc = _make_mock_doc("Ley de Propiedad Intelectual.pdf")
     rgpd_doc = _make_mock_doc("RGPD.pdf")
     state = MagicMock()
-    state.vectorstore.similarity_search_with_relevance_scores.return_value = [
-        (lpi_doc, 0.85),
-        (rgpd_doc, 0.85),
-    ]
+
+    # Injection calls pass where={"source": <stem>}; return [] to isolate
+    # the exclusion behaviour being tested here.
+    def _search_side_effect(*args, **kwargs):
+        if kwargs.get("where"):
+            return []
+        return [(lpi_doc, 0.85), (rgpd_doc, 0.85)]
+
+    state.vectorstore.similarity_search_with_relevance_scores.side_effect = (
+        _search_side_effect
+    )
     state.groq_client.invoke.return_value = MagicMock(content="ok")
     state.indexed_normativas = frozenset({"Ley de Propiedad Intelectual", "RGPD"})
     state.corpus_version = "test-corpus-v1"
@@ -585,9 +619,12 @@ def test_pre_rerank_no_duplicates_when_main_n_below_reranker_top_k():
     aux_doc_b = _make_mock_doc("Guía sobre uso de cookies - AEPD.pdf", "guia_aepd")
 
     state = MagicMock()
+    # usa_cookies=True fires: cookies aux search + LSSI injection (filtered search).
+    # tipos_datos_personales=["ninguno"] → no RGPD aux / injection.
     state.vectorstore.similarity_search_with_relevance_scores.side_effect = [
         [(doc, 0.85) for doc in main_docs],  # main search: 3 docs
         [(aux_doc_a, 0.85), (aux_doc_b, 0.85)],  # cookies aux: 2 new docs
+        [],  # LSSI injection (filtered, unconditional)
     ]
     state.groq_client.invoke.return_value = MagicMock(content="ok")
     state.indexed_normativas = frozenset()
@@ -611,3 +648,50 @@ def test_pre_rerank_no_duplicates_when_main_n_below_reranker_top_k():
         f"pre_rerank had duplicates: {len(hashes) - len(set(hashes))} dups"
     )
     assert len(docs_sent) == len(main_docs) + 2  # 3 main + 2 aux, no duplicates
+
+
+def test_injection_delivers_rgpd_even_when_all_scores_below_threshold(mock_reranker):
+    """Task 2.1 / H-P3: RGPD must be injected even when all domain scores are < 0.40.
+
+    Simulates the "red social para plantas" scenario: a far-domain project that
+    still collects user emails — all main-search scores below min_relevance_score,
+    so docs=[] after threshold filtering.  Before the fix, the INJECTION loop
+    gated on the same threshold → RGPD was never delivered.
+    After the fix, a filtered search (where={"source": "RGPD"}) is issued
+    unconditionally and injects the chunks regardless of domain scores.
+    """
+    rgpd_chunk = _make_mock_doc("RGPD.pdf")
+    off_topic_doc = _make_mock_doc("otra_normativa.pdf")
+
+    state = MagicMock()
+    # All unfiltered calls return below-threshold scores.
+    # The filtered injection call (where={"source": "RGPD"}) returns the RGPD chunk.
+    def _search_side_effect(*args, **kwargs):
+        if kwargs.get("where") == {"source": "RGPD"}:
+            return [(rgpd_chunk, 0.10)]  # low score — ignored anyway by injection
+        return [(off_topic_doc, 0.05)]  # main search / aux: all below threshold
+
+    state.vectorstore.similarity_search_with_relevance_scores.side_effect = (
+        _search_side_effect
+    )
+    state.groq_client.invoke.return_value = MagicMock(content="ok")
+    state.indexed_normativas = frozenset({"RGPD"})
+    state.corpus_version = "test-corpus-v1"
+
+    result = asyncio.run(
+        run_pipeline(
+            _make_input(
+                descripcion_breve="Red social para aficionados a las plantas, usuario con nombre y email",
+                tipos_datos_personales=["email"],
+                usa_ia=False,
+                usa_cookies=False,
+                colegiado=None,
+            ),
+            state,
+        )
+    )
+
+    assert "RGPD" in result.normativas_detectadas, (
+        "RGPD must be injected even when all domain scores are below the threshold"
+    )
+    assert result.chunks_utilizados >= 1
