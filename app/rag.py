@@ -59,7 +59,8 @@ class AuxSearch:
     NOTE (unification deferred — Task 2.1): AuxSearch and Injection both use
     _search_with_timeout but differ in three important ways:
       - AuxSearch: semantic query, score-gated, pre-reranker.
-      - Injection:  source-filtered (where={"source": stem}), unconditional,
+      - Injection:  source-filtered (filter={"source": stem} via langchain_chroma API,
+                   passed as where= to _search_with_timeout which translates it), unconditional,
                    post-reranker.
     A common abstraction would need a discriminator field and conditional logic
     that adds more complexity than it saves.  Revisit if a third fetch variant

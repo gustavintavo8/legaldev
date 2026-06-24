@@ -71,13 +71,11 @@ def run_case(case: dict, base_input: dict, vs, threshold: float) -> dict:
         "false_positives": false_positives,
         "recall": recall,
         "chunks": len(docs),
+        "retrieved_stems": retrieved_stems,
     }
 
 
-def _compute_noise(docs: list, expected: list[str]) -> int:
-    retrieved_stems = {
-        Path(d.metadata["source"]).stem for d in docs if "source" in d.metadata
-    }
+def _compute_noise(retrieved_stems: set[str], expected: list[str]) -> int:
     return len(retrieved_stems - set(expected))
 
 
@@ -91,9 +89,7 @@ def sweep(vs, base_input: dict, cases: list[dict]) -> list[tuple]:
             if r["recall"] is not None:
                 recalls.append(r["recall"])
             fps.append(len(r["false_positives"]))
-            inp = _make_input(base_input, case.get("overrides"))
-            docs = retrieve_docs_sync(inp, vs, t)
-            noises.append(_compute_noise(docs, case.get("expected", [])))
+            noises.append(_compute_noise(r["retrieved_stems"], case.get("expected", [])))
         avg_recall = sum(recalls) / len(recalls) if recalls else 0.0
         avg_fp = sum(fps) / len(fps) if fps else 0.0
         avg_noise = sum(noises) / len(noises) if noises else 0.0
