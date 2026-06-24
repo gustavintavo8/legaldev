@@ -473,7 +473,7 @@ async def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
             query,
             k=inj.k,
             timeout=settings.chroma_timeout,
-            where={"source": inj.stem},
+            where={"source": f"{inj.stem}.pdf"},
         )
         added = 0
         for doc, _score in inj_candidates:

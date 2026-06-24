@@ -657,7 +657,7 @@ def test_injection_delivers_rgpd_even_when_all_scores_below_threshold(mock_reran
     still collects user emails — all main-search scores below min_relevance_score,
     so docs=[] after threshold filtering.  Before the fix, the INJECTION loop
     gated on the same threshold → RGPD was never delivered.
-    After the fix, a filtered search (where={"source": "RGPD"}) is issued
+    After the fix, a filtered search (where={"source": "RGPD.pdf"}) is issued
     unconditionally and injects the chunks regardless of domain scores.
     """
     rgpd_chunk = _make_mock_doc("RGPD.pdf")
@@ -667,7 +667,7 @@ def test_injection_delivers_rgpd_even_when_all_scores_below_threshold(mock_reran
     # All unfiltered calls return below-threshold scores.
     # The filtered injection call (where={"source": "RGPD"}) returns the RGPD chunk.
     def _search_side_effect(*args, **kwargs):
-        if kwargs.get("where") == {"source": "RGPD"}:
+        if kwargs.get("where") == {"source": "RGPD.pdf"}:
             return [(rgpd_chunk, 0.10)]  # low score — ignored anyway by injection
         return [(off_topic_doc, 0.05)]  # main search / aux: all below threshold
 
