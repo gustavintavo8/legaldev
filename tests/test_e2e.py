@@ -103,8 +103,11 @@ def test_e2e_pipeline_retrieves_from_real_chroma(tiny_pdf_dir):
             mock_settings.cookies_k = 3
             mock_settings.colegiado_k = 3
             mock_settings.chroma_timeout = 30.0
+            mock_settings.groq_model = "e2e-primary-model"
+            mock_settings.groq_fallback_model = ""
             result = asyncio.run(run_pipeline(inp, state))
 
         assert result.chunks_utilizados >= 1
         assert "TestNorm" in result.normativas_detectadas
         assert result.respuesta_completa.startswith("Respuesta E2E")
+        assert result.llm_model == "e2e-primary-model"
