@@ -276,7 +276,8 @@ async def analyze_v1(
 
 
 @v1.post("/feedback", status_code=201)
-def feedback_v1(input: FeedbackInput):
+@limiter.limit(settings.rate_limit)
+def feedback_v1(input: FeedbackInput, request: Request):
     entry = input.model_dump()
     with FEEDBACK_FILE.open("a", encoding="utf-8") as f:
         f.write(_json.dumps(entry) + "\n")

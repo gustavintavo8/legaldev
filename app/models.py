@@ -112,6 +112,7 @@ class RAGResponse(BaseModel):
 
 
 class FeedbackInput(BaseModel):
-    request_id: str
+    # X-Request-ID es hex de 8 chars generado por el servidor; se admite también formato UUID.
+    request_id: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
     rating: int = Field(ge=1, le=5)
-    comment: str | None = None
+    comment: str | None = Field(default=None, max_length=2000)
