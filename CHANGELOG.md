@@ -7,17 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-- Producción devolvía 503 en todos los análisis desde el 17/07/2026: Groq retiró `meta-llama/llama-4-scout-17b-16e-instruct`. El modelo por defecto pasa a `openai/gpt-oss-120b` (sustituto recomendado por Groq).
-
 ### Added
 - Modelo de respaldo (`GROQ_FALLBACK_MODEL`, por defecto `openai/gpt-oss-20b`): si el principal falla por cualquier causa se reintenta con él; evento `llm_fallback` en logs y métrica `legaldev_llm_fallback_total{reason}`.
 - Comprobación del modelo al arrancar (`GROQ_VERIFY_MODEL_ON_STARTUP`): log ERROR si Groq responde 404; resultado en `/health/deep` junto a `groq_model` y `groq_fallback_model`.
 - `RAGResponse.llm_model`: modelo que generó cada informe.
 - `GROQ_REASONING_EFFORT` (default `low`), enviado solo a modelos `openai/gpt-oss*`.
+- Verificación determinista de citas (`app/citations.py`): cada cita del informe se busca literalmente en los fragmentos recuperados; `RAGResponse.citas` y sección "Verificación de citas" al final del informe; métricas `legaldev_citations_verified_ratio` y `legaldev_citations_unverified_total`.
+- Tope de chunks por normativa en el contexto (`MAX_CHUNKS_PER_SOURCE`, default 4).
+- Reranker precargado en el arranque (`warmup` en `lifespan`). La cuantización int8 se midió y se descartó: 1,6× en 2 hilos pero altera el ranking.
+- `.index_meta.json` escrito por la ingesta (modelo de embeddings, versión del corpus, nº de chunks, versión del splitter); el arranque aborta si el índice se construyó con otro modelo.
+- Metadato `article` en los chunks y prefijo `Artículo N (cont.):` en sub-chunks de artículos largos (activo tras reindexar).
+- `tools/eval_retrieval.py --chroma-path` y comprobación de modelo del índice; `make eval-sweep`.
 
 ### Changed
 - `GROQ_MAX_TOKENS` por defecto 4000 → 8000 (en gpt-oss los tokens de razonamiento cuentan como salida).
+- Retrieval unificado en `_retrieve` (API y eval ejecutan el mismo código); timeout global `RETRIEVAL_TIMEOUT` (60 s) sustituye a `CHROMA_TIMEOUT`.
+- Las EXCLUSIONS se aplican antes del recorte y del reranker: las normativas excluidas ya no consumen plazas del contexto.
+- `retrieval_duration` ahora incluye las búsquedas de inyección (antes se contabilizaban en `llm_duration`).
+- La ingesta construye el índice en `chroma_db.building` y solo después sustituye el anterior; descarta chunks de menos de 40 caracteres; lee PDFs con `pypdf` directamente.
+- Dependencias: eliminadas `langchain` y `langchain-community`; `langchain-core` explícita.
+
+### Fixed
+- Producción devolvía 503 en todos los análisis desde el 17/07/2026: Groq retiró `meta-llama/llama-4-scout-17b-16e-instruct`. El modelo por defecto pasa a `openai/gpt-oss-120b` (sustituto recomendado por Groq).
+- `/v1/feedback`: `request_id` acotado (1–64 chars, `[A-Za-z0-9_-]`), `comment` ≤ 2000 chars, rate limit.
+- `tools/diagnose_ranking.py` usaba `all-MiniLM-L6-v2` contra un índice multilingüe.
+- `tools/eval_results.md` regenerado con el formato actual.
+- `make ingest` no podía completar el intercambio del índice en Windows (handles de SQLite retenidos por ChromaDB); ahora se liberan explícitamente.
 
 ## [0.4.0] - 2026-06-24
 

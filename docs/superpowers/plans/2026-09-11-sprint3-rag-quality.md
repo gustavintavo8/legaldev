@@ -2451,19 +2451,21 @@ Descripción: enlaza spec y plan; tabla de resultados del eval antes/después; d
 
 | Caso | Baseline chunks | Baseline fuentes (Task 5) | Después (Task 6) chunks / fuentes |
 |---|---|---|---|
-| rgpd-lopdgdd-basico | 14 | | |
-| datos-sensibles-salud | 13 | | |
-| ia-generativa | 18 | | |
-| ia-agente | 19 | | |
-| menores-datos-personales | 15 | | |
-| cookies-webapp | 16 | | |
-| ccii-ingeniero-colegiado | 16 | | |
-| query-compleja-rgpd-colegiado-ia | 19 | | |
-| lssi-web-publica | 16 | | |
-| sin-datos-personales | 9 | | |
-| off-topic-recetas | 5 | | |
-| probe-8-plantas-dominio-lejano | 16 | | |
-| sin-ia-sin-cookies-app-basica | 14 | | |
+| rgpd-lopdgdd-basico | 14 | 5 | 15 / 7 |
+| datos-sensibles-salud | 13 | 5 | 15 / 6 |
+| ia-generativa | 18 | 5 | 18 / 8 |
+| ia-agente | 19 | 6 | 20 / 9 |
+| menores-datos-personales | 15 | 4 | 15 / 7 |
+| cookies-webapp | 16 | 7 | 19 / 7 |
+| ccii-ingeniero-colegiado | 16 | 5 | 17 / 5 |
+| query-compleja-rgpd-colegiado-ia | 19 | 9 | 24 / 10 |
+| lssi-web-publica | 16 | 6 | 17 / 6 |
+| sin-datos-personales | 9 | 3 | 12 / 4 |
+| off-topic-recetas | 5 | 2 | 5 / 2 |
+| probe-8-plantas-dominio-lejano | 16 | 7 | 19 / 7 |
+| sin-ia-sin-cookies-app-basica | 14 | 5 | 15 / 5 |
+
+Recall 13/13 y 0 falsos positivos en ambas mediciones (Task 5 baseline y Task 6). La columna Fuentes no baja en ningún caso.
 
 ### Decisión int8 (medida antes de ejecutar; Task 8 solo hace warm-up)
 
@@ -2478,4 +2480,4 @@ Orden del top-5 distinto en las 5 queries; correlación fp32/int8 entre 0,23 y 0
 
 ### Tests
 
-- Antes: 186. Después: __.
+- Antes: 186. Después: 288.
