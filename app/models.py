@@ -93,6 +93,12 @@ class QuestionnaireInput(BaseModel):
         return self
 
 
+class CitationStats(BaseModel):
+    total: int
+    verificadas: int
+    no_verificadas: list[str]
+
+
 class RAGResponse(BaseModel):
     respuesta_completa: str
     normativas_detectadas: list[str]
@@ -100,6 +106,9 @@ class RAGResponse(BaseModel):
     disclaimer: str
     corpus_version: str = "unknown"
     llm_model: str = "unknown"
+    citas: CitationStats = Field(
+        default_factory=lambda: CitationStats(total=0, verificadas=0, no_verificadas=[])
+    )
 
 
 class FeedbackInput(BaseModel):

@@ -13,9 +13,10 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 from app import metrics as _metrics
 from app import reranker as _reranker
+from app.citations import verify_citations
 from app.config import settings
 from app.middleware import request_id_var
-from app.models import QuestionnaireInput, RAGResponse
+from app.models import CitationStats, QuestionnaireInput, RAGResponse
 
 logger = logging.getLogger(__name__)
 
@@ -283,6 +284,22 @@ def _render_coverage_section(not_retrieved: list[str]) -> str:
     ]
     for name in sorted(not_retrieved):
         lines.append(f"- {name}")
+    return "\n".join(lines)
+
+
+def _render_citation_section(stats: CitationStats) -> str:
+    if stats.total == 0:
+        return ""
+    lines = [
+        "\n\n## Verificación de citas",
+        f"Se han verificado textualmente {stats.verificadas} de {stats.total} citas contra los fragmentos recuperados.",
+    ]
+    if stats.no_verificadas:
+        lines.append(
+            "Citas no verificadas (posible paráfrasis o interpolación; contrastar con la fuente oficial):"
+        )
+        for quote in stats.no_verificadas:
+            lines.append(f'- "{quote}"')
     return "\n".join(lines)
 
 
@@ -654,6 +671,13 @@ async def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
             _chunks_per_norm[stem] = _chunks_per_norm.get(stem, 0) + 1
     normativas = [stem for stem, count in _chunks_per_norm.items() if count >= 2]
 
+    citations = verify_citations(answer, docs)
+    if citations.total:
+        _metrics.citations_verified_ratio.observe(
+            citations.verificadas / citations.total
+        )
+        _metrics.citations_unverified_total.inc(len(citations.no_verificadas))
+
     # PII policy: log only hash/length of free-text fields, never raw content
     logger.info(
         json.dumps(
@@ -676,16 +700,20 @@ async def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
                 "retrieval_ms": round((t_retrieval - t0) * 1000),
                 "llm_ms": round((t_llm - t_retrieval) * 1000),
                 "llm_model": llm_model,
+                "citations_total": citations.total,
+                "citations_verified": citations.verificadas,
             }
         )
     )
 
     coverage_section = _render_coverage_section(not_retrieved)
+    citation_section = _render_citation_section(citations)
     return RAGResponse(
-        respuesta_completa=answer + coverage_section,
+        respuesta_completa=answer + coverage_section + citation_section,
         normativas_detectadas=normativas,
         chunks_utilizados=len(docs),
         disclaimer=DISCLAIMER,
         corpus_version=state.corpus_version,
         llm_model=llm_model,
+        citas=citations,
     )
