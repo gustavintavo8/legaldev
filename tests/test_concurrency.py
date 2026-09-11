@@ -27,6 +27,7 @@ async def _probe_health_during_analyze(payload, *, slow_reranker, slow_groq, moc
         patch("app.store.read_corpus_version", return_value="abc123"),
         patch("app.reranker.rerank") as mock_rerank,
         patch("app.main._check_groq_model", return_value=True),
+        patch("app.reranker.warmup"),
     ):
 
         def _rerank(query, docs, top_k):

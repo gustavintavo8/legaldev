@@ -11,6 +11,15 @@ def get_encoder() -> CrossEncoder:
     return _encoder
 
 
+def warmup() -> None:
+    """Carga el modelo y ejecuta una predicción mínima para que la primera petición no lo pague.
+
+    La carga desde disco cuesta ~2 s y la primera predicción compila kernels; en producción
+    (CPU compartida) ese coste se sumaba al primer análisis. Idempotente: get_encoder es singleton.
+    """
+    get_encoder().predict([("warmup", "warmup")])
+
+
 def rerank(query: str, docs: list, top_k: int) -> list:
     if not docs:
         return docs

@@ -18,6 +18,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 from app import cache as _cache
+from app import reranker as _reranker
 from app import store
 from app.config import settings
 from app.middleware import RequestIDMiddleware
@@ -151,6 +152,8 @@ async def lifespan(app: FastAPI):
     )
     app.state.corpus_version = store.read_corpus_version(settings.chroma_db_path)
     logger.info("Corpus version: %s", app.state.corpus_version)
+    logger.info("Warming up reranker (%s)", _reranker._MODEL_NAME)
+    _reranker.warmup()
     logger.info("LegalDev is ready — %d chunks indexed", count)
     yield
 

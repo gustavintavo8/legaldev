@@ -142,6 +142,12 @@ def test_analyze_includes_corpus_version(client, sample_input_dict):
     assert response.json()["corpus_version"] == "abc123def456"
 
 
+def test_lifespan_warms_up_reranker(client):
+    import app.reranker as rr
+
+    rr.warmup.assert_called_once()
+
+
 def test_feedback_endpoint_returns_201(client):
     response = client.post("/v1/feedback", json={"request_id": "abc123", "rating": 5})
     assert response.status_code == 201
