@@ -5,7 +5,10 @@ for count() or bulk metadata retrieval. If Chroma adds public methods, update he
 """
 
 import json
+import logging
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 def count(vectorstore) -> int:
@@ -26,6 +29,13 @@ def read_corpus_version(chroma_db_path: str) -> str:
 
 def read_index_meta(chroma_db_path: str) -> dict:
     meta_file = Path(chroma_db_path) / ".index_meta.json"
-    if meta_file.exists():
-        return json.loads(meta_file.read_text(encoding="utf-8"))
-    return {}
+    if not meta_file.exists():
+        return {}
+    try:
+        data = json.loads(meta_file.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as e:
+        logger.warning("Could not read %s: %s", meta_file, e)
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return data

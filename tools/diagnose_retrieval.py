@@ -27,6 +27,7 @@ from langchain_huggingface import HuggingFaceEmbeddings
 
 from app import reranker as _reranker
 from app.config import settings
+from app.corpus import EMBEDDING_MODEL
 from app.models import QuestionnaireInput
 from app.rag import (
     AUXILIARY_SEARCHES,
@@ -39,19 +40,17 @@ from app.rag import (
 OUT_DIR = Path(__file__).parent / "probe_results"
 OUT_DIR.mkdir(exist_ok=True)
 
-MODEL = "paraphrase-multilingual-MiniLM-L12-v2"
-
 
 def _stem(doc) -> str:
     return Path(doc.metadata.get("source", "?")).stem
 
 
 def _load_vs() -> Chroma:
-    print(f"Loading embeddings ({MODEL}) and ChromaDB...")
+    print(f"Loading embeddings ({EMBEDDING_MODEL}) and ChromaDB...")
     return Chroma(
         persist_directory=settings.chroma_db_path,
         embedding_function=HuggingFaceEmbeddings(
-            model_name=MODEL, encode_kwargs={"normalize_embeddings": True}
+            model_name=EMBEDDING_MODEL, encode_kwargs={"normalize_embeddings": True}
         ),
         collection_name="legaldev",
     )

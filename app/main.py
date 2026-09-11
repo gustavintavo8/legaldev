@@ -109,6 +109,22 @@ def _verify_api_key(x_api_key: str | None = Header(default=None)) -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Guardia de compatibilidad primero: si el índice es de otro modelo, abortar antes
+    # de gastar tiempo cargando embeddings/Chroma/Groq — falla rápido, no a mitad de boot.
+    index_meta = store.read_index_meta(settings.chroma_db_path)
+    indexed_model = index_meta.get("embedding_model")
+    if indexed_model is None:
+        logger.warning(
+            "Index has no .index_meta.json (index built by an ingest version that did "
+            "not write metadata); cannot verify it matches %s",
+            EMBEDDING_MODEL,
+        )
+    elif indexed_model != EMBEDDING_MODEL:
+        # Un índice de otro modelo produce scores sin sentido: mejor fallar alto que servir basura.
+        raise RuntimeError(
+            f"ChromaDB index was built with '{indexed_model}' but the app uses "
+            f"'{EMBEDDING_MODEL}'. Re-run 'make ingest'."
+        )
     logger.info("Loading embedding model: %s", EMBEDDING_MODEL)
     app.state.embeddings = HuggingFaceEmbeddings(
         model_name=EMBEDDING_MODEL, encode_kwargs={"normalize_embeddings": True}
@@ -139,19 +155,6 @@ async def lifespan(app: FastAPI):
         if settings.trust_proxy_headers
         else "direct connection IP (TRUST_PROXY_HEADERS=false)",
     )
-    index_meta = store.read_index_meta(settings.chroma_db_path)
-    indexed_model = index_meta.get("embedding_model")
-    if indexed_model is None:
-        logger.warning(
-            "Index has no .index_meta.json (built before splitter v2); cannot verify it matches %s",
-            EMBEDDING_MODEL,
-        )
-    elif indexed_model != EMBEDDING_MODEL:
-        # Un índice de otro modelo produce scores sin sentido: mejor fallar alto que servir basura.
-        raise RuntimeError(
-            f"ChromaDB index was built with '{indexed_model}' but the app uses "
-            f"'{EMBEDDING_MODEL}'. Re-run 'make ingest'."
-        )
     count = store.count(app.state.vectorstore)
     if count == 0:
         raise RuntimeError(

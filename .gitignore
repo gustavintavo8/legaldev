@@ -22,6 +22,8 @@ htmlcov/
 # Datos locales (no son código)
 feedback.jsonl
 feedback*.jsonl
+chroma_db.building/
+chroma_db.old/
 
 # Documentos fuente (generados, no versionables)
 docs/*.pdf

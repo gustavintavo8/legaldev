@@ -43,3 +43,13 @@ def test_read_index_meta_returns_dict(tmp_path):
 
 def test_read_index_meta_missing_file_returns_empty(tmp_path):
     assert store.read_index_meta(str(tmp_path)) == {}
+
+
+def test_read_index_meta_corrupt_json_returns_empty(tmp_path):
+    (tmp_path / ".index_meta.json").write_text("{not valid json")
+    assert store.read_index_meta(str(tmp_path)) == {}
+
+
+def test_read_index_meta_non_dict_payload_returns_empty(tmp_path):
+    (tmp_path / ".index_meta.json").write_text("[1, 2, 3]")
+    assert store.read_index_meta(str(tmp_path)) == {}
