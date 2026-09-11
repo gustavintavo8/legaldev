@@ -112,6 +112,7 @@ def client(mock_doc, mock_reranker):
         patch("app.main.Chroma") as mock_chroma_cls,
         patch("app.main.ChatGroq") as mock_groq_cls,
         patch("app.store.read_corpus_version", return_value="abc123def456"),
+        patch("app.main._check_groq_model", return_value=True),
     ):
         mock_vectorstore = MagicMock()
         mock_vectorstore.similarity_search_with_relevance_scores.return_value = [

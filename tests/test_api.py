@@ -47,6 +47,13 @@ def test_analyze_groq_error_returns_503(client, sample_input_dict):
     assert response.status_code == 503
 
 
+def test_analyze_includes_llm_model(client, sample_input_dict):
+    from app.config import settings
+
+    response = client.post("/v1/analyze", json=sample_input_dict)
+    assert response.json()["llm_model"] == settings.groq_model
+
+
 def test_analyze_no_relevant_docs_returns_404(client, sample_input_dict):
     client.app.state.vectorstore.similarity_search_with_relevance_scores.return_value = []
     response = client.post("/v1/analyze", json=sample_input_dict)
@@ -217,4 +224,15 @@ def test_deep_health_detects_groq_failure(client):
     client.app.state.groq_client.invoke.return_value.content = (
         "Respuesta de prueba sobre RGPD"
     )
+    main_module._deep_health_cache.clear()
+
+
+def test_deep_health_reports_model_names_and_startup_check(client):
+    import app.main as main_module
+
+    main_module._deep_health_cache.clear()
+    data = client.get("/health/deep").json()
+    assert data["groq_model"] == main_module.settings.groq_model
+    assert data["groq_fallback_model"] == main_module.settings.groq_fallback_model
+    assert data["groq_model_available_at_startup"] is True
     main_module._deep_health_cache.clear()

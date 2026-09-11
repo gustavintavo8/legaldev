@@ -482,6 +482,63 @@ def retrieve_docs_sync(
     return docs
 
 
+def _content_to_text(content) -> str:
+    """LangChain puede devolver content como str o como lista de bloques (modelos con razonamiento)."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for block in content:
+            if isinstance(block, str):
+                parts.append(block)
+            elif isinstance(block, dict) and block.get("type") == "text":
+                parts.append(str(block.get("text", "")))
+        return "".join(parts)
+    return str(content)
+
+
+async def _invoke_llm(state, messages: list) -> tuple[str, str]:
+    """Invoca el modelo principal; si falla por cualquier motivo, reintenta una vez con el respaldo.
+
+    Devuelve (texto, modelo_usado). Lanza HTTPException(503) si ningún modelo responde.
+    Se hace fallback ante cualquier excepción: Groq devuelve 400 model_decommissioned para
+    modelos retirados, 404 para desconocidos, 429 por cuota y 5xx en incidentes — en todos
+    los casos el segundo modelo (cuota independiente) puede responder.
+    """
+    try:
+        response = await asyncio.to_thread(state.groq_client.invoke, messages)
+        return _content_to_text(response.content), settings.groq_model
+    except Exception as e:
+        fallback = getattr(state, "groq_fallback_client", None)
+        if fallback is None:
+            logger.error("Groq API error: %s", e)
+            raise HTTPException(
+                status_code=503,
+                detail="LLM service unavailable. Please try again later.",
+            )
+        logger.warning(
+            json.dumps(
+                {
+                    "event": "llm_fallback",
+                    "request_id": request_id_var.get(),
+                    "primary_model": settings.groq_model,
+                    "primary_error": type(e).__name__,
+                    "fallback_model": settings.groq_fallback_model,
+                }
+            )
+        )
+        _metrics.llm_fallback_total.labels(reason=type(e).__name__).inc()
+    try:
+        response = await asyncio.to_thread(fallback.invoke, messages)
+        return _content_to_text(response.content), settings.groq_fallback_model
+    except Exception as e:
+        logger.error("Groq fallback API error: %s", e)
+        raise HTTPException(
+            status_code=503,
+            detail="LLM service unavailable. Please try again later.",
+        )
+
+
 async def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
     query = _build_query(input)
     if _detect_injection(input.descripcion_breve):
@@ -594,14 +651,7 @@ async def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
         HumanMessage(content=_build_user_message(input, docs, not_retrieved)),
     ]
 
-    try:
-        response = await asyncio.to_thread(state.groq_client.invoke, messages)
-    except Exception as e:
-        logger.error("Groq API error: %s", e)
-        raise HTTPException(
-            status_code=503,
-            detail="LLM service unavailable. Please try again later.",
-        )
+    answer, llm_model = await _invoke_llm(state, messages)
 
     t_llm = time.perf_counter()
     _metrics.llm_duration.observe(t_llm - t_retrieval)
@@ -640,15 +690,17 @@ async def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
                 "injected_stems": injected_stems,
                 "retrieval_ms": round((t_retrieval - t0) * 1000),
                 "llm_ms": round((t_llm - t_retrieval) * 1000),
+                "llm_model": llm_model,
             }
         )
     )
 
     coverage_section = _render_coverage_section(not_retrieved)
     return RAGResponse(
-        respuesta_completa=response.content + coverage_section,
+        respuesta_completa=answer + coverage_section,
         normativas_detectadas=normativas,
         chunks_utilizados=len(docs),
         disclaimer=DISCLAIMER,
         corpus_version=state.corpus_version,
+        llm_model=llm_model,
     )

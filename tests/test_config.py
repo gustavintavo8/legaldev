@@ -41,3 +41,21 @@ def test_log_level_env_var_is_read(monkeypatch):
     # Reload back to default to avoid polluting other tests
     monkeypatch.delenv("LOG_LEVEL", raising=False)
     reload(app.config)
+
+
+def test_groq_model_default_is_a_live_groq_model():
+    s = Settings(groq_api_key="x")
+    assert s.groq_model == "openai/gpt-oss-120b"
+
+
+def test_groq_fallback_and_reasoning_defaults():
+    s = Settings(groq_api_key="x")
+    assert s.groq_fallback_model == "openai/gpt-oss-20b"
+    assert s.groq_reasoning_effort == "low"
+    assert s.groq_verify_model_on_startup is True
+    assert s.groq_max_tokens == 8000
+
+
+def test_groq_fallback_can_be_disabled_with_empty_string():
+    s = Settings(groq_api_key="x", groq_fallback_model="")
+    assert s.groq_fallback_model == ""
