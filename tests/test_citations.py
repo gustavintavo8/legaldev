@@ -1,4 +1,5 @@
 import asyncio
+import time
 import unicodedata
 from unittest.mock import MagicMock
 
@@ -295,6 +296,37 @@ def test_extract_quotes_multiline_paragraph_without_quotes_yields_nothing():
     physical lines that contains no quote characters at all."""
     answer = "> Esto es una nota de dos líneas\n> sin ninguna cita literal.\n"
     assert extract_quotes(answer) == []
+
+
+# ── Fix round 2 — linear _split_paragraph ────────────────────────────────────
+
+
+def test_split_paragraph_is_linear_on_many_stray_quotes():
+    """[Important] Regression for the non-linear slowdown: a paragraph joined
+    from 2+ lines with many stray, never-completing quote characters must not
+    make _split_paragraph re-scan an ever-larger prefix per quote."""
+    fragment_count = 4000
+    answer = "> " + ('"a" ' * fragment_count) + "\n> mas texto sin cierre\n"
+
+    start = time.perf_counter()
+    result1 = extract_quotes(answer)
+    elapsed = time.perf_counter() - start
+
+    assert elapsed < 1.0, f"extract_quotes took {elapsed:.3f}s, expected < 1.0s"
+    result2 = extract_quotes(answer)
+    assert result1 == result2
+
+
+def test_split_paragraph_many_self_contained_quotes_stays_fast():
+    quote_count = 2000
+    answer = "".join(f'> "cita {i}" — RGPD\n' for i in range(quote_count))
+
+    start = time.perf_counter()
+    quotes = extract_quotes(answer)
+    elapsed = time.perf_counter() - start
+
+    assert elapsed < 1.0, f"extract_quotes took {elapsed:.3f}s, expected < 1.0s"
+    assert len(quotes) == quote_count
 
 
 def test_run_pipeline_records_citation_metrics(mock_reranker):

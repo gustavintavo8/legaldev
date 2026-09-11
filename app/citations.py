@@ -22,6 +22,10 @@ _BLOCKQUOTE_LINE_RE = re.compile(r"^\s*>\s?(.*)$")
 _QUOTED_BEFORE_DASH_RE = re.compile(r"[\"“«](.+)[\"”»]\s*[—–-]")
 _QUOTED_RE = re.compile(r"[\"“«](.+)[\"”»]")
 _OPENING_QUOTE_RE = re.compile(r"[\"“«]")
+# Un "marcador de atribución": comilla de cierre + guion, con espacio opcional
+# entre medias. Precalculado una sola vez por párrafo en _split_paragraph para
+# no re-escanear un prefijo cada vez más grande por cada comilla suelta.
+_ATTRIBUTION_RE = re.compile(r"[\"”»]\s*[—–-]")
 _ELLIPSIS_RE = re.compile(r"\[\s*(?:\.\.\.|…)\s*\]|\.\.\.|…")
 # Espacio en blanco, comillas, guiones, "|" (separador de chunks — ver
 # verify_citations) y caracteres invisibles (ZWSP/ZWNJ/ZWJ/word joiner/BOM) que
@@ -40,16 +44,37 @@ def _split_paragraph(paragraph: str) -> list[str]:
 
     Recorre las posiciones de comilla de apertura; corta justo antes de una
     comilla si el tramo acumulado hasta ahí YA es una cita completa (comilla
-    … comilla + guion) — si no, seguye acumulando, para no partir una cita que
+    … comilla + guion) — si no, sigue acumulando, para no partir una cita que
     el ajuste de línea del LLM dejó a medias.
+
+    Los marcadores de atribución (comilla de cierre + guion) se precalculan
+    UNA VEZ para todo el párrafo y se recorren con un puntero que solo avanza
+    (`mi`), en vez de repetir _QUOTED_BEFORE_DASH_RE.search sobre un prefijo
+    `paragraph[start:pos]` cada vez más largo por cada comilla suelta que no
+    llega a completar una cita — eso último es O(n²) o peor (una respuesta con
+    miles de comillas sueltas sin guion podía tardar minutos). Con el puntero,
+    el trabajo total es O(len(paragraph) + nº de comillas).
     """
     positions = [m.start() for m in _OPENING_QUOTE_RE.finditer(paragraph)]
     if not positions:
         return [paragraph]
+    # (marker_start, marker_end) de cada "comilla de cierre + guion" del párrafo.
+    markers = [(m.start(), m.end()) for m in _ATTRIBUTION_RE.finditer(paragraph)]
     spans: list[str] = []
     start = positions[0]
+    mi = 0
     for pos in positions[1:]:
-        if _QUOTED_BEFORE_DASH_RE.search(paragraph[start:pos]):
+        # Un marcador solo completa una cita que ABRE en `start` si su propia
+        # comilla de cierre (marker_start) deja hueco para el contenido no
+        # vacío que exige _QUOTED_BEFORE_DASH_RE — es decir, marker_start >=
+        # start + 2 (comilla de apertura + ≥1 carácter de contenido). Sin este
+        # +2, una comilla recta que ABRE una cita nueva y que además viene
+        # seguida de un guion (su propio contenido empieza por "—") se contaría
+        # a la vez como apertura Y como el cierre de sí misma, cosa que
+        # _QUOTED_BEFORE_DASH_RE nunca podría hacer en un único match.
+        while mi < len(markers) and markers[mi][0] < start + 2:
+            mi += 1
+        if mi < len(markers) and markers[mi][1] <= pos:
             spans.append(paragraph[start:pos])
             start = pos
     spans.append(paragraph[start:])
@@ -75,7 +100,18 @@ def extract_quotes(answer: str) -> list[str]:
         spans = _split_paragraph(paragraph) if len(buffer) > 1 else [paragraph]
         buffer.clear()
         for span in spans:
-            q = _QUOTED_BEFORE_DASH_RE.search(span) or _QUOTED_RE.search(span)
+            # _QUOTED_BEFORE_DASH_RE can only ever match a span that contains an
+            # attribution marker (_ATTRIBUTION_RE) — checking that cheaply first
+            # avoids the regex's own catastrophic backtracking on a large span
+            # with many quote characters but no dash at all (the same adversarial
+            # shape _split_paragraph's marker precomputation exists to handle):
+            # without this guard, extract_quotes stayed well over 1s even after
+            # _split_paragraph itself became linear, because a never-completing
+            # paragraph is returned as ONE big unsplit span.
+            q = None
+            if _ATTRIBUTION_RE.search(span):
+                q = _QUOTED_BEFORE_DASH_RE.search(span)
+            q = q or _QUOTED_RE.search(span)
             if q:
                 quotes.append(q.group(1).strip())
 
