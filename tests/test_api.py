@@ -47,6 +47,13 @@ def test_analyze_groq_error_returns_503(client, sample_input_dict):
     assert response.status_code == 503
 
 
+def test_analyze_includes_llm_model(client, sample_input_dict):
+    from app.config import settings
+
+    response = client.post("/v1/analyze", json=sample_input_dict)
+    assert response.json()["llm_model"] == settings.groq_model
+
+
 def test_analyze_no_relevant_docs_returns_404(client, sample_input_dict):
     client.app.state.vectorstore.similarity_search_with_relevance_scores.return_value = []
     response = client.post("/v1/analyze", json=sample_input_dict)

@@ -68,6 +68,7 @@ def test_e2e_pipeline_retrieves_from_real_chroma(tiny_pdf_dir):
         state.indexed_normativas = frozenset({"TestNorm"})
         state.corpus_version = "e2e-test"
         state.groq_client.invoke.return_value = MagicMock(content="Respuesta E2E")
+        state.groq_fallback_client = None
 
         inp = QuestionnaireInput(
             tipo_proyecto="app_web",

@@ -99,6 +99,7 @@ class RAGResponse(BaseModel):
     chunks_utilizados: int
     disclaimer: str
     corpus_version: str = "unknown"
+    llm_model: str = "unknown"
 
 
 class FeedbackInput(BaseModel):

@@ -246,6 +246,7 @@ def _make_state(docs, llm_response="Respuesta de prueba", score=0.85):
         (doc, score) for doc in docs
     ]
     state.groq_client.invoke.return_value = MagicMock(content=llm_response)
+    state.groq_fallback_client = None
     state.indexed_normativas = frozenset({"RGPD", "LOPDGDD"})
     state.corpus_version = "test-corpus-v1"
     return state
@@ -307,6 +308,7 @@ def test_run_pipeline_groq_error_raises_503(sample_input, mock_reranker):
         (_make_mock_doc(), 0.85)
     ]
     state.groq_client.invoke.side_effect = Exception("Connection refused")
+    state.groq_fallback_client = None
     state.indexed_normativas = frozenset({"RGPD"})
     state.corpus_version = "test-corpus-v1"
 

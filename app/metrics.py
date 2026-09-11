@@ -32,3 +32,9 @@ aux_search_triggered = Counter(
     "Number of times each auxiliary search type was triggered",
     ["type"],
 )
+
+llm_fallback_total = Counter(
+    "legaldev_llm_fallback_total",
+    "LLM calls served by the fallback model after the primary model failed",
+    ["reason"],
+)
