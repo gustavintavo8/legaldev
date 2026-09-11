@@ -168,6 +168,14 @@ def test_build_user_message_includes_page_number():
     assert "Fuente 1: RGPD.pdf, p. 5" in result
 
 
+def test_build_user_message_includes_article_when_present():
+    doc = _make_mock_doc("RGPD.pdf")
+    doc.metadata["article"] = "Artículo 5"
+    doc.metadata["page"] = 35
+    result = _build_user_message(_make_input(), [doc], [])
+    assert "Fuente 1: RGPD.pdf, Artículo 5, p. 36" in result
+
+
 def test_build_user_message_omits_page_when_missing():
     doc = _make_mock_doc("RGPD.pdf")
     doc.metadata.pop("page", None)

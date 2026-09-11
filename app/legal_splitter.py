@@ -7,6 +7,7 @@ _ARTICLE_PATTERN = re.compile(
     r"(?=(?:Artículo|Art\.|Considerando|ARTÍCULO)\s+\d+)",
     re.MULTILINE,
 )
+_ARTICLE_HEADING = re.compile(r"^(?:Artículo|Art\.|Considerando|ARTÍCULO)\s+\d+")
 _MAX_ARTICLE_CHARS = 1500
 _FALLBACK_SPLITTER = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=100)
 
@@ -23,13 +24,21 @@ def split_document(doc: Document) -> list[Document]:
         part = part.strip()
         if not part:
             continue
+        metadata = dict(doc.metadata)
+        heading_match = _ARTICLE_HEADING.match(part)
+        heading = heading_match.group(0) if heading_match else None
+        if heading:
+            metadata["article"] = heading
         if len(part) <= _MAX_ARTICLE_CHARS:
-            chunks.append(Document(page_content=part, metadata=dict(doc.metadata)))
-        else:
-            sub = _FALLBACK_SPLITTER.create_documents(
-                [part], metadatas=[dict(doc.metadata)]
-            )
-            chunks.extend(sub)
+            chunks.append(Document(page_content=part, metadata=metadata))
+            continue
+        # Artículo largo: cada sub-chunk conserva el encabezado para que sea autodescriptivo
+        # (embedding, reranker y cita del LLM saben de qué artículo es).
+        sub = _FALLBACK_SPLITTER.create_documents([part], metadatas=[metadata])
+        for i, sub_doc in enumerate(sub):
+            if heading and i > 0:
+                sub_doc.page_content = f"{heading} (cont.): {sub_doc.page_content}"
+        chunks.extend(sub)
 
     if not chunks:
         return _FALLBACK_SPLITTER.split_documents([doc])

@@ -4,6 +4,7 @@ Uses _collection directly because langchain-chroma 1.1 has no public equivalents
 for count() or bulk metadata retrieval. If Chroma adds public methods, update here.
 """
 
+import json
 from pathlib import Path
 
 
@@ -21,3 +22,10 @@ def read_corpus_version(chroma_db_path: str) -> str:
     if version_file.exists():
         return version_file.read_text().strip()
     return "unknown"
+
+
+def read_index_meta(chroma_db_path: str) -> dict:
+    meta_file = Path(chroma_db_path) / ".index_meta.json"
+    if meta_file.exists():
+        return json.loads(meta_file.read_text(encoding="utf-8"))
+    return {}

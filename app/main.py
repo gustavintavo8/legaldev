@@ -21,6 +21,7 @@ from app import cache as _cache
 from app import reranker as _reranker
 from app import store
 from app.config import settings
+from app.corpus import EMBEDDING_MODEL
 from app.middleware import RequestIDMiddleware
 from app.models import FeedbackInput, QuestionnaireInput, RAGResponse
 from app.rag import run_pipeline
@@ -28,7 +29,6 @@ from app.rag import run_pipeline
 logging.basicConfig(level=getattr(logging, settings.log_level.upper(), logging.INFO))
 logger = logging.getLogger(__name__)
 
-EMBEDDING_MODEL = "paraphrase-multilingual-MiniLM-L12-v2"
 CHROMA_COLLECTION = "legaldev"
 
 
@@ -139,6 +139,19 @@ async def lifespan(app: FastAPI):
         if settings.trust_proxy_headers
         else "direct connection IP (TRUST_PROXY_HEADERS=false)",
     )
+    index_meta = store.read_index_meta(settings.chroma_db_path)
+    indexed_model = index_meta.get("embedding_model")
+    if indexed_model is None:
+        logger.warning(
+            "Index has no .index_meta.json (built before splitter v2); cannot verify it matches %s",
+            EMBEDDING_MODEL,
+        )
+    elif indexed_model != EMBEDDING_MODEL:
+        # Un índice de otro modelo produce scores sin sentido: mejor fallar alto que servir basura.
+        raise RuntimeError(
+            f"ChromaDB index was built with '{indexed_model}' but the app uses "
+            f"'{EMBEDDING_MODEL}'. Re-run 'make ingest'."
+        )
     count = store.count(app.state.vectorstore)
     if count == 0:
         raise RuntimeError(

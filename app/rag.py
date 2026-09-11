@@ -398,7 +398,9 @@ def _build_user_message(
         source = doc.metadata.get("source", "desconocido")
         page = doc.metadata.get("page")
         page_str = f", p. {page + 1}" if page is not None else ""
-        lines.append(f"\n### Fuente {i}: {source}{page_str}")
+        article = doc.metadata.get("article")
+        article_str = f", {article}" if article else ""
+        lines.append(f"\n### Fuente {i}: {source}{article_str}{page_str}")
         lines.append(doc.page_content)
 
     return "\n".join(lines)

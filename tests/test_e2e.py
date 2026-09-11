@@ -24,8 +24,8 @@ def tiny_pdf_dir(tmp_path_factory):
         pdf.multi_cell(
             0,
             8,
-            f"Article {i}. The data controller must inform the data subject in a concise, "
-            "transparent and intelligible manner about personal data processing.",
+            f"Artículo {i}. El responsable del tratamiento debe informar al interesado "
+            "de forma concisa, transparente e inteligible sobre el tratamiento de datos personales.",
         )
         pdf.ln(2)
     pdf.output(str(pdf_dir / "TestNorm.pdf"))
@@ -35,25 +35,20 @@ def tiny_pdf_dir(tmp_path_factory):
 @pytest.mark.slow
 def test_e2e_pipeline_retrieves_from_real_chroma(tiny_pdf_dir):
     from langchain_chroma import Chroma
-    from langchain_community.document_loaders import PyPDFLoader
     from langchain_huggingface import HuggingFaceEmbeddings
-    from langchain_text_splitters import RecursiveCharacterTextSplitter
 
+    from app.corpus import EMBEDDING_MODEL
+    from app.ingest import _load_pages
+    from app.legal_splitter import split_document
     from app.models import QuestionnaireInput
     from app.rag import run_pipeline
 
     pdf_path = next(tiny_pdf_dir.glob("*.pdf"))
-    loader = PyPDFLoader(str(pdf_path))
-    pages = loader.load()
-    for page in pages:
-        page.metadata["source"] = pdf_path.name
-
-    splitter = RecursiveCharacterTextSplitter(chunk_size=400, chunk_overlap=50)
-    chunks = splitter.split_documents(pages)
+    chunks = [c for page in _load_pages(pdf_path) for c in split_document(page)]
 
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as chroma_dir:
         embeddings = HuggingFaceEmbeddings(
-            model_name="paraphrase-multilingual-MiniLM-L12-v2",
+            model_name=EMBEDDING_MODEL,
             encode_kwargs={"normalize_embeddings": True},
         )
         vs = Chroma.from_documents(
