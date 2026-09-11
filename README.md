@@ -7,9 +7,9 @@
 [![Python](https://img.shields.io/badge/Python-3.11+-3776ab?logo=python&logoColor=white)](https://python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.136-009688?logo=fastapi)](https://fastapi.tiangolo.com/)
 [![ChromaDB](https://img.shields.io/badge/ChromaDB-1.5-ff6b35)](https://www.trychroma.com/)
-[![Groq](https://img.shields.io/badge/Groq-Llama_4-f55036)](https://groq.com/)
+[![Groq](https://img.shields.io/badge/Groq-gpt--oss--120b-f55036?logo=groq)](https://groq.com/)
 [![HF Spaces](https://img.shields.io/badge/🤗_Space-LegalDev-yellow)](https://huggingface.co/spaces/gustavintavo8/legaldev)
-[![Tests](https://img.shields.io/badge/Tests-69_passed-22c55e?logo=pytest)](./tests/)
+[![Tests](https://img.shields.io/badge/Tests-203_passed-22c55e?logo=pytest)](./tests/)
 
 [Highlights](#-highlights-técnicos) · [Cómo funciona](#-cómo-funciona) · [Tech Stack](#️-tech-stack) · [Decisiones técnicas](#-decisiones-técnicas) · [Instalación](#-instalación) · [API](#-api) · [Deploy](#-deploy)
 
@@ -48,9 +48,10 @@ POST /v1/analyze (QuestionnaireInput)
           │         cookies or public web; IA Agéntica AEPD if agentes
           │      → if no chunks pass: HTTP 404 (no coverage)
           │
-          ├─ 3. LLM call (Groq · Llama 4 Scout · temperature=0)
+          ├─ 3. LLM call (Groq · openai/gpt-oss-120b · temperature=0 · reasoning_effort=low)
           │      SystemPrompt: rules + mandatory citation format
           │      UserMessage: questionnaire context + retrieved chunks
+          │      → fallback: openai/gpt-oss-20b si el principal falla (modelo retirado, 429, 5xx)
           │
           └─ 4. RAGResponse
                  respuesta_completa  ← LLM output with inline citations
@@ -75,7 +76,7 @@ docs/*.pdf → PyPDFLoader → legal_splitter (Artículo/Art./Considerando bound
 API framework      FastAPI 0.136 + uvicorn
 Vector store       ChromaDB 1.5 (local, SQLite-backed)
 Embeddings         sentence-transformers · paraphrase-multilingual-MiniLM-L12-v2 (~500 MB)
-LLM                Groq API · meta-llama/llama-4-scout-17b-16e-instruct
+LLM                Groq API · openai/gpt-oss-120b
 Prompt framework   LangChain (loaders, splitters, Chroma wrapper)
 Rate limiting      slowapi (token bucket por IP)
 Validation         Pydantic v2 + pydantic-settings
@@ -183,7 +184,9 @@ Los falsos positivos se redujeron mediante las EXCLUSIONS condicionales; el reca
 
 ### Groq en vez de OpenAI
 
-Groq ofrece un Developer Plan gratuito con 500.000 tokens/día y latencias de ~200ms por respuesta gracias a su hardware LPU. Para un proyecto open source dirigido a developers individuales, el coste cero en inferencia es fundamental. El modelo elegido (`llama-4-scout-17b-16e-instruct`) tiene context window de 128k tokens y function calling fiable — más que suficiente para el tamaño de los prompts generados (cuestionario + 12-18 chunks ≈ ~5.000 tokens).
+Groq ofrece un Developer Plan gratuito con 500.000 tokens/día y latencias de ~200ms por respuesta gracias a su hardware LPU. Para un proyecto open source dirigido a developers individuales, el coste cero en inferencia es fundamental.
+
+El modelo por defecto es `openai/gpt-oss-120b` (131k de contexto, 65k de salida). Groq retira modelos con pocos meses de aviso —`llama-4-scout`, el modelo original de LegalDev, dejó de existir el 17/07/2026 y la API estuvo devolviendo 503 hasta detectarlo—, así que el sistema (1) comprueba al arrancar que `GROQ_MODEL` existe (`GET /openai/v1/models/{model}`) y lo registra en `/health/deep`, (2) mantiene un segundo modelo (`GROQ_FALLBACK_MODEL`, por defecto `openai/gpt-oss-20b`) al que recurre si el principal falla por cualquier causa, y (3) informa en cada respuesta qué modelo la generó (`llm_model`). En gpt-oss los tokens de razonamiento cuentan como salida: `GROQ_REASONING_EFFORT=low` y `GROQ_MAX_TOKENS=8000`.
 
 ---
 
@@ -249,7 +252,7 @@ Genera `chroma_db/`. Si falta alguno de los 22 PDFs, el script aborta con un err
 
 ```bash
 make dev    # uvicorn app.main:app --reload → http://localhost:8000
-make test   # pytest -v (69 tests, sin Groq ni ChromaDB reales)
+make test   # pytest -v (203 tests, sin Groq ni ChromaDB reales)
 ```
 
 ---
@@ -258,10 +261,13 @@ make test   # pytest -v (69 tests, sin Groq ni ChromaDB reales)
 
 ```env
 GROQ_API_KEY=your_groq_api_key_here
-GROQ_MODEL=meta-llama/llama-4-scout-17b-16e-instruct
+GROQ_MODEL=openai/gpt-oss-120b
+GROQ_FALLBACK_MODEL=openai/gpt-oss-20b
+GROQ_REASONING_EFFORT=low
+GROQ_VERIFY_MODEL_ON_STARTUP=true
 GROQ_TIMEOUT=30
 GROQ_TEMPERATURE=0.0
-GROQ_MAX_TOKENS=4000
+GROQ_MAX_TOKENS=8000
 CHROMA_DB_PATH=./chroma_db
 DOCS_PATH=./docs
 TOP_K_CHUNKS=12
@@ -277,9 +283,12 @@ ALLOWED_ORIGINS=*
 | Variable | Descripción | Default |
 |----------|-------------|---------|
 | `GROQ_API_KEY` | API key de [GroqCloud](https://console.groq.com) | — |
-| `GROQ_MODEL` | Modelo de Groq a usar | `llama-4-scout-17b-16e-instruct` |
+| `GROQ_MODEL` | Modelo de Groq a usar | `openai/gpt-oss-120b` |
+| `GROQ_FALLBACK_MODEL` | Modelo de respaldo si el principal falla; vacío lo desactiva | `openai/gpt-oss-20b` |
+| `GROQ_REASONING_EFFORT` | Esfuerzo de razonamiento (solo modelos `openai/gpt-oss*`) | `low` |
+| `GROQ_VERIFY_MODEL_ON_STARTUP` | Comprueba al arrancar que `GROQ_MODEL` existe en Groq | `true` |
 | `GROQ_TEMPERATURE` | Temperatura del LLM (0 = determinista) | `0.0` |
-| `GROQ_MAX_TOKENS` | Límite de tokens en la respuesta del LLM | `4000` |
+| `GROQ_MAX_TOKENS` | Límite de tokens en la respuesta del LLM | `8000` |
 | `MIN_RELEVANCE_SCORE` | Umbral mínimo de relevancia para chunks | `0.35` |
 | `TOP_K_CHUNKS` | Chunks de la query principal a incluir en el prompt | `12` |
 | `COOKIES_K` | Chunks de la búsqueda auxiliar de cookies | `6` |
@@ -325,7 +334,9 @@ curl -X POST http://localhost:8000/v1/analyze \
   "respuesta_completa": "## RGPD\n\n**Consentimiento explícito** ...\n> \"El tratamiento solo será lícito si...\" — RGPD",
   "normativas_detectadas": ["RGPD", "LOPDGDD", "EU AI Act"],
   "chunks_utilizados": 8,
-  "disclaimer": "⚠️ Esta información es orientativa..."
+  "disclaimer": "⚠️ Esta información es orientativa...",
+  "corpus_version": "858b81eb27fe",
+  "llm_model": "openai/gpt-oss-120b"
 }
 ```
 
@@ -350,6 +361,17 @@ curl http://localhost:8000/normativas
 curl http://localhost:8000/health
 # {"status": "ok", "docs_indexed": 8247}
 ```
+
+### `GET /health/deep`
+
+Comprueba ChromaDB y Groq con una llamada real (`ping`), no solo el estado de arranque.
+
+```bash
+curl http://localhost:8000/health/deep
+# {"chroma": "ok", "groq": "ok", "groq_model": "openai/gpt-oss-120b", "groq_fallback_model": "openai/gpt-oss-20b", "groq_model_available_at_startup": true, "corpus_version": "858b81eb27fe"}
+```
+
+El resultado se cachea 60 segundos, así que llamadas repetidas dentro de esa ventana no vuelven a golpear Groq ni ChromaDB.
 
 ---
 
@@ -449,6 +471,8 @@ El `README.md` de GitHub nunca se toca; `README_hf.md` no llega al Space (solo s
 ---
 
 ## ⚠️ Limitaciones conocidas
+
+- **Los modelos de Groq se retiran.** Groq da de baja modelos con solo unos meses de aviso: `llama-4-scout`, el modelo original de LegalDev, dejó de existir el 17/07/2026 y produjo cerca de dos meses de 503 en producción hasta detectarlo. Por eso el sistema comprueba `GROQ_MODEL` al arrancar (`GROQ_VERIFY_MODEL_ON_STARTUP`), mantiene un modelo de respaldo (`GROQ_FALLBACK_MODEL`) para cuando el principal falla, e informa en cada respuesta qué modelo la generó (`llm_model`). Conviene vigilar [console.groq.com/docs/deprecations](https://console.groq.com/docs/deprecations) para anticiparse a la próxima retirada.
 
 - **Modelo de embeddings pesado.** `paraphrase-multilingual-MiniLM-L12-v2` ocupa ~500 MB de RAM en runtime. En entornos con menos de 700 MB disponibles el startup puede fallar o ser muy lento. Ajusta el plan de hosting o usa `all-MiniLM-L6-v2` (~80 MB) si la memoria es crítica (requiere re-indexar el `chroma_db/`).
 

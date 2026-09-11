@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- Producción devolvía 503 en todos los análisis desde el 17/07/2026: Groq retiró `meta-llama/llama-4-scout-17b-16e-instruct`. El modelo por defecto pasa a `openai/gpt-oss-120b` (sustituto recomendado por Groq).
+
+### Added
+- Modelo de respaldo (`GROQ_FALLBACK_MODEL`, por defecto `openai/gpt-oss-20b`): si el principal falla por cualquier causa se reintenta con él; evento `llm_fallback` en logs y métrica `legaldev_llm_fallback_total{reason}`.
+- Comprobación del modelo al arrancar (`GROQ_VERIFY_MODEL_ON_STARTUP`): log ERROR si Groq responde 404; resultado en `/health/deep` junto a `groq_model` y `groq_fallback_model`.
+- `RAGResponse.llm_model`: modelo que generó cada informe.
+- `GROQ_REASONING_EFFORT` (default `low`), enviado solo a modelos `openai/gpt-oss*`.
+
+### Changed
+- `GROQ_MAX_TOKENS` por defecto 4000 → 8000 (en gpt-oss los tokens de razonamiento cuentan como salida).
+
 ## [0.4.0] - 2026-06-24
 
 ### Added
