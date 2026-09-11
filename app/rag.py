@@ -195,6 +195,15 @@ INJECTIONS: list[Injection] = [
         stem="LSSI",
         k=2,
     ),
+    # Guía de cookies de la AEPD: aplicable por definición cuando el proyecto usa cookies.
+    # Medido (sprint 3, Task 6): al dejar de gastar plazas del reranker en normativas
+    # excluidas, los chunks de esta guía caen a las posiciones 13-14 del CrossEncoder
+    # (justo fuera del top-12), así que se garantiza por regla como RGPD/LSSI/CCII.
+    Injection(
+        condition=lambda inp: inp.usa_cookies,
+        stem="Guía sobre uso de cookies - AEPD",
+        k=2,
+    ),
     Injection(
         condition=lambda inp: bool(inp.usa_ia and inp.tipo_ia == "agentes"),
         stem="IA Agentica desde la perspectiva de proteccion de datos - AEPD",

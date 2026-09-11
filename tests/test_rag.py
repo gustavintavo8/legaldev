@@ -691,12 +691,14 @@ def test_pre_rerank_no_duplicates_when_main_n_below_reranker_top_k():
     aux_doc_b = _make_mock_doc("Guía sobre uso de cookies - AEPD.pdf", "guia_aepd")
 
     state = MagicMock()
-    # usa_cookies=True fires: cookies aux search + LSSI injection (filtered search).
+    # usa_cookies=True fires: cookies aux search + LSSI injection (filtered search)
+    # + cookies-guide injection (filtered search).
     # tipos_datos_personales=["ninguno"] → no RGPD aux / injection.
     state.vectorstore.similarity_search_with_relevance_scores.side_effect = [
         [(doc, 0.85) for doc in main_docs],  # main search: 3 docs
         [(aux_doc_a, 0.85), (aux_doc_b, 0.85)],  # cookies aux: 2 new docs
         [],  # LSSI injection (filtered, unconditional)
+        [],  # cookies-guide injection (filtered, unconditional)
     ]
     state.groq_client.invoke.return_value = MagicMock(content="ok")
     state.indexed_normativas = frozenset()
@@ -844,6 +846,72 @@ def test_injection_delivers_ccii_when_colegiado(mock_reranker):
 
     assert "Código Ético y Deontológico CCII" in result.normativas_detectadas, (
         "CCII must be injected when colegiado=True to guarantee ≥2 chunks and clear the threshold"
+    )
+    assert result.chunks_utilizados >= 2
+
+
+def test_injection_delivers_cookies_guide_when_usa_cookies(mock_reranker):
+    """Task 6 fix round 1: the AEPD cookies guide must be injected when usa_cookies=True.
+
+    Measured (sprint 3, Task 6 eval): once exclusions stop consuming reranker slots,
+    this guide's chunks rank 13-14 in the CrossEncoder (just past top_k_chunks=12) in
+    the cookies-webapp eval case — below the top-12 cut even with the per-source cap.
+    It is applicable by definition whenever the project uses cookies, so — like RGPD,
+    LSSI and CCII — it is now guaranteed via an INJECTION rule instead of relying on
+    the CrossEncoder ranking it inside the top-12.
+    """
+    cookies_chunk1 = MagicMock()
+    cookies_chunk1.page_content = (
+        "Guía de cookies — información y consentimiento previo del usuario."
+    )
+    cookies_chunk1.metadata = {
+        "source": "Guía sobre uso de cookies - AEPD.pdf",
+        "doc_type": "guia_aepd",
+    }
+    cookies_chunk2 = MagicMock()
+    cookies_chunk2.page_content = (
+        "Guía de cookies — tipos de cookies y finalidad del tratamiento."
+    )
+    cookies_chunk2.metadata = {
+        "source": "Guía sobre uso de cookies - AEPD.pdf",
+        "doc_type": "guia_aepd",
+    }
+    off_topic_doc = _make_mock_doc("otra_normativa.pdf")
+
+    state = MagicMock()
+
+    # All unfiltered/auxiliary calls return low/no scores.
+    # The filtered injection call (filter={"source": "Guía sobre uso de cookies - AEPD.pdf"})
+    # returns 2 distinct cookies-guide chunks (score ignored by injection path, but ≥2 satisfies P2a).
+    def _search_side_effect(*args, **kwargs):
+        filt = kwargs.get("filter", {})
+        if filt.get("source") == "Guía sobre uso de cookies - AEPD.pdf":
+            return [(cookies_chunk1, 0.10), (cookies_chunk2, 0.10)]
+        return [(off_topic_doc, 0.05)]  # main/aux searches: all below threshold
+
+    state.vectorstore.similarity_search_with_relevance_scores.side_effect = (
+        _search_side_effect
+    )
+    state.groq_client.invoke.return_value = MagicMock(content="ok")
+    state.groq_fallback_client = None
+    state.indexed_normativas = frozenset({"Guía sobre uso de cookies - AEPD"})
+    state.corpus_version = "test-corpus-v1"
+
+    result = asyncio.run(
+        run_pipeline(
+            _make_input(
+                descripcion_breve="Web corporativa con banner de cookies",
+                tipos_datos_personales=["ninguno"],
+                usa_ia=False,
+                usa_cookies=True,
+                colegiado=None,
+            ),
+            state,
+        )
+    )
+
+    assert "Guía sobre uso de cookies - AEPD" in result.normativas_detectadas, (
+        "The AEPD cookies guide must be injected when usa_cookies=True to guarantee ≥2 chunks and clear the threshold"
     )
     assert result.chunks_utilizados >= 2
 
