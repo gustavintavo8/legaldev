@@ -378,7 +378,7 @@ def _build_user_message(
     return "\n".join(lines)
 
 
-@dataclass
+@dataclass(frozen=True)
 class RetrievalResult:
     docs: list
     candidates: int
@@ -398,9 +398,10 @@ def _content_hash(doc) -> str:
 def _retrieve(inp: QuestionnaireInput, vs, threshold: float) -> RetrievalResult:
     """Fase de retrieval completa: principal → auxiliares → rerank → exclusiones → inyecciones.
 
-    Es la ÚNICA implementación. Es síncrona y bloqueante (Chroma + CrossEncoder en CPU):
-    run_pipeline la ejecuta en un hilo bajo settings.retrieval_timeout; las herramientas de
-    eval/diagnóstico la llaman directamente vía retrieve_docs_sync.
+    Única implementación usada por la API (run_pipeline) y por el eval (retrieve_docs_sync).
+    tools/diagnose_retrieval.py mantiene una traza propia con fines de diagnóstico.
+    Es síncrona y bloqueante (Chroma + CrossEncoder en CPU): run_pipeline la ejecuta en
+    un hilo bajo settings.retrieval_timeout.
     """
     query = _build_query(inp)
 
@@ -459,7 +460,7 @@ def _retrieve(inp: QuestionnaireInput, vs, threshold: float) -> RetrievalResult:
     return RetrievalResult(
         docs=docs,
         candidates=len(candidates),
-        top_score=round(candidates[0][1], 3) if candidates else None,
+        top_score=candidates[0][1] if candidates else None,
         pre_rerank=len(pre_rerank),
         injected_stems=injected_stems,
     )
@@ -572,7 +573,9 @@ async def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
                     "event": "rag_no_coverage",
                     "request_id": request_id_var.get(),
                     "chunks_fetched": retrieval.candidates,
-                    "top_score": retrieval.top_score,
+                    "top_score": round(retrieval.top_score, 3)
+                    if retrieval.top_score is not None
+                    else None,
                     "tipo_proyecto": input.tipo_proyecto,
                 }
             )
@@ -627,7 +630,9 @@ async def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
                 "chunks_fetched": retrieval.candidates,
                 "chunks_reranked": retrieval.pre_rerank,
                 "chunks_passed": len(docs),
-                "top_score": retrieval.top_score,
+                "top_score": round(retrieval.top_score, 3)
+                if retrieval.top_score is not None
+                else None,
                 "sources": sorted({doc.metadata.get("source", "?") for doc in docs}),
                 "injected_stems": retrieval.injected_stems,
                 "retrieval_ms": round((t_retrieval - t0) * 1000),

@@ -3,7 +3,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    # extra="ignore": stale/unknown keys in a user's .env (e.g. a renamed setting)
+    # must never crash startup — os.environ unknowns were already ignored.
+    model_config = SettingsConfigDict(
+        env_file=".env", env_file_encoding="utf-8", extra="ignore"
+    )
 
     groq_api_key: str
     groq_model: str = "openai/gpt-oss-120b"
