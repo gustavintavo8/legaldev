@@ -6,7 +6,12 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
     groq_api_key: str
-    groq_model: str = "meta-llama/llama-4-scout-17b-16e-instruct"
+    groq_model: str = "openai/gpt-oss-120b"
+    # Segundo modelo si el principal falla (retirado, 429, 5xx). "" lo desactiva.
+    groq_fallback_model: str = "openai/gpt-oss-20b"
+    # Solo se envía a modelos openai/gpt-oss*. "" no envía el parámetro.
+    groq_reasoning_effort: str = "low"
+    groq_verify_model_on_startup: bool = True
     chroma_db_path: str = "./chroma_db"
     docs_path: str = "./docs"
     top_k_chunks: int = 12
@@ -17,7 +22,7 @@ class Settings(BaseSettings):
     reranker_top_k: int = 25
     groq_timeout: int = 30
     groq_temperature: float = 0.0
-    groq_max_tokens: int = 4000
+    groq_max_tokens: int = 8000
     min_relevance_score: float = 0.40
     rate_limit: str = "10/minute"
     allowed_origins: str = "*"

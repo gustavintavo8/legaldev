@@ -29,7 +29,7 @@ def test_system_prompt_snapshot():
 
 
 def test_settings_groq_max_tokens_default():
-    assert settings.groq_max_tokens == 4000
+    assert settings.groq_max_tokens == 8000
 
 
 def _make_input(**overrides):

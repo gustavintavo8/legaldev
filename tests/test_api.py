@@ -218,3 +218,14 @@ def test_deep_health_detects_groq_failure(client):
         "Respuesta de prueba sobre RGPD"
     )
     main_module._deep_health_cache.clear()
+
+
+def test_deep_health_reports_model_names_and_startup_check(client):
+    import app.main as main_module
+
+    main_module._deep_health_cache.clear()
+    data = client.get("/health/deep").json()
+    assert data["groq_model"] == main_module.settings.groq_model
+    assert data["groq_fallback_model"] == main_module.settings.groq_fallback_model
+    assert data["groq_model_available_at_startup"] is True
+    main_module._deep_health_cache.clear()

@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from pathlib import Path as _Path
 
+import httpx
 from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Request
 from fastapi import Response as FastAPIResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -40,6 +41,55 @@ def _get_real_ip(request: Request) -> str:
 
 limiter = Limiter(key_func=_get_real_ip)
 
+GROQ_MODELS_URL = "https://api.groq.com/openai/v1/models"
+GROQ_DEPRECATIONS_URL = "https://console.groq.com/docs/deprecations"
+
+
+def _make_groq_client(model: str) -> ChatGroq:
+    kwargs: dict = {
+        "api_key": settings.groq_api_key,
+        "model_name": model,
+        "timeout": settings.groq_timeout,
+        "temperature": settings.groq_temperature,
+        "max_tokens": settings.groq_max_tokens,
+    }
+    # reasoning_effort solo existe en la familia gpt-oss; Groq rechaza el parámetro en otros modelos.
+    if settings.groq_reasoning_effort and model.startswith("openai/gpt-oss"):
+        kwargs["reasoning_effort"] = settings.groq_reasoning_effort
+    return ChatGroq(**kwargs)
+
+
+def _check_groq_model(api_key: str, model: str, timeout: float = 5.0) -> bool | None:
+    """True si Groq sirve *model*, False si no existe (retirado/desconocido), None si no se pudo comprobar.
+
+    Nunca aborta el arranque: un fallo de red en el boot no debe tumbar el servicio.
+    """
+    try:
+        resp = httpx.get(
+            f"{GROQ_MODELS_URL}/{model}",
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=timeout,
+        )
+    except Exception as e:
+        logger.warning("Groq model check skipped for %s: %s", model, type(e).__name__)
+        return None
+    if resp.status_code == 200:
+        logger.info("Groq model available: %s", model)
+        return True
+    if resp.status_code == 404:
+        logger.error(
+            "Groq model NOT available: %s (HTTP 404). It may have been decommissioned — "
+            "see %s and set GROQ_MODEL to a live model.",
+            model,
+            GROQ_DEPRECATIONS_URL,
+        )
+        return False
+    logger.warning(
+        "Groq model check inconclusive for %s: HTTP %d", model, resp.status_code
+    )
+    return None
+
+
 _deep_health_cache: dict = {}
 _DEEP_HEALTH_TTL = 60.0
 
@@ -69,12 +119,18 @@ async def lifespan(app: FastAPI):
         collection_name=CHROMA_COLLECTION,
     )
     logger.info("Initializing Groq client with model %s", settings.groq_model)
-    app.state.groq_client = ChatGroq(
-        api_key=settings.groq_api_key,
-        model_name=settings.groq_model,
-        timeout=settings.groq_timeout,
-        temperature=settings.groq_temperature,
-        max_tokens=settings.groq_max_tokens,
+    app.state.groq_client = _make_groq_client(settings.groq_model)
+    app.state.groq_fallback_client = (
+        _make_groq_client(settings.groq_fallback_model)
+        if settings.groq_fallback_model
+        else None
+    )
+    if app.state.groq_fallback_client is not None:
+        logger.info("Groq fallback model: %s", settings.groq_fallback_model)
+    app.state.groq_model_available = (
+        _check_groq_model(settings.groq_api_key, settings.groq_model)
+        if settings.groq_verify_model_on_startup
+        else None
     )
     logger.info(
         "Rate limit IP source: %s",
@@ -171,6 +227,9 @@ def health_deep(request: Request):
     result: dict = {
         "chroma": "ok",
         "groq": "ok",
+        "groq_model": settings.groq_model,
+        "groq_fallback_model": settings.groq_fallback_model or None,
+        "groq_model_available_at_startup": request.app.state.groq_model_available,
         "corpus_version": request.app.state.corpus_version,
     }
 
