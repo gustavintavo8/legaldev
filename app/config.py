@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     rgpd_k: int = 6
     overfetch_k: int = 100
     reranker_top_k: int = 25
+    # Máximo de chunks de una misma normativa en el top-k del reranker (0 desactiva).
+    max_chunks_per_source: int = 4
     groq_timeout: int = 30
     groq_temperature: float = 0.0
     groq_max_tokens: int = 8000

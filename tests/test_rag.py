@@ -656,10 +656,7 @@ def test_run_pipeline_invokes_reranker_with_correct_top_k(sample_input):
 
     mock_rerank.assert_called_once()
     call_args = mock_rerank.call_args
-    assert (
-        call_args.kwargs.get("top_k") == settings.top_k_chunks
-        or call_args.args[2] == settings.top_k_chunks
-    )
+    assert call_args.kwargs.get("top_k") == len(call_args.args[1])
 
 
 def test_run_pipeline_respects_reranker_output_order(sample_input):

@@ -395,6 +395,31 @@ def _content_hash(doc) -> str:
     return hashlib.md5(doc.page_content.encode()).hexdigest()
 
 
+def _select_diverse(ranked: list, top_k: int, max_per_source: int) -> list:
+    """Toma hasta top_k docs del orden del reranker con un máximo por normativa.
+
+    Conserva el orden. Si el tope deja plazas libres, se rellenan con los docs
+    saltados (en su orden original). max_per_source <= 0 desactiva el tope.
+    """
+    if max_per_source <= 0:
+        return ranked[:top_k]
+    chosen: list = []
+    skipped: list = []
+    per_source: dict[str, int] = {}
+    for doc in ranked:
+        if len(chosen) >= top_k:
+            break
+        stem = _stem(doc)
+        if per_source.get(stem, 0) >= max_per_source:
+            skipped.append(doc)
+            continue
+        per_source[stem] = per_source.get(stem, 0) + 1
+        chosen.append(doc)
+    if len(chosen) < top_k:
+        chosen.extend(skipped[: top_k - len(chosen)])
+    return chosen
+
+
 def _retrieve(inp: QuestionnaireInput, vs, threshold: float) -> RetrievalResult:
     """Fase de retrieval completa: principal → auxiliares → rerank → exclusiones → inyecciones.
 
@@ -404,14 +429,19 @@ def _retrieve(inp: QuestionnaireInput, vs, threshold: float) -> RetrievalResult:
     un hilo bajo settings.retrieval_timeout.
     """
     query = _build_query(inp)
+    excluded_stems = {exc.stem for exc in EXCLUSIONS if exc.condition(inp)}
 
-    # 1. Candidatos principales
+    # 1. Candidatos principales — las normativas excluidas no ocupan plazas ni del recorte
+    #    ni del reranker (antes se filtraban después y desperdiciaban 1-3 plazas del top-12).
     candidates = vs.similarity_search_with_relevance_scores(
         query, k=settings.overfetch_k
     )
-    docs = [doc for doc, score in candidates if score >= threshold]
+    docs = [
+        doc
+        for doc, score in candidates
+        if score >= threshold and _stem(doc) not in excluded_stems
+    ][: settings.reranker_top_k]
     seen = {_content_hash(d) for d in docs}
-    main_n = len(docs)
 
     # 2. Búsqueda auxiliar — ver README "Query descriptiva + búsqueda auxiliar por dominio"
     for aux in AUXILIARY_SEARCHES:
@@ -421,21 +451,19 @@ def _retrieve(inp: QuestionnaireInput, vs, threshold: float) -> RetrievalResult:
         for doc, score in vs.similarity_search_with_relevance_scores(
             aux.query, k=aux.k
         ):
-            if score < threshold:
+            if score < threshold or _stem(doc) in excluded_stems:
                 continue
             h = _content_hash(doc)
             if h not in seen:
                 seen.add(h)
                 docs.append(doc)
 
-    # 3. Recorte de la lista principal + CrossEncoder
-    pre_rerank = docs[: min(settings.reranker_top_k, main_n)] + docs[main_n:]
-    docs = _reranker.rerank(query, pre_rerank, top_k=settings.top_k_chunks)
-
-    # 4. Exclusiones
-    excluded_stems = {exc.stem for exc in EXCLUSIONS if exc.condition(inp)}
-    if excluded_stems:
-        docs = [doc for doc in docs if _stem(doc) not in excluded_stems]
+    # 3. CrossEncoder sobre todos los candidatos (orden completo) + tope por fuente
+    pre_rerank = docs
+    ranked = _reranker.rerank(query, pre_rerank, top_k=len(pre_rerank))
+    docs = _select_diverse(
+        ranked, settings.top_k_chunks, settings.max_chunks_per_source
+    )
 
     # 5. Inyecciones — búsqueda filtrada por fuente, SIN umbral: una INJECTION es una garantía.
     #    filter= es la API de langchain_chroma (where= es la interna de Chroma y falla vía **kwargs).
