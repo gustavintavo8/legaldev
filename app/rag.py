@@ -56,12 +56,12 @@ class AuxSearch:
     léxica (e.g., "datos personales" domina el ranking y desplaza documentos de dominio
     específico). La condición acota la búsqueda: coste cero cuando no aplica.
 
-    NOTE (unification deferred — Task 2.1): AuxSearch and Injection both use
-    _search_with_timeout but differ in three important ways:
+    NOTE (unification deferred — Task 2.1): AuxSearch and Injection are both
+    fetched inside _retrieve via vs.similarity_search_with_relevance_scores,
+    but differ in three important ways:
       - AuxSearch: semantic query, score-gated, pre-reranker.
-      - Injection:  source-filtered (filter={"source": stem} via langchain_chroma API,
-                   passed as where= to _search_with_timeout which translates it), unconditional,
-                   post-reranker.
+      - Injection:  source-filtered (filter={"source": stem} — the langchain_chroma
+                   API kwarg), unconditional, post-reranker.
     A common abstraction would need a discriminator field and conditional logic
     that adds more complexity than it saves.  Revisit if a third fetch variant
     emerges that shares enough structure to justify the abstraction.
@@ -277,40 +277,6 @@ def _render_coverage_section(not_retrieved: list[str]) -> str:
     return "\n".join(lines)
 
 
-async def _search_with_timeout(
-    vectorstore,
-    query: str,
-    k: int,
-    timeout: float,
-    where: dict | None = None,
-) -> list:
-    """Wraps similarity_search_with_relevance_scores with a timeout.
-
-    When *where* is provided it is forwarded to Chroma as a metadata filter
-    (via the langchain_chroma API's ``filter=`` kwarg), enabling per-source
-    retrieval without a relevance-score gate (used by INJECTIONS to guarantee
-    delivery regardless of domain proximity).
-    """
-    kwargs: dict = {"k": k}
-    if where is not None:
-        # langchain_chroma exposes metadata filtering via ``filter=``, not
-        # ``where=`` (which is the internal ChromaDB collection kwarg and causes
-        # a "multiple values" TypeError when passed through **kwargs).
-        kwargs["filter"] = where
-    try:
-        return await asyncio.wait_for(
-            asyncio.to_thread(
-                vectorstore.similarity_search_with_relevance_scores, query, **kwargs
-            ),
-            timeout=timeout,
-        )
-    except asyncio.TimeoutError:
-        raise HTTPException(
-            status_code=503,
-            detail="ChromaDB retrieval timed out. Please try again.",
-        )
-
-
 def _build_query(input: QuestionnaireInput) -> str:
     parts = [input.descripcion_breve + "."]
 
@@ -412,74 +378,96 @@ def _build_user_message(
     return "\n".join(lines)
 
 
-def retrieve_docs_sync(
-    inp: QuestionnaireInput,
-    vs,
-    threshold: float,
-) -> list:
-    """Synchronous retrieval pipeline shared by eval and diagnostic tools.
+@dataclass
+class RetrievalResult:
+    docs: list
+    candidates: int
+    top_score: float | None
+    pre_rerank: int
+    injected_stems: list[str]
 
-    Mirrors run_pipeline's retrieval phase exactly (main → aux → rerank →
-    exclusions → injections). Call this instead of duplicating the pipeline.
 
-    NOTE: run_pipeline wraps this logic with async timeouts and LLM calls.
-    When modifying retrieval logic in run_pipeline, update this function too,
-    and vice versa.
+def _stem(doc) -> str:
+    return Path(doc.metadata.get("source", "")).stem
+
+
+def _content_hash(doc) -> str:
+    return hashlib.md5(doc.page_content.encode()).hexdigest()
+
+
+def _retrieve(inp: QuestionnaireInput, vs, threshold: float) -> RetrievalResult:
+    """Fase de retrieval completa: principal → auxiliares → rerank → exclusiones → inyecciones.
+
+    Es la ÚNICA implementación. Es síncrona y bloqueante (Chroma + CrossEncoder en CPU):
+    run_pipeline la ejecuta en un hilo bajo settings.retrieval_timeout; las herramientas de
+    eval/diagnóstico la llaman directamente vía retrieve_docs_sync.
     """
     query = _build_query(inp)
 
-    # 1. Main candidates
+    # 1. Candidatos principales
     candidates = vs.similarity_search_with_relevance_scores(
         query, k=settings.overfetch_k
     )
     docs = [doc for doc, score in candidates if score >= threshold]
-    seen = {hashlib.md5(d.page_content.encode()).hexdigest() for d in docs}
-    _main_n = len(docs)
+    seen = {_content_hash(d) for d in docs}
+    main_n = len(docs)
 
-    # 2. Auxiliary searches
+    # 2. Búsqueda auxiliar — ver README "Query descriptiva + búsqueda auxiliar por dominio"
     for aux in AUXILIARY_SEARCHES:
-        if aux.condition(inp):
-            for doc, score in vs.similarity_search_with_relevance_scores(
-                aux.query, k=aux.k
-            ):
-                if score >= threshold:
-                    h = hashlib.md5(doc.page_content.encode()).hexdigest()
-                    if h not in seen:
-                        seen.add(h)
-                        docs.append(doc)
+        if not aux.condition(inp):
+            continue
+        _metrics.aux_search_triggered.labels(type=aux.name).inc()
+        for doc, score in vs.similarity_search_with_relevance_scores(
+            aux.query, k=aux.k
+        ):
+            if score < threshold:
+                continue
+            h = _content_hash(doc)
+            if h not in seen:
+                seen.add(h)
+                docs.append(doc)
 
-    # 3. pre_rerank + CrossEncoder rerank
-    pre_rerank = docs[: min(settings.reranker_top_k, _main_n)] + docs[_main_n:]
+    # 3. Recorte de la lista principal + CrossEncoder
+    pre_rerank = docs[: min(settings.reranker_top_k, main_n)] + docs[main_n:]
     docs = _reranker.rerank(query, pre_rerank, top_k=settings.top_k_chunks)
 
-    # 4. Exclusions
+    # 4. Exclusiones
     excluded_stems = {exc.stem for exc in EXCLUSIONS if exc.condition(inp)}
     if excluded_stems:
-        docs = [
-            doc
-            for doc in docs
-            if Path(doc.metadata.get("source", "")).stem not in excluded_stems
-        ]
+        docs = [doc for doc in docs if _stem(doc) not in excluded_stems]
 
-    # 5. Injections — unconditional filtered search, no score gate
-    seen_injected = {hashlib.md5(d.page_content.encode()).hexdigest() for d in docs}
+    # 5. Inyecciones — búsqueda filtrada por fuente, SIN umbral: una INJECTION es una garantía.
+    #    filter= es la API de langchain_chroma (where= es la interna de Chroma y falla vía **kwargs).
+    seen_injected = {_content_hash(d) for d in docs}
+    injected_stems: list[str] = []
     for inj in INJECTIONS:
-        if not inj.condition(inp):
+        if not inj.condition(inp) or inj.stem in excluded_stems:
             continue
-        if inj.stem in excluded_stems:
-            continue
-        # NOTE: keep in sync with run_pipeline's injection block in this file.
-        # Use filter= (langchain_chroma API) — not where= (internal Chroma API).
-        inj_raw = vs.similarity_search_with_relevance_scores(
+        inj_candidates = vs.similarity_search_with_relevance_scores(
             query, k=inj.k, filter={"source": f"{inj.stem}.pdf"}
         )
-        for doc, _score in inj_raw:
-            h = hashlib.md5(doc.page_content.encode()).hexdigest()
+        added = 0
+        for doc, _score in inj_candidates:
+            h = _content_hash(doc)
             if h not in seen_injected:
                 seen_injected.add(h)
                 docs.append(doc)
+                added += 1
+        if added:
+            injected_stems.append(inj.stem)
 
-    return docs
+    return RetrievalResult(
+        docs=docs,
+        candidates=len(candidates),
+        top_score=round(candidates[0][1], 3) if candidates else None,
+        pre_rerank=len(pre_rerank),
+        injected_stems=injected_stems,
+    )
+
+
+def retrieve_docs_sync(inp: QuestionnaireInput, vs, threshold: float) -> list:
+    """Documentos del retrieval como lista plana (herramientas de eval y diagnóstico)."""
+    return _retrieve(inp, vs, threshold).docs
 
 
 def _content_to_text(content) -> str:
@@ -540,7 +528,6 @@ async def _invoke_llm(state, messages: list) -> tuple[str, str]:
 
 
 async def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
-    query = _build_query(input)
     if _detect_injection(input.descripcion_breve):
         logger.warning(
             json.dumps(
@@ -552,76 +539,31 @@ async def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
             )
         )
     t0 = time.perf_counter()
-
-    candidates = await _search_with_timeout(
-        state.vectorstore,
-        query,
-        k=settings.overfetch_k,
-        timeout=settings.chroma_timeout,
-    )
-    docs = [doc for doc, score in candidates if score >= settings.min_relevance_score]
-
-    seen = {hashlib.md5(d.page_content.encode()).hexdigest() for d in docs}
-    _main_n = len(docs)
-
-    # Búsqueda auxiliar — ver README "Query descriptiva + búsqueda auxiliar por dominio"
-    for aux in AUXILIARY_SEARCHES:
-        if aux.condition(input):
-            _metrics.aux_search_triggered.labels(type=aux.name).inc()
-            for doc, score in await _search_with_timeout(
-                state.vectorstore, aux.query, k=aux.k, timeout=settings.chroma_timeout
-            ):
-                if score >= settings.min_relevance_score:
-                    h = hashlib.md5(doc.page_content.encode()).hexdigest()
-                    if h not in seen:
-                        seen.add(h)
-                        docs.append(doc)
-
-    pre_rerank = docs[: min(settings.reranker_top_k, _main_n)] + docs[_main_n:]
-    docs = await asyncio.to_thread(
-        _reranker.rerank, query, pre_rerank, top_k=settings.top_k_chunks
-    )
-
+    try:
+        retrieval = await asyncio.wait_for(
+            asyncio.to_thread(
+                _retrieve, input, state.vectorstore, settings.min_relevance_score
+            ),
+            timeout=settings.retrieval_timeout,
+        )
+    except asyncio.TimeoutError:
+        # Limitación conocida: cancelar to_thread no interrumpe el hilo; el trabajo termina solo.
+        logger.error(
+            json.dumps(
+                {
+                    "event": "retrieval_timeout",
+                    "request_id": request_id_var.get(),
+                    "timeout_s": settings.retrieval_timeout,
+                }
+            )
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="Retrieval timed out. Please try again.",
+        )
+    docs = retrieval.docs
     t_retrieval = time.perf_counter()
     _metrics.retrieval_duration.observe(t_retrieval - t0)
-
-    excluded_stems = {exc.stem for exc in EXCLUSIONS if exc.condition(input)}
-    if excluded_stems:
-        docs = [
-            doc
-            for doc in docs
-            if Path(doc.metadata.get("source", "")).stem not in excluded_stems
-        ]
-
-    # NOTE: keep in sync with retrieve_docs_sync() in this file (used by eval/diagnostic tools).
-    seen_injected = {hashlib.md5(d.page_content.encode()).hexdigest() for d in docs}
-    injected_stems: list[str] = []
-    for inj in INJECTIONS:
-        if not inj.condition(input):
-            continue
-        if inj.stem in excluded_stems:
-            continue
-        # Fetch chunks unconditionally via a source-filtered search.
-        # Do NOT gate on min_relevance_score here: an INJECTION is a guarantee,
-        # not a suggestion.  Using where={"source": stem} lets Chroma return the
-        # top-k chunks for that document even when all domain scores are < 0.40
-        # (e.g. "red social para plantas" still needs RGPD if it collects emails).
-        inj_candidates = await _search_with_timeout(
-            state.vectorstore,
-            query,
-            k=inj.k,
-            timeout=settings.chroma_timeout,
-            where={"source": f"{inj.stem}.pdf"},
-        )
-        added = 0
-        for doc, _score in inj_candidates:
-            h = hashlib.md5(doc.page_content.encode()).hexdigest()
-            if h not in seen_injected:
-                seen_injected.add(h)
-                docs.append(doc)
-                added += 1
-        if added:
-            injected_stems.append(inj.stem)
 
     if not docs:
         logger.info(
@@ -629,8 +571,8 @@ async def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
                 {
                     "event": "rag_no_coverage",
                     "request_id": request_id_var.get(),
-                    "chunks_fetched": len(candidates),
-                    "top_score": round(candidates[0][1], 3) if candidates else None,
+                    "chunks_fetched": retrieval.candidates,
+                    "top_score": retrieval.top_score,
                     "tipo_proyecto": input.tipo_proyecto,
                 }
             )
@@ -656,8 +598,8 @@ async def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
     t_llm = time.perf_counter()
     _metrics.llm_duration.observe(t_llm - t_retrieval)
     _metrics.chunks_retrieved.observe(len(docs))
-    if candidates:
-        _metrics.top_score.observe(candidates[0][1])
+    if retrieval.top_score is not None:
+        _metrics.top_score.observe(retrieval.top_score)
     # P2a: only report a normativa if it has ≥2 retrieved chunks.
     # The body section opener in SYSTEM_PROMPT requires ≥2 chunks to open a section,
     # so header (normativas_detectadas) and body must use the same threshold.
@@ -682,12 +624,12 @@ async def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
                 "descripcion_hash": hashlib.sha256(
                     input.descripcion_breve.encode()
                 ).hexdigest()[:8],
-                "chunks_fetched": len(candidates),
-                "chunks_reranked": len(pre_rerank),
+                "chunks_fetched": retrieval.candidates,
+                "chunks_reranked": retrieval.pre_rerank,
                 "chunks_passed": len(docs),
-                "top_score": round(candidates[0][1], 3) if candidates else None,
+                "top_score": retrieval.top_score,
                 "sources": sorted({doc.metadata.get("source", "?") for doc in docs}),
-                "injected_stems": injected_stems,
+                "injected_stems": retrieval.injected_stems,
                 "retrieval_ms": round((t_retrieval - t0) * 1000),
                 "llm_ms": round((t_llm - t_retrieval) * 1000),
                 "llm_model": llm_model,

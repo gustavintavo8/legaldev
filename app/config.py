@@ -27,7 +27,8 @@ class Settings(BaseSettings):
     rate_limit: str = "10/minute"
     allowed_origins: str = "*"
     trust_proxy_headers: bool = False
-    chroma_timeout: float = 10.0
+    # Timeout global de la fase de retrieval (búsquedas Chroma + reranker CPU), en segundos.
+    retrieval_timeout: float = 60.0
     log_level: str = "INFO"
     api_keys: str = ""
 

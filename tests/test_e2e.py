@@ -102,7 +102,7 @@ def test_e2e_pipeline_retrieves_from_real_chroma(tiny_pdf_dir):
             mock_settings.rgpd_k = 3
             mock_settings.cookies_k = 3
             mock_settings.colegiado_k = 3
-            mock_settings.chroma_timeout = 30.0
+            mock_settings.retrieval_timeout = 120.0
             mock_settings.groq_model = "e2e-primary-model"
             mock_settings.groq_fallback_model = ""
             result = asyncio.run(run_pipeline(inp, state))

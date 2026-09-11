@@ -71,6 +71,7 @@ def run_case(case: dict, base_input: dict, vs, threshold: float) -> dict:
         "false_positives": false_positives,
         "recall": recall,
         "chunks": len(docs),
+        "sources": len(retrieved_stems),
         "retrieved_stems": retrieved_stems,
     }
 
@@ -174,7 +175,9 @@ def main():
 
 
 def _run_standard_eval(cases, base_input, vs, threshold):
-    print(f"{'':4} {'Caso':<32} {'Recall':>7}  {'FP':>4}  {'Chunks':>6}  Problemas")
+    print(
+        f"{'':4} {'Caso':<32} {'Recall':>7}  {'FP':>4}  {'Chunks':>6}  {'Fuentes':>7}  Problemas"
+    )
     print("-" * 80)
 
     all_passed = True
@@ -212,7 +215,7 @@ def _run_standard_eval(cases, base_input, vs, threshold):
         problems_str = " | ".join(problems)
 
         print(
-            f"{status}  {r['label']:<32} {recall_str} {fp_count:>4}  {r['chunks']:>6}  {problems_str}"
+            f"{status}  {r['label']:<32} {recall_str} {fp_count:>4}  {r['chunks']:>6}  {r['sources']:>7}  {problems_str}"
         )
 
     print()

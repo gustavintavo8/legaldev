@@ -3,7 +3,7 @@ import hashlib
 import logging
 import time
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -603,18 +603,45 @@ def test_system_prompt_does_not_contain_cobertura_section():
     assert "Cobertura del análisis" not in SYSTEM_PROMPT
 
 
-def test_search_with_timeout_raises_503_on_slow_chroma():
-    from app.rag import _search_with_timeout
+def test_run_pipeline_retrieval_timeout_raises_503(
+    sample_input, mock_reranker, monkeypatch
+):
+    """El retrieval completo (Chroma + reranker) corre en un hilo bajo un único timeout."""
+    monkeypatch.setattr(settings, "retrieval_timeout", 0.05)
+    state = _make_state([_make_mock_doc()])
 
-    vs = MagicMock()
-    vs.similarity_search_with_relevance_scores.side_effect = lambda *a, **k: time.sleep(
-        0.05
-    )  # 50ms — longer than the 10ms timeout below
+    def _slow(*args, **kwargs):
+        time.sleep(0.3)
+        return [(_make_mock_doc(), 0.85)]
+
+    state.vectorstore.similarity_search_with_relevance_scores.side_effect = _slow
 
     with pytest.raises(Exception) as exc_info:
-        asyncio.run(_search_with_timeout(vs, "query", k=10, timeout=0.01))
+        asyncio.run(run_pipeline(sample_input, state))
 
     assert exc_info.value.status_code == 503
+    assert "timed out" in exc_info.value.detail
+
+
+def test_retrieve_returns_stats():
+    from app.rag import _retrieve
+
+    vs = MagicMock()
+    vs.similarity_search_with_relevance_scores.return_value = [
+        (_make_mock_doc("RGPD.pdf"), 0.9),
+        (_make_mock_doc("LOPDGDD.pdf"), 0.7),
+    ]
+    with patch("app.reranker.rerank", side_effect=lambda q, docs, top_k: docs[:top_k]):
+        result = _retrieve(
+            _make_input(tipos_datos_personales=["ninguno"], usa_cookies=False),
+            vs,
+            settings.min_relevance_score,
+        )
+    assert result.candidates == 2
+    assert result.top_score == 0.9
+    assert result.pre_rerank == 2
+    assert result.injected_stems == []
+    assert [d.metadata["source"] for d in result.docs] == ["RGPD.pdf", "LOPDGDD.pdf"]
 
 
 def test_run_pipeline_invokes_reranker_with_correct_top_k(sample_input):
