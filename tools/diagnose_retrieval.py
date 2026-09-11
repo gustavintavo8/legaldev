@@ -28,7 +28,13 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from app import reranker as _reranker
 from app.config import settings
 from app.models import QuestionnaireInput
-from app.rag import AUXILIARY_SEARCHES, EXCLUSIONS, INJECTIONS, _build_query
+from app.rag import (
+    AUXILIARY_SEARCHES,
+    EXCLUSIONS,
+    INJECTIONS,
+    _build_query,
+    _select_diverse,
+)
 
 OUT_DIR = Path(__file__).parent / "probe_results"
 OUT_DIR.mkdir(exist_ok=True)
@@ -80,10 +86,22 @@ def _make_input(**overrides) -> QuestionnaireInput:
 
 
 def trace_pipeline(vs: Chroma, inp: QuestionnaireInput, label: str) -> dict:
-    """Run the full retrieval pipeline and return a rich trace dict."""
+    """Run the full retrieval pipeline and return a rich trace dict.
+
+    Mirrors app.rag._retrieve exactly: exclusions computed first (and never
+    occupy a candidate/cap slot), main candidates capped at reranker_top_k,
+    aux results gated by threshold + exclusion, CrossEncoder reranks the full
+    post-exclusion pool (no cut), then _select_diverse applies the top_k_chunks
+    cut with the per-source cap, then injections, same as production.
+    """
     query = _build_query(inp)
     print(f"\n  Query ({len(query)} chars):")
     print(f"  {query[:200]}{'...' if len(query) > 200 else ''}")
+
+    excluded_stems = {exc.stem for exc in EXCLUSIONS if exc.condition(inp)}
+    print(
+        f"\n  EXCLUSIONS active: {sorted(excluded_stems) if excluded_stems else 'none'}"
+    )
 
     # -- 1. Main candidates (overfetch_k = 100) ------------------------------
     raw = vs.similarity_search_with_relevance_scores(query, k=settings.overfetch_k)
@@ -106,7 +124,7 @@ def trace_pipeline(vs: Chroma, inp: QuestionnaireInput, label: str) -> dict:
         f"{len(below)} below threshold"
     )
 
-    # Per-stem score summary for main candidates
+    # Per-stem score summary for main candidates (before exclusion/cap)
     from collections import defaultdict
 
     stem_scores: dict[str, list[float]] = defaultdict(list)
@@ -122,14 +140,24 @@ def trace_pipeline(vs: Chroma, inp: QuestionnaireInput, label: str) -> dict:
             1 for v in stem_scores[s] if v >= settings.min_relevance_score
         )
         flag = "  <- BELOW threshold" if top < settings.min_relevance_score else ""
-        print(f"    {s:<55} top={top:.4f}  n={cnt}  n>=thr={above_threshold}{flag}")
+        excl_flag = "  <- EXCLUDED" if s in excluded_stems else ""
+        print(
+            f"    {s:<55} top={top:.4f}  n={cnt}  n>=thr={above_threshold}{flag}{excl_flag}"
+        )
 
-    # -- 2. docs = above-threshold from main ---------------------------------
-    docs = [doc for doc, _ in above]
-    main_n = len(docs)
+    # docs = above-threshold AND not excluded, capped at reranker_top_k.
+    # Mirrors _retrieve step 1: excluded normativas never occupy a cap slot
+    # (before Task 6 they were filtered post-rerank, wasting 1-3 top-12 slots).
+    docs = [doc for doc, _ in above if _stem(doc) not in excluded_stems][
+        : settings.reranker_top_k
+    ]
     seen = {hashlib.md5(d.page_content.encode()).hexdigest() for d in docs}
+    print(
+        f"      -> {len(docs)} kept after exclusion + reranker_top_k="
+        f"{settings.reranker_top_k} cap"
+    )
 
-    # -- 3. Auxiliary searches ------------------------------------------------
+    # -- 2. Auxiliary searches ------------------------------------------------
     aux_added: list[dict] = []
     for aux in AUXILIARY_SEARCHES:
         if not aux.condition(inp):
@@ -137,65 +165,63 @@ def trace_pipeline(vs: Chroma, inp: QuestionnaireInput, label: str) -> dict:
         aux_raw = vs.similarity_search_with_relevance_scores(aux.query, k=aux.k)
         new_from_aux = 0
         for doc, score in aux_raw:
-            if score >= settings.min_relevance_score:
-                h = hashlib.md5(doc.page_content.encode()).hexdigest()
-                if h not in seen:
-                    seen.add(h)
-                    docs.append(doc)
-                    new_from_aux += 1
-                    aux_added.append(
-                        {"aux": aux.name, "stem": _stem(doc), "score": round(score, 4)}
-                    )
+            if score < settings.min_relevance_score or _stem(doc) in excluded_stems:
+                continue
+            h = hashlib.md5(doc.page_content.encode()).hexdigest()
+            if h not in seen:
+                seen.add(h)
+                docs.append(doc)
+                new_from_aux += 1
+                aux_added.append(
+                    {"aux": aux.name, "stem": _stem(doc), "score": round(score, 4)}
+                )
         print(
             f"\n  [2] Aux '{aux.name}': fetched {len(aux_raw)}, "
             f"new unique above thr: {new_from_aux}"
         )
         for doc, score in aux_raw:
             flag = "  <- below thr" if score < settings.min_relevance_score else ""
-            print(f"      {_stem(doc):<55} {score:.4f}{flag}")
+            excl_flag = "  <- excluded" if _stem(doc) in excluded_stems else ""
+            print(f"      {_stem(doc):<55} {score:.4f}{flag}{excl_flag}")
 
-    # -- 4. pre_rerank composition --------------------------------------------
-    pre_rerank = docs[: min(settings.reranker_top_k, main_n)] + docs[main_n:]
-    print(
-        f"\n  [3] pre_rerank: {len(pre_rerank)} docs "
-        f"(main[:{settings.reranker_top_k}]={len(docs[: settings.reranker_top_k])} "
-        f"+ aux={len(docs[main_n:])})"
-    )
+    # -- 3. pre_rerank composition (post-exclusion, post-cap main + aux) ------
+    pre_rerank = docs
+    print(f"\n  [3] pre_rerank: {len(pre_rerank)} docs")
     pre_stems = [_stem(d) for d in pre_rerank]
     from collections import Counter
 
     for s, c in Counter(pre_stems).most_common():
         print(f"      {s:<55} {c} chunk(s)")
 
-    # -- 5. CrossEncoder rerank -----------------------------------------------
-    docs_reranked = _reranker.rerank(query, pre_rerank, top_k=settings.top_k_chunks)
-    print(f"\n  [4] After CrossEncoder top_k={settings.top_k_chunks}:")
-    reranked_stems = [_stem(d) for d in docs_reranked]
-    for s, c in Counter(reranked_stems).most_common():
+    # -- 4. CrossEncoder rerank (full post-exclusion pool, no cut) ------------
+    ranked = _reranker.rerank(query, pre_rerank, top_k=len(pre_rerank))
+    print(f"\n  [4] CrossEncoder full rank order ({len(ranked)} docs, no cut):")
+    ranked_stems = [_stem(d) for d in ranked]
+    for s, c in Counter(ranked_stems).most_common():
         print(f"      {s:<55} {c} chunk(s)")
-    dropped_from_pre = set(pre_stems) - set(reranked_stems)
-    if dropped_from_pre:
-        print(f"      Dropped by CrossEncoder: {sorted(dropped_from_pre)}")
 
-    # -- 6. Exclusions --------------------------------------------------------
-    excluded_stems = {exc.stem for exc in EXCLUSIONS if exc.condition(inp)}
-    print(
-        f"\n  [5] EXCLUSIONS active: {sorted(excluded_stems) if excluded_stems else 'none'}"
+    # -- 5. Selection: top_k_chunks + per-source cap (_select_diverse) --------
+    docs_selected = _select_diverse(
+        ranked, settings.top_k_chunks, settings.max_chunks_per_source
     )
-    docs_after_excl = [d for d in docs_reranked if _stem(d) not in excluded_stems]
-    excl_removed = [_stem(d) for d in docs_reranked if _stem(d) in excluded_stems]
-    if excl_removed:
-        print(f"      Removed chunks: {excl_removed}")
+    selected_stems = [_stem(d) for d in docs_selected]
+    print(
+        f"\n  [5] SELECTED (top_k={settings.top_k_chunks}, "
+        f"max_per_source={settings.max_chunks_per_source}): {len(docs_selected)} docs"
+    )
+    for s, c in Counter(selected_stems).most_common():
+        print(f"      {s:<55} {c} chunk(s)")
+    dropped_by_selection = set(ranked_stems) - set(selected_stems)
+    if dropped_by_selection:
+        print(f"      Dropped by selection: {sorted(dropped_by_selection)}")
 
-    # -- 7. Injections --------------------------------------------------------
+    # -- 6. Injections --------------------------------------------------------
     # Mirrors production run_pipeline injection logic (retrieve_docs_sync in rag.py).
     # Uses source-filtered search — unconditional, no score gate.
     print("\n  [6] INJECTIONS:")
-    seen_inj = {
-        hashlib.md5(d.page_content.encode()).hexdigest() for d in docs_after_excl
-    }
+    seen_inj = {hashlib.md5(d.page_content.encode()).hexdigest() for d in docs_selected}
     injection_log: list[dict] = []
-    docs_final = list(docs_after_excl)
+    docs_final = list(docs_selected)
     for inj in INJECTIONS:
         fires = inj.condition(inp)
         blocked = inj.stem in excluded_stems
@@ -235,7 +261,7 @@ def trace_pipeline(vs: Chroma, inp: QuestionnaireInput, label: str) -> dict:
             }
         )
 
-    # -- 8. Final docs -> LLM -------------------------------------------------
+    # -- 7. Final docs -> LLM -------------------------------------------------
     final_stems = [_stem(d) for d in docs_final]
     final_stem_counts = Counter(final_stems)
     retrieved_sources = set(final_stems)
@@ -264,12 +290,13 @@ def trace_pipeline(vs: Chroma, inp: QuestionnaireInput, label: str) -> dict:
         "stem_top_scores": {
             s: round(v, 4) for s, v in sorted(stem_top.items(), key=lambda x: -x[1])
         },
+        "excluded_stems": sorted(excluded_stems),
         "aux_added": aux_added,
         "pre_rerank_size": len(pre_rerank),
         "pre_rerank_stems": Counter(pre_stems),
-        "after_crossencoder_stems": Counter(reranked_stems),
-        "dropped_by_crossencoder": sorted(dropped_from_pre),
-        "excluded_stems": sorted(excluded_stems),
+        "ranked_stems": Counter(ranked_stems),
+        "selected_stems": Counter(selected_stems),
+        "dropped_by_selection": sorted(dropped_by_selection),
         "injection_log": injection_log,
         "final_stem_counts": dict(final_stem_counts),
         "normativas_detectadas": sorted(retrieved_sources),

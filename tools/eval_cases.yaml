@@ -173,6 +173,8 @@ cases:
       la INJECTION no puede depender del score del dominio.
       Stems verificados empíricamente: RGPD=3 chunks, LSSI=2 chunks (ambos inyectados).
       LOPDGDD=1 chunk (no llega a >=2, no aparece en normativas_detectadas).
+      Sprint 3 (Task 6): con usa_cookies=true la guía de cookies de la AEPD también
+      se inyecta (k=2); el caso pasa de 16 a 19 chunks.
     overrides:
       descripcion_breve: "Red social para amantes de las plantas donde la gente comparte fotos y consejos sobre sus plantas"
       tipos_datos_personales: [nombre, email]

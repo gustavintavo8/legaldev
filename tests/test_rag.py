@@ -677,12 +677,11 @@ def test_run_pipeline_respects_reranker_output_order(sample_input):
     )
 
 
-def test_pre_rerank_no_duplicates_when_main_n_below_reranker_top_k():
-    """H4 regression: aux docs must not appear twice in pre_rerank when _main_n < reranker_top_k.
+def test_pre_rerank_has_no_duplicates_between_main_and_aux():
+    """Aux docs already present in the main list must not be sent twice to the reranker.
 
-    Setup: 3 main docs (below reranker_top_k=25) + 2 new aux docs from cookies search.
-    Before fix: pre_rerank = (3 main + 2 aux) + 2 aux = 7 docs with 2 duplicates.
-    After fix:  pre_rerank = 3 main + 2 aux = 5 unique docs.
+    Setup: 3 main docs + 2 new (distinct) aux docs from the cookies search.
+    Invariant: pre_rerank = 3 main + 2 aux = 5 unique docs, no duplicates.
     """
     from unittest.mock import patch as _patch
 

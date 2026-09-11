@@ -430,7 +430,7 @@ def _select_diverse(ranked: list, top_k: int, max_per_source: int) -> list:
 
 
 def _retrieve(inp: QuestionnaireInput, vs, threshold: float) -> RetrievalResult:
-    """Fase de retrieval completa: principal → auxiliares → rerank → exclusiones → inyecciones.
+    """Fase de retrieval completa: exclusiones → principal (recorte) → auxiliares → rerank → tope por fuente → inyecciones.
 
     Única implementación usada por la API (run_pipeline) y por el eval (retrieve_docs_sync).
     tools/diagnose_retrieval.py mantiene una traza propia con fines de diagnóstico.
@@ -474,7 +474,7 @@ def _retrieve(inp: QuestionnaireInput, vs, threshold: float) -> RetrievalResult:
         ranked, settings.top_k_chunks, settings.max_chunks_per_source
     )
 
-    # 5. Inyecciones — búsqueda filtrada por fuente, SIN umbral: una INJECTION es una garantía.
+    # 4. Inyecciones — búsqueda filtrada por fuente, SIN umbral: una INJECTION es una garantía.
     #    filter= es la API de langchain_chroma (where= es la interna de Chroma y falla vía **kwargs).
     seen_injected = {_content_hash(d) for d in docs}
     injected_stems: list[str] = []
@@ -645,7 +645,8 @@ async def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
     # so header (normativas_detectadas) and body must use the same threshold.
     # Normativas with exactly 1 chunk are omitted — insufficient coverage for
     # reliable obligation extraction.  INJECTION rules (Task 2.1) guarantee that
-    # RGPD, EU AI Act, LSSI, and CCII always deliver ≥2 chunks when applicable.
+    # RGPD, EU AI Act, LSSI, CCII, the IA Agéntica guide, and the AEPD cookies guide
+    # always deliver ≥2 chunks when applicable.
     _chunks_per_norm: dict[str, int] = {}
     for doc in docs:
         stem = Path(doc.metadata["source"]).stem if "source" in doc.metadata else None

@@ -59,7 +59,15 @@ def test_select_diverse_returns_all_when_fewer_than_top_k():
     assert _select_diverse(ranked, top_k=12, max_per_source=4) == ranked
 
 
-def test_excluded_docs_never_reach_the_reranker(mock_reranker):
+def test_select_diverse_backfill_keeps_chosen_first_then_skipped_in_rank_order():
+    a = [_doc("A.pdf") for _ in range(4)]
+    b = _doc("B.pdf")
+    ranked = [a[0], a[1], a[2], b, a[3]]
+    chosen = _select_diverse(ranked, top_k=5, max_per_source=2)
+    assert chosen == [a[0], a[1], b, a[2], a[3]]
+
+
+def test_excluded_docs_never_reach_the_reranker():
     ens = _doc("Real Decreto 311-2022 ENS.pdf")
     rgpd = [_doc("RGPD.pdf"), _doc("RGPD.pdf")]
     state = MagicMock()
