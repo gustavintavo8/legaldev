@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Dependencias: eliminadas `langchain` y `langchain-community`; `langchain-core` explícita.
 
 ### Fixed
+- Verificación de citas: se tolera hasta un 10 % de diferencia en cada extremo del segmento (punto final añadido por el LLM, palabra cortada en el borde del chunk). Medido en producción: 4 de 12 citas literales se marcaban como no verificadas; la cita ajena al contexto sigue detectándose.
 - Producción devolvía 503 en todos los análisis desde el 17/07/2026: Groq retiró `meta-llama/llama-4-scout-17b-16e-instruct`. El modelo por defecto pasa a `openai/gpt-oss-120b` (sustituto recomendado por Groq).
 - `/v1/feedback`: `request_id` acotado (1–64 chars, `[A-Za-z0-9_-]`), `comment` ≤ 2000 chars, rate limit.
 - `tools/diagnose_ranking.py` usaba `all-MiniLM-L6-v2` contra un índice multilingüe.

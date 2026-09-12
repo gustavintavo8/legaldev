@@ -453,3 +453,94 @@ def test_verify_all_caps_accented_chunk_verifies():
         '> "tratamiento lícito y transparente" — RGPD', [_doc(chunk)]
     )
     assert stats.verificadas == 1
+
+
+# --- Tolerancia en los extremos (casos reales del despliegue del sprint 3, 2026-09-12) ---
+
+_AI_ACT_CHUNK = (
+    "organismos notificados y otras entidades pertinentes, como centros europeos de "
+    "innovación digital, instalaciones de ensayo y experimentación e investigadores, "
+    "deben tener acceso a conjuntos de datos de alta calidad en sus campos de actividad "
+    "relacionados con el presente Reglamento y deben poder utilizarlos. Los espacios "
+    "comunes europeos de datos establecidos"
+)
+
+
+def test_verify_tolerates_trailing_period_added_by_llm():
+    chunk = (
+        "un consentimiento informado con el fin de asegurar que los usuarios de esos"
+    )
+    stats = verify_citations(
+        '> "un consentimiento informado con el fin de asegurar que los usuarios." — Cookies',
+        [_doc(chunk)],
+    )
+    assert stats.verificadas == 1
+
+
+def test_verify_tolerates_leading_word_cut_by_chunk_boundary():
+    # El chunk empieza a mitad de frase ("organismos…"); el LLM cita la frase
+    # completa con su artículo ("los organismos…"). Diferencia: 3 chars de 269.
+    stats = verify_citations(
+        '> "los organismos notificados y otras entidades pertinentes, como centros '
+        "europeos de innovación digital, instalaciones de ensayo y experimentación e "
+        "investigadores, deben tener acceso a conjuntos de datos de alta calidad en sus "
+        'campos de actividad relacionados con el presente Reglamento y deben poder utilizarlos." — EU AI Act, p. 5',
+        [_doc(_AI_ACT_CHUNK)],
+    )
+    assert stats.verificadas == 1
+
+
+def test_verify_tolerates_page_footer_glued_to_chunk_end():
+    chunk = "la modificación de las opciones de privacidad37Agencia Española de Protección de Datos"
+    stats = verify_citations(
+        '> "la modificación de las opciones de privacidad." — Guía AEPD, p. 37',
+        [_doc(chunk)],
+    )
+    assert stats.verificadas == 1
+
+
+def test_verify_rejects_more_than_ten_percent_missing_at_the_start():
+    # 40 chars de prefijo inventado sobre una cita de ~100 chars → no verificada.
+    stats = verify_citations(
+        '> "según establece el artículo cuarenta y dos, organismos notificados y otras '
+        'entidades pertinentes, como centros europeos de innovación digital" — EU AI Act',
+        [_doc(_AI_ACT_CHUNK)],
+    )
+    assert stats.verificadas == 0
+
+
+def test_verify_rejects_difference_in_the_middle_of_the_quote():
+    stats = verify_citations(
+        '> "organismos notificados y otras entidades IRRELEVANTES, como centros europeos '
+        'de innovación digital, instalaciones de ensayo" — EU AI Act',
+        [_doc(_AI_ACT_CHUNK)],
+    )
+    assert stats.verificadas == 0
+
+
+def test_verify_still_rejects_quote_absent_from_context():
+    # Caso real: cita del considerando 12 del AI Act que NO estaba en los chunks.
+    stats = verify_citations(
+        '> "Debe definirse con claridad el concepto de «sistema de IA» en el presente '
+        'reglamento y armonizarlo estrictamente." — EU AI Act',
+        [_doc(_AI_ACT_CHUNK)],
+    )
+    assert stats.verificadas == 0
+    assert stats.no_verificadas[0].startswith("Debe definirse con claridad")
+
+
+def test_verify_tolerance_does_not_shorten_below_min_segment():
+    # Segmento de 13 chars normalizados con 1 char sobrante: el núcleo tendría 12,
+    # justo el mínimo → se acepta; con 2 chars sobrantes el núcleo bajaría de 12 → no.
+    assert (
+        verify_citations(
+            '> "abcdefghijklm" — X', [_doc("abcdefghijkl zzz")]
+        ).verificadas
+        == 1
+    )
+    assert (
+        verify_citations(
+            '> "abcdefghijklmn" — X', [_doc("abcdefghijkl zzz")]
+        ).verificadas
+        == 0
+    )

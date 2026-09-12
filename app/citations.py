@@ -13,6 +13,14 @@ from app.models import CitationStats
 
 MIN_SEGMENT_CHARS = 12
 MAX_REPORTED_CHARS = 120
+# Fracción de un segmento que puede sobrar o faltar en CADA extremo sin dejar de
+# considerarlo literal. Medido en producción (2026-09-12): 4 de 12 citas reales
+# fallaban por un punto final que añade el LLM ("…utilizarlos." frente a
+# "…utilizarlos los espacios") o por una palabra cortada en el borde del chunk
+# ("los organismos…" frente a un chunk que empieza en "organismos…"). El núcleo
+# del segmento sigue teniendo que coincidir exactamente: una paráfrasis en medio
+# o una cita ajena al contexto siguen sin verificarse.
+BOUNDARY_TOLERANCE = 0.10
 
 # Línea de blockquote individual — se recorre línea a línea (no re.MULTILINE
 # sobre todo el texto) para poder agrupar líneas consecutivas en un párrafo.
@@ -130,6 +138,29 @@ def normalize(text: str) -> str:
     return _STRIP_RE.sub("", unicodedata.normalize("NFKC", text)).casefold()
 
 
+def _segment_found(segment: str, corpus: str) -> bool:
+    """¿Aparece el segmento (normalizado) en el corpus, exacto o recortando los extremos?
+
+    Primero containment exacto. Si falla, se prueba a recortar hasta
+    BOUNDARY_TOLERANCE del segmento por cada extremo (a chars al inicio, b al
+    final), sin que el núcleo baje de MIN_SEGMENT_CHARS. Coste: como mucho
+    (tol+1)² búsquedas de subcadena en C sobre el corpus — milisegundos.
+    """
+    if segment in corpus:
+        return True
+    tol = int(len(segment) * BOUNDARY_TOLERANCE)
+    for a in range(tol + 1):
+        for b in range(tol + 1):
+            if a == 0 and b == 0:
+                continue
+            core = segment[a : len(segment) - b]
+            if len(core) < MIN_SEGMENT_CHARS:
+                break
+            if core in corpus:
+                return True
+    return False
+
+
 def verify_citations(answer: str, docs: list) -> CitationStats:
     # La normalización elimina "|", por lo que el separador no puede aparecer
     # dentro de un chunk normalizado: une chunks sin riesgo de falsos positivos
@@ -140,7 +171,7 @@ def verify_citations(answer: str, docs: list) -> CitationStats:
     for quote in quotes:
         segments = [normalize(s) for s in _ELLIPSIS_RE.split(quote)]
         segments = [s for s in segments if len(s) >= MIN_SEGMENT_CHARS]
-        if not segments or not all(s in corpus for s in segments):
+        if not segments or not all(_segment_found(s, corpus) for s in segments):
             unverified.append(quote[:MAX_REPORTED_CHARS])
     return CitationStats(
         total=len(quotes),
