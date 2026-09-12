@@ -19,7 +19,7 @@ make dev               # uvicorn app.main:app --reload
 make test   # uv run pytest -v
 ```
 
-Tests are fully mocked — no Groq API key or ChromaDB needed to run them.
+The fast suite (`pytest -m "not slow"`, what CI runs on every PR) is fully mocked — no Groq API key or ChromaDB needed. `tests/test_e2e.py` (marked `slow`) builds a real temporary ChromaDB with real embeddings and runs in the `test-slow` CI job.
 
 ## What to contribute
 

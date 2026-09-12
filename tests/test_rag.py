@@ -923,13 +923,8 @@ def test_injection_delivers_cookies_guide_when_usa_cookies(mock_reranker):
     assert result.chunks_utilizados >= 2
 
 
-def test_retrieve_docs_sync_and_run_pipeline_produce_same_stems(mock_reranker):
-    """Synchrony guard: retrieve_docs_sync and run_pipeline must return the same normativa stems.
-
-    If someone changes the retrieval logic in one function but not the other, CI breaks.
-    This test uses personal data input to trigger RGPD injection and exercises both
-    the standard retrieval path and the injection mechanism.
-    """
+def test_retrieve_docs_sync_matches_run_pipeline_normativas(mock_reranker):
+    """retrieve_docs_sync is a thin wrapper over _retrieve, the same function run_pipeline executes in a worker thread; this test pins that both entry points report the same normativas for an input that triggers the RGPD injection (>=2 chunks) — i.e. eval and API agree."""
     # Create 2 RGPD chunks with distinct content so injection can return both
     rgpd_chunk1 = MagicMock()
     rgpd_chunk1.page_content = "RGPD Art. 5 — tratamiento lícito de datos."
@@ -982,5 +977,5 @@ def test_retrieve_docs_sync_and_run_pipeline_produce_same_stems(mock_reranker):
 
     assert sync_stems == pipeline_stems, (
         f"retrieve_docs_sync returned {sync_stems} but run_pipeline returned {pipeline_stems}. "
-        "Retrieval logic must be synchronized between both functions."
+        "eval (retrieve_docs_sync) and API (run_pipeline) must agree."
     )

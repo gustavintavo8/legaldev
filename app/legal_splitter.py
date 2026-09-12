@@ -13,6 +13,15 @@ _FALLBACK_SPLITTER = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overla
 
 
 def split_document(doc: Document) -> list[Document]:
+    """Divide una página en chunks por límites de artículo, con fallback por tamaño.
+
+    Cada parte que empieza por "Artículo N" / "Art. N" / "Considerando N" lleva
+    metadata["article"] con ese encabezado. Si la parte supera _MAX_ARTICLE_CHARS se
+    subdivide, y los sub-chunks a partir del segundo se prefijan con "<encabezado> (cont.): ".
+    Ese prefijo es sintético (no existe en el PDF): se añade para que cada sub-chunk sea
+    autodescriptivo para el embedding, el reranker y la cita del LLM; por eso la
+    verificación de citas compara contra el texto del chunk, no contra el PDF.
+    """
     text = doc.page_content.strip()
     if not text:
         return []

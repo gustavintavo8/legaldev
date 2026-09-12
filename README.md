@@ -97,7 +97,7 @@ Embeddings         sentence-transformers · paraphrase-multilingual-MiniLM-L12-v
 Reranker           CrossEncoder BAAI/bge-reranker-base (precargado en el arranque)
 PDF loading        pypdf (lectura directa; ya no depende de LangChain para cargar PDFs)
 LLM                Groq API · openai/gpt-oss-120b (respaldo openai/gpt-oss-20b)
-Prompt framework   LangChain (langchain-core, langchain-chroma, langchain-groq, langchain-text-splitters)
+Prompt framework   LangChain (langchain-core, langchain-chroma, langchain-groq, langchain-text-splitters, langchain-huggingface)
 Rate limiting      slowapi (token bucket por IP)
 Validation         Pydantic v2 + pydantic-settings
 Testing            pytest · unittest.mock (sin llamadas reales a Groq ni ChromaDB)
@@ -336,7 +336,7 @@ Genera `chroma_db/`. Si falta alguno de los 22 PDFs, el script aborta con un err
 
 ```bash
 make dev    # uvicorn app.main:app --reload → http://localhost:8000
-make test   # pytest -v (288 tests, sin Groq ni ChromaDB reales)
+make test   # pytest -v (289 tests; CI ejecuta 288 con -m "not slow": el E2E usa ChromaDB y embeddings reales)
 ```
 
 ---
@@ -385,7 +385,7 @@ ALLOWED_ORIGINS=*
 | `COLEGIADO_K` | Chunks de la búsqueda auxiliar del CCII | `6` |
 | `OVERFETCH_K` | Candidatos a recuperar antes de filtrar por score | `100` |
 | `RETRIEVAL_TIMEOUT` | Timeout global del retrieval (búsquedas ChromaDB + reranker CPU), en segundos | `60` |
-| `RATE_LIMIT` | Límite de requests en `/v1/analyze` | `10/minute` |
+| `RATE_LIMIT` | Límite de requests por IP en `/v1/analyze` y `/v1/feedback` (cubos independientes) | `10/minute` |
 | `ALLOWED_ORIGINS` | CORS origins (coma-separados) | `*` |
 
 Cualquier clave de `.env` que no coincida con un setting conocido se ignora (`extra="ignore"` en `Settings`) — un `.env` con una variable renombrada o retirada no rompe el arranque.

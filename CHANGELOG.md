@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `GROQ_REASONING_EFFORT` (default `low`), enviado solo a modelos `openai/gpt-oss*`.
 - Verificación determinista de citas (`app/citations.py`): cada cita del informe se busca literalmente en los fragmentos recuperados; `RAGResponse.citas` y sección "Verificación de citas" al final del informe; métricas `legaldev_citations_verified_ratio` y `legaldev_citations_unverified_total`.
 - Tope de chunks por normativa en el contexto (`MAX_CHUNKS_PER_SOURCE`, default 4).
+- INJECTION nueva: la "Guía sobre uso de cookies - AEPD" cuando `usa_cookies=True` (k=2). Medido en el eval: al dejar de gastar plazas del reranker en normativas excluidas, sus chunks caían a las posiciones 13-14 del CrossEncoder (fuera del top-12), así que se garantiza por regla como RGPD, LSSI y CCII.
 - Reranker precargado en el arranque (`warmup` en `lifespan`). La cuantización int8 se midió y se descartó: 1,6× en 2 hilos pero altera el ranking.
 - `.index_meta.json` escrito por la ingesta (modelo de embeddings, versión del corpus, nº de chunks, versión del splitter); el arranque aborta si el índice se construyó con otro modelo.
 - Metadato `article` en los chunks y prefijo `Artículo N (cont.):` en sub-chunks de artículos largos (activo tras reindexar).

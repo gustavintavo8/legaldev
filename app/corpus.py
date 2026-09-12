@@ -1,6 +1,7 @@
 # Única fuente de verdad del modelo de embeddings. Cambiarlo exige reindexar: los vectores
 # de un modelo no son comparables con los de otro (el arranque lo comprueba vía .index_meta.json).
 EMBEDDING_MODEL = "paraphrase-multilingual-MiniLM-L12-v2"
+# El Dockerfile pre-descarga este mismo modelo por nombre (paso RUN con SentenceTransformer(...)); si cambias EMBEDDING_MODEL, actualiza también el Dockerfile o el arranque fallará en offline (HF_HUB_OFFLINE=1).
 
 REQUIRED_DOCS: frozenset[str] = frozenset(
     {
