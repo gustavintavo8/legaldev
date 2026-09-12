@@ -1,4 +1,4 @@
-.PHONY: dev test ingest eval push-space
+.PHONY: dev test ingest eval eval-sweep push-space
 
 dev:
 	uv run uvicorn app.main:app --reload
@@ -11,6 +11,9 @@ ingest:
 
 eval:
 	uv run python tools/eval_retrieval.py
+
+eval-sweep:
+	uv run python tools/eval_retrieval.py --sweep
 
 # push-space: deploy HEAD snapshot of main to HF Space via orphan commit.
 #

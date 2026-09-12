@@ -18,8 +18,10 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 from app import cache as _cache
+from app import reranker as _reranker
 from app import store
 from app.config import settings
+from app.corpus import EMBEDDING_MODEL
 from app.middleware import RequestIDMiddleware
 from app.models import FeedbackInput, QuestionnaireInput, RAGResponse
 from app.rag import run_pipeline
@@ -27,7 +29,6 @@ from app.rag import run_pipeline
 logging.basicConfig(level=getattr(logging, settings.log_level.upper(), logging.INFO))
 logger = logging.getLogger(__name__)
 
-EMBEDDING_MODEL = "paraphrase-multilingual-MiniLM-L12-v2"
 CHROMA_COLLECTION = "legaldev"
 
 
@@ -108,6 +109,22 @@ def _verify_api_key(x_api_key: str | None = Header(default=None)) -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Guardia de compatibilidad primero: si el índice es de otro modelo, abortar antes
+    # de gastar tiempo cargando embeddings/Chroma/Groq — falla rápido, no a mitad de boot.
+    index_meta = store.read_index_meta(settings.chroma_db_path)
+    indexed_model = index_meta.get("embedding_model")
+    if indexed_model is None:
+        logger.warning(
+            "Index has no .index_meta.json (index built by an ingest version that did "
+            "not write metadata); cannot verify it matches %s",
+            EMBEDDING_MODEL,
+        )
+    elif indexed_model != EMBEDDING_MODEL:
+        # Un índice de otro modelo produce scores sin sentido: mejor fallar alto que servir basura.
+        raise RuntimeError(
+            f"ChromaDB index was built with '{indexed_model}' but the app uses "
+            f"'{EMBEDDING_MODEL}'. Re-run 'make ingest'."
+        )
     logger.info("Loading embedding model: %s", EMBEDDING_MODEL)
     app.state.embeddings = HuggingFaceEmbeddings(
         model_name=EMBEDDING_MODEL, encode_kwargs={"normalize_embeddings": True}
@@ -151,6 +168,8 @@ async def lifespan(app: FastAPI):
     )
     app.state.corpus_version = store.read_corpus_version(settings.chroma_db_path)
     logger.info("Corpus version: %s", app.state.corpus_version)
+    logger.info("Warming up reranker (%s)", _reranker._MODEL_NAME)
+    _reranker.warmup()
     logger.info("LegalDev is ready — %d chunks indexed", count)
     yield
 
@@ -273,7 +292,8 @@ async def analyze_v1(
 
 
 @v1.post("/feedback", status_code=201)
-def feedback_v1(input: FeedbackInput):
+@limiter.limit(settings.rate_limit)
+def feedback_v1(input: FeedbackInput, request: Request):
     entry = input.model_dump()
     with FEEDBACK_FILE.open("a", encoding="utf-8") as f:
         f.write(_json.dumps(entry) + "\n")

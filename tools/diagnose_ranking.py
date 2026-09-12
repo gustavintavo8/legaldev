@@ -16,6 +16,7 @@ from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
 
 from app.config import settings
+from app.corpus import EMBEDDING_MODEL
 from app.models import QuestionnaireInput
 from app.rag import _build_query
 
@@ -54,7 +55,9 @@ def main():
 
     vs = Chroma(
         persist_directory=settings.chroma_db_path,
-        embedding_function=HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2"),
+        embedding_function=HuggingFaceEmbeddings(
+            model_name=EMBEDDING_MODEL, encode_kwargs={"normalize_embeddings": True}
+        ),
         collection_name="legaldev",
     )
 

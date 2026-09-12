@@ -3,7 +3,7 @@ import hashlib
 import logging
 import time
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -166,6 +166,14 @@ def test_build_user_message_includes_page_number():
     doc.metadata["page"] = 4  # 0-indexed → displayed as p. 5
     result = _build_user_message(_make_input(), [doc], [])
     assert "Fuente 1: RGPD.pdf, p. 5" in result
+
+
+def test_build_user_message_includes_article_when_present():
+    doc = _make_mock_doc("RGPD.pdf")
+    doc.metadata["article"] = "Artículo 5"
+    doc.metadata["page"] = 35
+    result = _build_user_message(_make_input(), [doc], [])
+    assert "Fuente 1: RGPD.pdf, Artículo 5, p. 36" in result
 
 
 def test_build_user_message_omits_page_when_missing():
@@ -603,18 +611,45 @@ def test_system_prompt_does_not_contain_cobertura_section():
     assert "Cobertura del análisis" not in SYSTEM_PROMPT
 
 
-def test_search_with_timeout_raises_503_on_slow_chroma():
-    from app.rag import _search_with_timeout
+def test_run_pipeline_retrieval_timeout_raises_503(
+    sample_input, mock_reranker, monkeypatch
+):
+    """El retrieval completo (Chroma + reranker) corre en un hilo bajo un único timeout."""
+    monkeypatch.setattr(settings, "retrieval_timeout", 0.05)
+    state = _make_state([_make_mock_doc()])
 
-    vs = MagicMock()
-    vs.similarity_search_with_relevance_scores.side_effect = lambda *a, **k: time.sleep(
-        0.05
-    )  # 50ms — longer than the 10ms timeout below
+    def _slow(*args, **kwargs):
+        time.sleep(0.3)
+        return [(_make_mock_doc(), 0.85)]
+
+    state.vectorstore.similarity_search_with_relevance_scores.side_effect = _slow
 
     with pytest.raises(Exception) as exc_info:
-        asyncio.run(_search_with_timeout(vs, "query", k=10, timeout=0.01))
+        asyncio.run(run_pipeline(sample_input, state))
 
     assert exc_info.value.status_code == 503
+    assert "timed out" in exc_info.value.detail
+
+
+def test_retrieve_returns_stats():
+    from app.rag import _retrieve
+
+    vs = MagicMock()
+    vs.similarity_search_with_relevance_scores.return_value = [
+        (_make_mock_doc("RGPD.pdf"), 0.9),
+        (_make_mock_doc("LOPDGDD.pdf"), 0.7),
+    ]
+    with patch("app.reranker.rerank", side_effect=lambda q, docs, top_k: docs[:top_k]):
+        result = _retrieve(
+            _make_input(tipos_datos_personales=["ninguno"], usa_cookies=False),
+            vs,
+            settings.min_relevance_score,
+        )
+    assert result.candidates == 2
+    assert result.top_score == 0.9
+    assert result.pre_rerank == 2
+    assert result.injected_stems == []
+    assert [d.metadata["source"] for d in result.docs] == ["RGPD.pdf", "LOPDGDD.pdf"]
 
 
 def test_run_pipeline_invokes_reranker_with_correct_top_k(sample_input):
@@ -629,10 +664,7 @@ def test_run_pipeline_invokes_reranker_with_correct_top_k(sample_input):
 
     mock_rerank.assert_called_once()
     call_args = mock_rerank.call_args
-    assert (
-        call_args.kwargs.get("top_k") == settings.top_k_chunks
-        or call_args.args[2] == settings.top_k_chunks
-    )
+    assert call_args.kwargs.get("top_k") == len(call_args.args[1])
 
 
 def test_run_pipeline_respects_reranker_output_order(sample_input):
@@ -653,12 +685,11 @@ def test_run_pipeline_respects_reranker_output_order(sample_input):
     )
 
 
-def test_pre_rerank_no_duplicates_when_main_n_below_reranker_top_k():
-    """H4 regression: aux docs must not appear twice in pre_rerank when _main_n < reranker_top_k.
+def test_pre_rerank_has_no_duplicates_between_main_and_aux():
+    """Aux docs already present in the main list must not be sent twice to the reranker.
 
-    Setup: 3 main docs (below reranker_top_k=25) + 2 new aux docs from cookies search.
-    Before fix: pre_rerank = (3 main + 2 aux) + 2 aux = 7 docs with 2 duplicates.
-    After fix:  pre_rerank = 3 main + 2 aux = 5 unique docs.
+    Setup: 3 main docs + 2 new (distinct) aux docs from the cookies search.
+    Invariant: pre_rerank = 3 main + 2 aux = 5 unique docs, no duplicates.
     """
     from unittest.mock import patch as _patch
 
@@ -667,12 +698,14 @@ def test_pre_rerank_no_duplicates_when_main_n_below_reranker_top_k():
     aux_doc_b = _make_mock_doc("Guía sobre uso de cookies - AEPD.pdf", "guia_aepd")
 
     state = MagicMock()
-    # usa_cookies=True fires: cookies aux search + LSSI injection (filtered search).
+    # usa_cookies=True fires: cookies aux search + LSSI injection (filtered search)
+    # + cookies-guide injection (filtered search).
     # tipos_datos_personales=["ninguno"] → no RGPD aux / injection.
     state.vectorstore.similarity_search_with_relevance_scores.side_effect = [
         [(doc, 0.85) for doc in main_docs],  # main search: 3 docs
         [(aux_doc_a, 0.85), (aux_doc_b, 0.85)],  # cookies aux: 2 new docs
         [],  # LSSI injection (filtered, unconditional)
+        [],  # cookies-guide injection (filtered, unconditional)
     ]
     state.groq_client.invoke.return_value = MagicMock(content="ok")
     state.indexed_normativas = frozenset()
@@ -824,13 +857,74 @@ def test_injection_delivers_ccii_when_colegiado(mock_reranker):
     assert result.chunks_utilizados >= 2
 
 
-def test_retrieve_docs_sync_and_run_pipeline_produce_same_stems(mock_reranker):
-    """Synchrony guard: retrieve_docs_sync and run_pipeline must return the same normativa stems.
+def test_injection_delivers_cookies_guide_when_usa_cookies(mock_reranker):
+    """Task 6 fix round 1: the AEPD cookies guide must be injected when usa_cookies=True.
 
-    If someone changes the retrieval logic in one function but not the other, CI breaks.
-    This test uses personal data input to trigger RGPD injection and exercises both
-    the standard retrieval path and the injection mechanism.
+    Measured (sprint 3, Task 6 eval): once exclusions stop consuming reranker slots,
+    this guide's chunks rank 13-14 in the CrossEncoder (just past top_k_chunks=12) in
+    the cookies-webapp eval case — below the top-12 cut even with the per-source cap.
+    It is applicable by definition whenever the project uses cookies, so — like RGPD,
+    LSSI and CCII — it is now guaranteed via an INJECTION rule instead of relying on
+    the CrossEncoder ranking it inside the top-12.
     """
+    cookies_chunk1 = MagicMock()
+    cookies_chunk1.page_content = (
+        "Guía de cookies — información y consentimiento previo del usuario."
+    )
+    cookies_chunk1.metadata = {
+        "source": "Guía sobre uso de cookies - AEPD.pdf",
+        "doc_type": "guia_aepd",
+    }
+    cookies_chunk2 = MagicMock()
+    cookies_chunk2.page_content = (
+        "Guía de cookies — tipos de cookies y finalidad del tratamiento."
+    )
+    cookies_chunk2.metadata = {
+        "source": "Guía sobre uso de cookies - AEPD.pdf",
+        "doc_type": "guia_aepd",
+    }
+    off_topic_doc = _make_mock_doc("otra_normativa.pdf")
+
+    state = MagicMock()
+
+    # All unfiltered/auxiliary calls return low/no scores.
+    # The filtered injection call (filter={"source": "Guía sobre uso de cookies - AEPD.pdf"})
+    # returns 2 distinct cookies-guide chunks (score ignored by injection path, but ≥2 satisfies P2a).
+    def _search_side_effect(*args, **kwargs):
+        filt = kwargs.get("filter", {})
+        if filt.get("source") == "Guía sobre uso de cookies - AEPD.pdf":
+            return [(cookies_chunk1, 0.10), (cookies_chunk2, 0.10)]
+        return [(off_topic_doc, 0.05)]  # main/aux searches: all below threshold
+
+    state.vectorstore.similarity_search_with_relevance_scores.side_effect = (
+        _search_side_effect
+    )
+    state.groq_client.invoke.return_value = MagicMock(content="ok")
+    state.groq_fallback_client = None
+    state.indexed_normativas = frozenset({"Guía sobre uso de cookies - AEPD"})
+    state.corpus_version = "test-corpus-v1"
+
+    result = asyncio.run(
+        run_pipeline(
+            _make_input(
+                descripcion_breve="Web corporativa con banner de cookies",
+                tipos_datos_personales=["ninguno"],
+                usa_ia=False,
+                usa_cookies=True,
+                colegiado=None,
+            ),
+            state,
+        )
+    )
+
+    assert "Guía sobre uso de cookies - AEPD" in result.normativas_detectadas, (
+        "The AEPD cookies guide must be injected when usa_cookies=True to guarantee ≥2 chunks and clear the threshold"
+    )
+    assert result.chunks_utilizados >= 2
+
+
+def test_retrieve_docs_sync_matches_run_pipeline_normativas(mock_reranker):
+    """retrieve_docs_sync is a thin wrapper over _retrieve, the same function run_pipeline executes in a worker thread; this test pins that both entry points report the same normativas for an input that triggers the RGPD injection (>=2 chunks) — i.e. eval and API agree."""
     # Create 2 RGPD chunks with distinct content so injection can return both
     rgpd_chunk1 = MagicMock()
     rgpd_chunk1.page_content = "RGPD Art. 5 — tratamiento lícito de datos."
@@ -883,5 +977,5 @@ def test_retrieve_docs_sync_and_run_pipeline_produce_same_stems(mock_reranker):
 
     assert sync_stems == pipeline_stems, (
         f"retrieve_docs_sync returned {sync_stems} but run_pipeline returned {pipeline_stems}. "
-        "Retrieval logic must be synchronized between both functions."
+        "eval (retrieve_docs_sync) and API (run_pipeline) must agree."
     )

@@ -1,5 +1,7 @@
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from app.main import _get_real_ip
 
 
@@ -142,6 +144,12 @@ def test_analyze_includes_corpus_version(client, sample_input_dict):
     assert response.json()["corpus_version"] == "abc123def456"
 
 
+def test_lifespan_warms_up_reranker(client):
+    import app.reranker as rr
+
+    rr.warmup.assert_called_once()
+
+
 def test_feedback_endpoint_returns_201(client):
     response = client.post("/v1/feedback", json={"request_id": "abc123", "rating": 5})
     assert response.status_code == 201
@@ -168,6 +176,45 @@ def test_feedback_persists_to_jsonl(client, tmp_path, monkeypatch):
     assert entry["request_id"] == "abc123"
     assert entry["rating"] == 4
     assert entry["comment"] == "Útil"
+
+
+def test_feedback_rejects_long_comment(client):
+    resp = client.post(
+        "/v1/feedback",
+        json={"request_id": "abc123", "rating": 5, "comment": "x" * 2001},
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.parametrize("bad_id", ["", "x" * 65, "abc 123", "<script>"])
+def test_feedback_rejects_malformed_request_id(client, bad_id):
+    resp = client.post("/v1/feedback", json={"request_id": bad_id, "rating": 5})
+    assert resp.status_code == 422
+
+
+def test_feedback_accepts_uuid_request_id(client, tmp_path, monkeypatch):
+    import app.main as main_module
+
+    monkeypatch.setattr(main_module, "FEEDBACK_FILE", tmp_path / "f.jsonl")
+    resp = client.post(
+        "/v1/feedback",
+        json={"request_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6", "rating": 3},
+    )
+    assert resp.status_code == 201
+
+
+def test_feedback_is_rate_limited(client, tmp_path, monkeypatch):
+    import app.main as main_module
+
+    monkeypatch.setattr(main_module, "FEEDBACK_FILE", tmp_path / "f.jsonl")
+    codes = [
+        client.post(
+            "/v1/feedback", json={"request_id": "abc123", "rating": 5}
+        ).status_code
+        for _ in range(11)
+    ]
+    assert codes[:10] == [201] * 10
+    assert codes[10] == 429
 
 
 def test_cache_miss_on_first_request(client, sample_input_dict):

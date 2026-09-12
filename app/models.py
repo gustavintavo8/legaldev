@@ -93,6 +93,12 @@ class QuestionnaireInput(BaseModel):
         return self
 
 
+class CitationStats(BaseModel):
+    total: int
+    verificadas: int
+    no_verificadas: list[str]
+
+
 class RAGResponse(BaseModel):
     respuesta_completa: str
     normativas_detectadas: list[str]
@@ -100,9 +106,13 @@ class RAGResponse(BaseModel):
     disclaimer: str
     corpus_version: str = "unknown"
     llm_model: str = "unknown"
+    citas: CitationStats = Field(
+        default_factory=lambda: CitationStats(total=0, verificadas=0, no_verificadas=[])
+    )
 
 
 class FeedbackInput(BaseModel):
-    request_id: str
+    # X-Request-ID es hex de 8 chars generado por el servidor; se admite también formato UUID.
+    request_id: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
     rating: int = Field(ge=1, le=5)
-    comment: str | None = None
+    comment: str | None = Field(default=None, max_length=2000)

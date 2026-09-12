@@ -123,6 +123,17 @@ def test_rag_response():
     assert "RGPD" in r.normativas_detectadas
 
 
+def test_rag_response_citas_defaults_to_empty_stats():
+    r = RAGResponse(
+        respuesta_completa="x",
+        normativas_detectadas=[],
+        chunks_utilizados=0,
+        disclaimer="d",
+    )
+    assert r.citas.total == 0
+    assert r.citas.no_verificadas == []
+
+
 # ── H5: ccaa enum — tests de regresión ───────────────────────────────────────
 
 

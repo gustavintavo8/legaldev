@@ -1,5 +1,7 @@
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 
 def _make_doc(content: str):
     doc = MagicMock()
@@ -43,3 +45,30 @@ def test_rerank_fewer_docs_than_top_k():
         mock_get.return_value = encoder
         result = rerank("query", docs, top_k=10)
     assert len(result) == 1
+
+
+@pytest.fixture(autouse=True)
+def _reset_encoder_singleton():
+    import app.reranker as rr
+
+    rr._encoder = None
+    yield
+    rr._encoder = None
+
+
+def test_warmup_loads_encoder_and_runs_one_prediction():
+    import app.reranker as rr
+
+    with patch("app.reranker.CrossEncoder") as cls:
+        rr.warmup()
+    cls.assert_called_once()
+    cls.return_value.predict.assert_called_once()
+
+
+def test_warmup_twice_loads_the_model_once():
+    import app.reranker as rr
+
+    with patch("app.reranker.CrossEncoder") as cls:
+        rr.warmup()
+        rr.warmup()
+    cls.assert_called_once()

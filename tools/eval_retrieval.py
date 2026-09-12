@@ -25,7 +25,9 @@ import yaml
 from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
 
+from app import store
 from app.config import settings
+from app.corpus import EMBEDDING_MODEL
 from app.models import QuestionnaireInput
 from app.rag import retrieve_docs_sync
 
@@ -71,6 +73,7 @@ def run_case(case: dict, base_input: dict, vs, threshold: float) -> dict:
         "false_positives": false_positives,
         "recall": recall,
         "chunks": len(docs),
+        "sources": len(retrieved_stems),
         "retrieved_stems": retrieved_stems,
     }
 
@@ -120,6 +123,21 @@ def _write_eval_results(rows: list[tuple], path: Path) -> None:
     print(f"Results written to {path}")
 
 
+def _check_index_model(meta: dict, model: str, force: bool) -> None:
+    indexed = meta.get("embedding_model")
+    if indexed is None:
+        print(
+            "Aviso: el índice no tiene .index_meta.json; no se puede comprobar el modelo."
+        )
+        return
+    if indexed != model and not force:
+        raise SystemExit(
+            f"El índice fue construido con '{indexed}' pero --model es '{model}': los vectores no son "
+            "comparables y el eval sería basura. Usa el mismo modelo o --chroma-path a un índice "
+            "construido con ese modelo (o --force si sabes lo que haces)."
+        )
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="LegalDev retrieval evaluator")
     parser.add_argument(
@@ -129,9 +147,19 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--model",
-        default="paraphrase-multilingual-MiniLM-L12-v2",
+        default=EMBEDDING_MODEL,
         choices=_SUPPORTED_MODELS,
-        help="Embedding model to evaluate (default: paraphrase-multilingual-MiniLM-L12-v2)",
+        help=f"Embedding model to evaluate (default: {EMBEDDING_MODEL})",
+    )
+    parser.add_argument(
+        "--chroma-path",
+        default=settings.chroma_db_path,
+        help="Directorio del índice ChromaDB a evaluar (default: CHROMA_DB_PATH)",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Evaluar aunque .index_meta.json declare otro modelo de embeddings (resultados NO comparables)",
     )
     return parser
 
@@ -142,9 +170,11 @@ def main():
     cases_path = Path(__file__).parent / "eval_cases.yaml"
     base_input, cases = _load_cases(cases_path)
 
+    _check_index_model(store.read_index_meta(args.chroma_path), args.model, args.force)
+
     print(f"Cargando embeddings ({args.model}) y ChromaDB...")
     vs = Chroma(
-        persist_directory=settings.chroma_db_path,
+        persist_directory=args.chroma_path,
         embedding_function=HuggingFaceEmbeddings(
             model_name=args.model, encode_kwargs={"normalize_embeddings": True}
         ),
@@ -174,7 +204,9 @@ def main():
 
 
 def _run_standard_eval(cases, base_input, vs, threshold):
-    print(f"{'':4} {'Caso':<32} {'Recall':>7}  {'FP':>4}  {'Chunks':>6}  Problemas")
+    print(
+        f"{'':4} {'Caso':<32} {'Recall':>7}  {'FP':>4}  {'Chunks':>6}  {'Fuentes':>7}  Problemas"
+    )
     print("-" * 80)
 
     all_passed = True
@@ -212,7 +244,7 @@ def _run_standard_eval(cases, base_input, vs, threshold):
         problems_str = " | ".join(problems)
 
         print(
-            f"{status}  {r['label']:<32} {recall_str} {fp_count:>4}  {r['chunks']:>6}  {problems_str}"
+            f"{status}  {r['label']:<32} {recall_str} {fp_count:>4}  {r['chunks']:>6}  {r['sources']:>7}  {problems_str}"
         )
 
     print()

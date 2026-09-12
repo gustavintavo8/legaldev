@@ -59,3 +59,10 @@ def test_groq_fallback_and_reasoning_defaults():
 def test_groq_fallback_can_be_disabled_with_empty_string():
     s = Settings(groq_api_key="x", groq_fallback_model="")
     assert s.groq_fallback_model == ""
+
+
+def test_unknown_settings_keys_are_ignored_not_rejected():
+    # A stale .env (e.g. CHROMA_TIMEOUT from before the retrieval_timeout rename) must not crash startup.
+    s = Settings(groq_api_key="x", chroma_timeout=10.0)
+    assert s.retrieval_timeout == 60.0
+    assert not hasattr(s, "chroma_timeout")

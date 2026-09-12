@@ -38,3 +38,14 @@ llm_fallback_total = Counter(
     "LLM calls served by the fallback model after the primary model failed",
     ["reason"],
 )
+
+citations_verified_ratio = Histogram(
+    "legaldev_citations_verified_ratio",
+    "Share of LLM quotes found verbatim in the retrieved chunks (per response)",
+    buckets=[0.0, 0.25, 0.5, 0.75, 0.9, 1.0],
+)
+
+citations_unverified_total = Counter(
+    "legaldev_citations_unverified_total",
+    "LLM quotes not found verbatim in the retrieved chunks",
+)

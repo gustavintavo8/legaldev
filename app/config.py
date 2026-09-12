@@ -3,7 +3,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    # extra="ignore": stale/unknown keys in a user's .env (e.g. a renamed setting)
+    # must never crash startup — os.environ unknowns were already ignored.
+    model_config = SettingsConfigDict(
+        env_file=".env", env_file_encoding="utf-8", extra="ignore"
+    )
 
     groq_api_key: str
     groq_model: str = "openai/gpt-oss-120b"
@@ -20,6 +24,8 @@ class Settings(BaseSettings):
     rgpd_k: int = 6
     overfetch_k: int = 100
     reranker_top_k: int = 25
+    # Máximo de chunks de una misma normativa en el top-k del reranker (0 desactiva).
+    max_chunks_per_source: int = 4
     groq_timeout: int = 30
     groq_temperature: float = 0.0
     groq_max_tokens: int = 8000
@@ -27,7 +33,8 @@ class Settings(BaseSettings):
     rate_limit: str = "10/minute"
     allowed_origins: str = "*"
     trust_proxy_headers: bool = False
-    chroma_timeout: float = 10.0
+    # Timeout global de la fase de retrieval (búsquedas Chroma + reranker CPU), en segundos.
+    retrieval_timeout: float = 60.0
     log_level: str = "INFO"
     api_keys: str = ""
 
