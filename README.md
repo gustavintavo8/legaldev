@@ -63,7 +63,7 @@ POST /v1/analyze (QuestionnaireInput)
           │      → fallback: openai/gpt-oss-20b si el principal falla (modelo retirado, 429, 5xx)
           │
           ├─ 4. Verificación de citas (app/citations.py)
-          │      cada cita del informe se busca literalmente (normalizada) en los chunks
+          │      cada cita del informe se busca literalmente (normalizada, ±10 % en los extremos) en los chunks
           │      recuperados — determinista, no altera la respuesta del LLM
           │
           └─ 5. RAGResponse
