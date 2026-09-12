@@ -327,7 +327,7 @@ Copia los 22 documentos en `docs/` (ver lista completa en [Normativas indexadas]
 ### Indexar
 
 ```bash
-make ingest   # python app/ingest.py
+make ingest   # python -m app.ingest (el paquete app debe resolverse desde la raíz del repo)
 ```
 
 Genera `chroma_db/`. Si falta alguno de los 22 PDFs, el script aborta con un error explícito antes de tocar el índice existente.

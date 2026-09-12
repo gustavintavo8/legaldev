@@ -1,0 +1,9 @@
+{
+  "embedding_model": "paraphrase-multilingual-MiniLM-L12-v2",
+  "corpus_version": "7a2029a4dfd8",
+  "chunks": 13756,
+  "documents": 22,
+  "splitter_version": 2,
+  "min_chunk_chars": 40,
+  "created_at": "2026-09-12T00:52:04+00:00"
+}

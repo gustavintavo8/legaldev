@@ -7,7 +7,7 @@ test:
 	uv run pytest -v
 
 ingest:
-	uv run python app/ingest.py
+	uv run python -m app.ingest
 
 eval:
 	uv run python tools/eval_retrieval.py
