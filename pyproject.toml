@@ -21,6 +21,13 @@ dependencies = [
     "slowapi~=0.1.9",
     "prometheus-fastapi-instrumentator~=7.1.0",
 ]
+# Dependencias futuras del TFG (no se añaden hasta que el código las use; uv.lock no cambia):
+# TODO(PT2/RNF-16): "mcp==<versión fijada>" solo si el spike de PT2 confirma que el SDK oficial
+#   de Python implementa la revisión 2026-07-28; si no, transporte propio sobre FastAPI.
+# TODO(PT3/RF-26): "pyyaml~=6.0" explícita para data/*.yaml (hoy llega transitivamente vía
+#   langchain-core y huggingface-hub; tools/eval_retrieval.py ya lo importa).
+# TODO(PT3/PP-10): "jsonschema~=4.26" explícita para validar data/evidence.schema.json (hoy
+#   llega transitivamente vía chromadb).
 
 [project.optional-dependencies]
 dev = [

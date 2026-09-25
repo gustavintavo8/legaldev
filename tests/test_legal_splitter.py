@@ -1,3 +1,4 @@
+import pytest
 from langchain_core.documents import Document
 
 from app.legal_splitter import split_document
@@ -95,3 +96,32 @@ def test_text_without_heading_has_no_article_metadata():
         )
     )
     assert all("article" not in c.metadata for c in chunks)
+
+
+@pytest.mark.xfail(
+    strict=True,
+    raises=AssertionError,
+    reason=(
+        "TODO(PT3/RF-26): pypdf extrae 'Ar tículo' (con un espacio) en los PDF de EUR-Lex y "
+        "_ARTICLE_PATTERN no lo reconoce: 0 de 962 fragmentos del RGPD llevan "
+        "metadata['article'] (1 422 de 13 756 en todo el índice, 10,3 %). Sin artículo no "
+        "hay tipificación de obligaciones ni mapeo a controles."
+    ),
+)
+def test_splits_on_eurlex_heading_with_inner_space():
+    # Encabezados tal como los deja pypdf en el RGPD de EUR-Lex (espacio dentro de la palabra
+    # y antes del salto de línea), medidos en el índice de 9f173ce. El metadato esperado es el
+    # encabezado normalizado, sin el espacio espurio. Al arreglar el segmentador esta prueba
+    # pasará (XPASS) y strict=True la hará fallar: hay que quitar el marcador, subir
+    # SPLITTER_VERSION en app/ingest.py y reindexar.
+    text = (
+        "Ar tículo 12 \nTransparencia de la información, comunicación y modalidades de "
+        "ejercicio de los derechos del interesado \n1. El responsable del tratamiento "
+        "tomará las medidas oportunas para facilitar al interesado toda información.\n"
+        "Ar tículo 13 \nInformación que deberá facilitarse cuando los datos personales se "
+        "obtengan del interesado \n1. Cuando se obtengan de un interesado datos personales."
+    )
+    chunks = split_document(
+        Document(page_content=text, metadata={"source": "RGPD.pdf", "page": 38})
+    )
+    assert [c.metadata.get("article") for c in chunks] == ["Artículo 12", "Artículo 13"]

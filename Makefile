@@ -1,4 +1,4 @@
-.PHONY: dev test ingest eval eval-sweep push-space
+.PHONY: dev test ingest eval eval-sweep push-space todos mcp-dev mcp-inspect validate-mapping eval-baselines
 
 dev:
 	uv run uvicorn app.main:app --reload
@@ -14,6 +14,23 @@ eval:
 
 eval-sweep:
 	uv run python tools/eval_retrieval.py --sweep
+
+# Trabajo pendiente del TFG. todos lista los marcadores de tools/list_todos.py; el resto de
+# objetivos existen para fijar el nombre y avisan con error hasta que su paquete esté hecho.
+todos:
+	uv run python tools/list_todos.py
+
+mcp-dev:
+	@echo "TODO(PT2/RF-22): servidor MCP sin implementar (app/mcp_server.py). Cuando exista: MCP_ENABLED=true uv run uvicorn app.main:app --reload y cliente en http://127.0.0.1:8000/mcp" >&2; exit 1
+
+mcp-inspect:
+	@echo "TODO(PT2/RNF-16): inspección con un cliente MCP de referencia pendiente; comprobar antes que soporta la revisión 2026-07-28" >&2; exit 1
+
+validate-mapping:
+	@echo "TODO(PT3/PP-09): validación de data/mapeo_controles.yaml contra data/catalogo_controles.yaml sin implementar (app/controls.py)" >&2; exit 1
+
+eval-baselines:
+	@echo "TODO(PT5/PI1): líneas base B1, B2 y B3 frente a S sin implementar (python -m eval.run)" >&2; exit 1
 
 # push-space: deploy HEAD snapshot of main to HF Space via orphan commit.
 #

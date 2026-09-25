@@ -1,0 +1,26 @@
+# Catálogo de identificadores de controles y medidas (RNF-17). Sirve para validar
+# data/mapeo_controles.yaml (PP-09): todo identificador de la tabla debe existir aquí.
+#
+# NOTA SOBRE DERECHOS
+# - ISO/IEC 27001:2022 es una norma de pago con derechos de autor de ISO/IEC: este fichero NO
+#   reproduce el texto del Anexo A (ni sus títulos traducidos); solo guarda el identificador y
+#   una paráfrasis propia de su objeto, suficiente para revisar el mapeo.
+# - Las medidas del ENS salen del Anexo II del Real Decreto 311/2022, publicado en el BOE
+#   (BOE-A-2022-7191) y de libre reutilización: su nombre puede copiarse literalmente.
+#
+# TODO(PT3/RNF-17): completar el catálogo. ISO/IEC 27001:2022: los 93 controles (A.5.1 a
+# A.5.37, A.6.1 a A.6.8, A.7.1 a A.7.14, A.8.1 a A.8.34) con paráfrasis propia, comprobados
+# contra un ejemplar legítimo de la norma. ENS: todas las medidas del Anexo II; pueden
+# extraerse de la tabla «org.1 Política de seguridad / op.pl.1 Análisis de riesgos /
+# mp.info.1 Datos personales...» del texto del BOE que ya está en el corpus.
+# Esqueleto: solo los identificadores que usa el ejemplo de data/mapeo_controles.yaml.
+
+version: "0.0.0"
+
+iso27001:
+  A.5.31: "Identificar los requisitos legales, reglamentarios y contractuales de seguridad y cumplirlos (paráfrasis propia)"
+  A.5.34: "Proteger la privacidad y los datos personales según la normativa aplicable (paráfrasis propia)"
+  A.8.24: "Definir y aplicar reglas de uso de la criptografía, incluida la gestión de claves (paráfrasis propia)"
+
+ens:
+  mp.info.1: "Datos personales"

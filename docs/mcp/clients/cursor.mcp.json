@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "legaldev": {
+      "url": "<URL>/mcp",
+      "headers": {
+        "X-API-Key": "<X-API-Key>"
+      }
+    }
+  }
+}

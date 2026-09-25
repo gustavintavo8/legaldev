@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:legaldev:schema:evidence:0.0.0",
+  "$comment": "TODO(PT3/PP-10): esqueleto de los campos de RF-27 (formato de 23-detalle.tex, lst:det-evidencia). Pendiente: enumeraciones del cuestionario, patrones de identificadores (A.x.y del Anexo A de ISO/IEC 27001:2022 y medidas del Anexo II del ENS), decidir si el esquema se mantiene a mano como contrato independiente o se contrasta con EvidenceDocument.model_json_schema(), y fijar la versión del esquema al publicar la primera evidencia.",
+  "title": "Evidencia de cumplimiento de LegalDev",
+  "description": "Orientación generada automáticamente. No constituye asesoramiento legal ni declaración de aplicabilidad.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "generador",
+    "generado",
+    "request_id",
+    "proyecto",
+    "obligaciones",
+    "sin_tipificar",
+    "sin_mapeo",
+    "aviso"
+  ],
+  "properties": {
+    "generador": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["servicio", "version", "corpus_version", "mapeo_version", "llm_model"],
+      "properties": {
+        "servicio": { "const": "legaldev" },
+        "version": { "type": "string" },
+        "corpus_version": { "type": "string" },
+        "mapeo_version": { "type": "string" },
+        "llm_model": { "type": "string" }
+      }
+    },
+    "generado": { "type": "string", "format": "date-time" },
+    "request_id": { "type": "string" },
+    "proyecto": {
+      "$comment": "Campos cerrados del cuestionario. additionalProperties=false impide que se cuele descripcion_breve (texto libre).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tipo_proyecto",
+        "tiene_usuarios_registrados",
+        "acceso_publico",
+        "tipos_datos_personales",
+        "usuarios_menores",
+        "usuarios_ue",
+        "transferencia_datos_terceros",
+        "usa_ia",
+        "usa_cookies",
+        "contenido_digital",
+        "ccaa",
+        "es_empresa"
+      ],
+      "properties": {
+        "tipo_proyecto": { "type": "string" },
+        "tiene_usuarios_registrados": { "type": "boolean" },
+        "acceso_publico": { "type": "boolean" },
+        "tipos_datos_personales": { "type": "array", "items": { "type": "string" } },
+        "usuarios_menores": { "type": "boolean" },
+        "usuarios_ue": { "type": "boolean" },
+        "transferencia_datos_terceros": { "type": "boolean" },
+        "usa_ia": { "type": "boolean" },
+        "tipo_ia": { "type": ["string", "null"] },
+        "usa_cookies": { "type": "boolean" },
+        "monetizacion": { "type": ["string", "null"] },
+        "contenido_digital": { "type": "boolean" },
+        "ccaa": { "type": "string" },
+        "es_empresa": { "type": "boolean" },
+        "colegiado": { "type": ["boolean", "null"] }
+      }
+    },
+    "obligaciones": { "type": "array", "items": { "$ref": "#/$defs/obligacion" } },
+    "sin_tipificar": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["obligacion", "motivo"],
+        "properties": {
+          "obligacion": { "type": "object" },
+          "motivo": { "enum": ["cita no verificada", "artículo desconocido"] }
+        }
+      }
+    },
+    "sin_mapeo": { "type": "array", "items": { "type": "object" } },
+    "aviso": { "type": "string", "minLength": 1 }
+  },
+  "$defs": {
+    "obligacion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id_tipo",
+        "normativa",
+        "obligacion",
+        "cita",
+        "cita_verificada",
+        "controles",
+        "accion_tecnica",
+        "estado"
+      ],
+      "properties": {
+        "id_tipo": { "type": "string" },
+        "normativa": { "type": "string" },
+        "articulo": { "type": ["integer", "null"] },
+        "pagina": { "type": ["integer", "null"] },
+        "obligacion": { "type": "string" },
+        "cita": { "type": "string" },
+        "cita_verificada": { "type": "boolean" },
+        "controles": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["iso27001", "ens"],
+          "properties": {
+            "iso27001": { "type": "array", "items": { "type": "string" } },
+            "ens": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "accion_tecnica": { "type": "string" },
+        "estado": { "enum": ["no_iniciado", "en_curso", "implementado", "no_aplica"] }
+      }
+    }
+  }
+}

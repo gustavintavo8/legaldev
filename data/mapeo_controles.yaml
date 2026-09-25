@@ -1,0 +1,48 @@
+# Tabla de mapeo obligación -> controles (RF-26, RNF-17). Datos, no código: la aplica
+# app/controls.py de forma determinista; el modelo de lenguaje no decide ningún control.
+# Formato: 23-detalle.tex, lst:det-mapeo.
+#
+# TODO(PT3/RF-26): redactar las entradas de las cuatro fuentes del conjunto acotado (RGPD,
+# LOPDGDD, LSSI y la guía de cookies de la AEPD), cada una con su justificación, y revisarlas
+# con el tutor. Versión 0.0.0 = esqueleto sin entradas.
+# TODO(PT3/RNF-17): al publicar la primera versión, fijar version (semver) y fecha; ambas se
+# copian en cada evidencia junto con la corpus_version para poder reproducirla.
+#
+# Requisito previo medido: las entradas por artículo no casarán con nada del RGPD mientras el
+# segmentador no reconozca «Ar tículo» (0 de 962 fragmentos del RGPD tienen artículo); ver la
+# prueba xfail de tests/test_legal_splitter.py.
+
+version: "0.0.0"
+fecha: null
+catalogos:
+  iso27001: "ISO/IEC 27001:2022, Anexo A (controles A.5.1 a A.8.34)"
+  ens: "Real Decreto 311/2022, Anexo II (marco organizativo, marco operacional y medidas de protección)"
+
+entradas: []
+
+# Ejemplo comentado (formato; no es una entrada revisada):
+#
+#  - id: rgpd.informacion-interesado        # único en la tabla
+#    normativa: RGPD.pdf                    # nombre de fichero del corpus
+#    articulos: [13, 14]                    # números de artículo del fragmento de la cita
+#    resumen: Información que debe facilitarse al interesado
+#    iso27001: [A.5.34]                     # identificadores exactos del catálogo
+#    ens: [mp.info.1]
+#    justificacion: >
+#      Requisito de privacidad: A.5.34 trata la protección de los datos personales y
+#      mp.info.1 remite a la normativa de protección de datos.
+#
+# Clave alternativa «paginas» para guías sin articulado (en el índice de 9f173ce solo 8 de
+# 300 fragmentos de la guía de cookies tienen artículo). Páginas en base 1, como las cita el
+# informe; solo valen para la corpus_version con la que se redactó la tabla. Esta clave amplía
+# el diseño de la memoria, que deja «sin tipificar» las guías sin estructura articulada.
+#
+#  - id: cookies.consentimiento
+#    normativa: "Guía sobre uso de cookies - AEPD.pdf"
+#    paginas: [<n>, <m>]
+#    resumen: Obtención del consentimiento antes de instalar cookies no exentas
+#    iso27001: [A.5.34]
+#    ens: []
+#    justificacion: >
+#      <por qué el control acredita la obligación; o «sin control técnico aplicable» con
+#      iso27001 y ens vacíos>
