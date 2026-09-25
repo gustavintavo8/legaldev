@@ -102,18 +102,18 @@ def test_text_without_heading_has_no_article_metadata():
     strict=True,
     raises=AssertionError,
     reason=(
-        "TODO(PT3/RF-26): pypdf extrae 'Ar tículo' (con un espacio) en los PDF de EUR-Lex y "
+        "TODO(PT10/RF-18): pypdf extrae 'Ar tículo' (con un espacio) en los PDF de EUR-Lex y "
         "_ARTICLE_PATTERN no lo reconoce: 0 de 962 fragmentos del RGPD llevan "
         "metadata['article'] (1 422 de 13 756 en todo el índice, 10,3 %). Sin artículo no "
-        "hay tipificación de obligaciones ni mapeo a controles."
+        "hay tipificación de obligaciones ni mapeo a controles (PT3 depende de PT10)."
     ),
 )
 def test_splits_on_eurlex_heading_with_inner_space():
     # Encabezados tal como los deja pypdf en el RGPD de EUR-Lex (espacio dentro de la palabra
     # y antes del salto de línea), medidos en el índice de 9f173ce. El metadato esperado es el
-    # encabezado normalizado, sin el espacio espurio. Al arreglar el segmentador esta prueba
-    # pasará (XPASS) y strict=True la hará fallar: hay que quitar el marcador, subir
-    # SPLITTER_VERSION en app/ingest.py y reindexar.
+    # encabezado normalizado, sin el espacio espurio. Al arreglar el segmentador (v3, PT10)
+    # esta prueba pasará (XPASS) y strict=True la hará fallar: hay que quitar el marcador,
+    # subir SPLITTER_VERSION en app/ingest.py y reindexar.
     text = (
         "Ar tículo 12 \nTransparencia de la información, comunicación y modalidades de "
         "ejercicio de los derechos del interesado \n1. El responsable del tratamiento "

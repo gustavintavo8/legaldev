@@ -1,10 +1,18 @@
 {
+  "inputs": [
+    {
+      "type": "promptString",
+      "id": "clave",
+      "description": "Clave de LegalDev",
+      "password": true
+    }
+  ],
   "servers": {
     "legaldev": {
       "type": "http",
-      "url": "<URL>/mcp",
+      "url": "https://gustavintavo8-legaldev.hf.space/mcp",
       "headers": {
-        "X-API-Key": "<X-API-Key>"
+        "X-API-Key": "${input:clave}"
       }
     }
   }

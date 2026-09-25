@@ -1,24 +1,29 @@
 """Extracción y tipificación de las obligaciones de un informe (esqueleto; sin uso en producción).
 
 Requisitos: RF-26 (tipificación previa al mapeo) y RF-27 (contenido de la evidencia); caso de
-uso CU-08 (flujos 3a y 3b).
+uso CU-08 (flujos 3a y 3b). Algoritmo: 23-detalle.tex, lst:det-alg-tipificacion.
 
 La clave de una obligación no puede ser su redacción, que el LLM cambia entre ejecuciones
-(22-arquitectura, «Tipificación de las obligaciones»). El tipo es el par (documento,
-artículo) del fragmento que contiene la cita verificada: ``metadata["source"]`` y
-``metadata["article"]`` del índice (la memoria los llama ``doc`` y ``article``; en el índice
-el primero es ``source``). Una obligación cuya cita no se verifica, o cuyo fragmento no tiene
-artículo, queda «sin tipificar» y no recibe controles.
+(22-arquitectura, «Tipificación de las obligaciones y mapeo a controles»). El tipo es el par
+(normativa, artículo) del fragmento que contiene la cita verificada: la raíz de
+``metadata["source"]`` («RGPD», el identificador canónico de 23-detalle, «Herramientas,
+identificadores y resultado») y el número de ``metadata["article"]`` como cadena («13»). Una
+obligación cuya cita no se verifica, cuya cita se reparte entre varios fragmentos o cuyo
+fragmento no tiene artículo queda «sin tipificar» y no recibe controles.
 
 Hallazgo medido (índice de 9f173ce): solo 1 422 de 13 756 fragmentos llevan
 ``metadata["article"]`` (10,3 %). En el RGPD es el 0 % (0 de 962), igual que en otras ocho
 normas de EUR-Lex (la ePrivacy consolidada llega al 40,5 %), porque pypdf extrae
 «Ar tículo» con un espacio y ``app/legal_splitter.py`` no lo reconoce. Con el índice actual
-ninguna obligación del RGPD podría tiparse; ver la prueba xfail de
-``tests/test_legal_splitter.py``.
+ninguna obligación del RGPD podría tipificarse; ver la prueba xfail de
+``tests/test_legal_splitter.py``. Es la parte incompleta de RF-18 (20-requisitos: «RF-18 está
+implementado en parte») y la corrige el paquete PT10 (segmentador v3), del que depende PT3;
+PT10 incluye también la localización de cada cita en su fragmento (``locate_citations``).
 
-La memoria (tab:det-mcp-modulos) asigna la tipificación a ``controls.py``; aquí se separa para
-que ``controls.py`` sea una consulta pura de la tabla. Módulo puro: no importa FastAPI, la
+Reparto entre módulos: la memoria (fig:det-mcp-clases) pone el analizador de bloques y la
+tipificación en ``controls.py`` y ``locate_citations`` en ``citations.py``. Aquí se separan
+en este módulo para que ``controls.py`` sea una consulta pura de la tabla y
+``citations.py`` (producción) no cambie hasta PT10. Módulo puro: no importa FastAPI, la
 biblioteca MCP ni LangChain.
 """
 
@@ -30,39 +35,56 @@ from pydantic import BaseModel
 
 
 class Obligacion(BaseModel):
-    """Una obligación tal como aparece en el informe (bloque cita + interpretación + implementación)."""
+    """Un bloque de obligación del informe (``analizar_bloques`` en 23-detalle).
+
+    Cita con su atribución, interpretación y acciones de implementación, hasta la siguiente
+    cita o encabezado. La atribución que escribe el modelo no se usa como clave.
+    """
 
     texto: str  # interpretación redactada por el modelo
     cita: str  # cita literal del blockquote
-    normativa_citada: str  # atribución «— {Nombre normativa}, p. {página}»
-    pagina_citada: int | None = None  # tal como la escribe el informe (base 1)
-    accion_tecnica: list[str] = []  # bullets de «Implementación»
+    atribucion: str  # «LSSI-1, Artículo 22, p. 17» tal como la escribe el informe
+    # Viñetas de «Implementación» (acción_técnica en fig:ana-dominio-extension).
+    acciones: list[str] = []
 
 
 class CitaLocalizada(BaseModel):
-    """Resultado de localizar una cita en los fragmentos recuperados."""
+    """Resultado de localizar una cita en los fragmentos del contexto (``locate_citations``)."""
 
     cita: str
     verificada: bool
-    # Metadatos del fragmento que la contiene; None si no se verifica.
+    # Posición del fragmento de respaldo en el contexto: el primero que contiene todos los
+    # segmentos de la cita. None si no se verifica o si la cita se reparte entre fragmentos.
+    chunk_index: int | None = None
+    # Metadatos de ese fragmento, tal como los guarda el índice.
     source: str | None = None
-    article: str | None = None  # encabezado tal como lo guarda el segmentador
-    page: int | None = None  # metadata["page"] (base 0, como lo guarda pypdf)
-    chunk_index: int | None = None  # posición en la lista de docs recuperados
+    # Encabezado tal como lo guarda el segmentador, p. ej. "Artículo 13 (cont.)".
+    article: str | None = None
+    page: int | None = None  # metadata["page"], base 0 como lo guarda pypdf
 
 
 class ObligacionTipificada(BaseModel):
-    """Obligación con tipo (documento, artículo o páginas) lista para el mapeo (RF-26)."""
+    """Obligación con tipo (normativa, artículo) lista para el mapeo (RF-26)."""
 
     obligacion: Obligacion
     cita: CitaLocalizada
-    normativa: str  # nombre de fichero del corpus, p. ej. "RGPD.pdf"
-    articulo: int | None = None
-    # Guías sin articulado (p. ej. la guía de cookies de la AEPD): se tipifican por página.
-    pagina: int | None = None
+    normativa: str  # identificador canónico: raíz del nombre de fichero, p. ej. "RGPD"
+    # Número de artículo como cadena («13»); un considerando no es un artículo.
+    # TODO(PT3/RF-26): clave de las guías de la AEPD, que no se articulan. La memoria
+    # (21-analisis, sec:ana-dominio-ext) propone la sección o un vocabulario controlado; el
+    # andamiaje anterior proponía las páginas, que solo valen para una corpus_version. Mientras
+    # no se decida, sus obligaciones quedan «sin tipificar» con «fragmento sin artículo».
+    articulo: str
+    pagina: int  # base 1, como en el prompt y en el informe (metadata["page"] + 1)
+    fragmento: str  # identificador del fragmento (app.service.fragment_id)
 
 
-MotivoSinTipificar = Literal["cita no verificada", "artículo desconocido"]
+# Motivos de lst:det-alg-tipificacion (23-detalle), en el orden en que se comprueban.
+MotivoSinTipificar = Literal[
+    "cita no verificada",
+    "cita repartida en varios fragmentos",
+    "fragmento sin artículo",
+]
 
 
 class ObligacionSinTipificar(BaseModel):
@@ -73,33 +95,45 @@ class ObligacionSinTipificar(BaseModel):
 
 
 def extract_obligations(answer: str) -> list[Obligacion]:
-    """Divide el informe en obligaciones siguiendo el formato fijado por ``SYSTEM_PROMPT``."""
+    """Divide el informe en bloques de obligación (``analizar_bloques`` en 23-detalle).
+
+    Sigue el formato fijado por ``SYSTEM_PROMPT`` e ignora el sumario y las dos secciones que
+    añade el código (cobertura y verificación de citas).
+    """
     # TODO(PT3/RF-26): implementar reutilizando citations.extract_quotes para la cita.
     raise NotImplementedError
 
 
-def locate_citations(answer: str, docs: list) -> list[CitaLocalizada]:
-    """Como ``citations.verify_citations``, pero dice en qué fragmento está cada cita.
+def locate_citations(citas: list[str], docs: list) -> list[CitaLocalizada]:
+    """Como ``citations.verify_citations``, pero dice qué fragmento respalda cada cita.
 
-    Reutilizará ``citations.normalize`` y ``citations._segment_found`` fragmento a fragmento
-    (hoy la verificación trabaja sobre el corpus concatenado y no sabe qué fragmento casa).
-    Para una cita que abarque dos fragmentos, se toma el primero y se registra. No sustituye a
+    Criterio de 23-detalle («Tipificación de las obligaciones»): una cita está verificada si
+    cada segmento aparece en algún fragmento (el mismo criterio de ``verify_citations``), y su
+    fragmento de respaldo es el primero, en el orden del contexto, que contiene todos sus
+    segmentos. Si ninguno los contiene todos, queda verificada pero sin fragmento
+    (``chunk_index`` None) y la tipificación la deja «sin tipificar». No sustituye a
     ``verify_citations``, que sigue siendo la que usa producción.
     """
-    # TODO(PT3/RF-26): implementar; comprobar que verificada coincide con verify_citations
-    # para las mismas entradas (misma normalización y misma tolerancia en los extremos).
+    # TODO(PT10/RF-18): implementar (en app/citations.py, como prevé fig:det-mcp-clases)
+    # aplicando citations.normalize y citations._segment_found fragmento a fragmento, y
+    # comprobar con una prueba que da el mismo número de verificadas que verify_citations para
+    # las mismas entradas (misma normalización y misma tolerancia en los extremos).
     raise NotImplementedError
 
 
-def parse_article_number(heading: str | None) -> int | None:
-    """``"Artículo 13"`` -> 13; ``"Artículo 35 (cont.)"`` -> 35; ``None`` o sin número -> ``None``."""
+def parse_article_number(heading: str | None) -> str | None:
+    """``"Artículo 13"`` -> ``"13"``; ``"Artículo 35 (cont.)"`` -> ``"35"``; sin número -> ``None``."""
     # TODO(PT3/RF-26): implementar; los considerandos no son artículos (devuelven None).
     raise NotImplementedError
 
 
 def tipificar(
-    obligaciones: list[Obligacion], citas: list[CitaLocalizada]
+    obligaciones: list[Obligacion], citas: list[CitaLocalizada], docs: list
 ) -> tuple[list[ObligacionTipificada], list[ObligacionSinTipificar]]:
-    """Asigna a cada obligación el tipo del fragmento de su cita (CU-08, paso 3 y flujo 3a)."""
-    # TODO(PT3/CU-08): implementar; depende de que el segmentador reconozca «Ar tículo».
+    """Asigna a cada obligación el tipo del fragmento de su cita (CU-08, paso 3 y flujo 3a).
+
+    Es la primera mitad de lst:det-alg-tipificacion; la búsqueda en la tabla (flujo 3b, «sin
+    mapeo») la hace ``controls.resolve_controls``.
+    """
+    # TODO(PT3/CU-08): implementar; depende de PT10 (el segmentador v3 reconoce «Ar tículo»).
     raise NotImplementedError

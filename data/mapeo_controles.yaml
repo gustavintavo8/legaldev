@@ -4,45 +4,62 @@
 #
 # TODO(PT3/RF-26): redactar las entradas de las cuatro fuentes del conjunto acotado (RGPD,
 # LOPDGDD, LSSI y la guía de cookies de la AEPD), cada una con su justificación, y revisarlas
-# con el tutor. Versión 0.0.0 = esqueleto sin entradas.
+# con una persona de perfil SGSI (CA-10), contrastándolas con la guía CCN-STIC 825. Versión
+# 0.0.0 = esqueleto sin entradas.
 # TODO(PT3/RNF-17): al publicar la primera versión, fijar version (semver) y fecha; ambas se
 # copian en cada evidencia junto con la corpus_version para poder reproducirla.
 #
 # Requisito previo medido: las entradas por artículo no casarán con nada del RGPD mientras el
-# segmentador no reconozca «Ar tículo» (0 de 962 fragmentos del RGPD tienen artículo); ver la
-# prueba xfail de tests/test_legal_splitter.py.
+# segmentador no reconozca «Ar tículo» (0 de 962 fragmentos del RGPD tienen artículo). Es el
+# paquete PT10 (segmentador v3, previo a PT3), que completa RF-18; ver la prueba xfail de
+# tests/test_legal_splitter.py.
 
 version: "0.0.0"
 fecha: null
 catalogos:
-  iso27001: "ISO/IEC 27001:2022, Anexo A (controles A.5.1 a A.8.34)"
-  ens: "Real Decreto 311/2022, Anexo II (marco organizativo, marco operacional y medidas de protección)"
+  iso27001: "ISO/IEC 27001:2022, Anexo A"
+  ens: "RD 311/2022, Anexo II"
 
 entradas: []
 
-# Ejemplo comentado (formato; no es una entrada revisada):
+# Ejemplos comentados (formato; no son entradas revisadas). El primero es el de lst:det-mapeo;
+# los otros dos, filas de tab:det-mapeo-ejemplo (23-detalle). Sus identificadores son los que
+# recoge el esqueleto de data/catalogo_controles.yaml.
 #
-#  - id: rgpd.informacion-interesado        # único en la tabla
-#    normativa: RGPD.pdf                    # nombre de fichero del corpus
-#    articulos: [13, 14]                    # números de artículo del fragmento de la cita
-#    resumen: Información que debe facilitarse al interesado
-#    iso27001: [A.5.34]                     # identificadores exactos del catálogo
+#  - id: rgpd.art32.seguridad               # único en la tabla
+#    normativa: RGPD                        # identificador canónico (raíz del fichero)
+#    articulos: ["32"]                      # números o rangos, como cadenas
+#    resumen: Seguridad del tratamiento
+#    iso27001: [A.8.11, A.8.13, A.8.24]     # identificadores exactos del catálogo
+#    ens: [mp.com.2, mp.info.6, mp.si.2]
+#    justificacion: >
+#      El artículo 32.1 cita la seudonimización y el cifrado (letra a) y la
+#      capacidad de restaurar la disponibilidad tras un incidente (letra c).
+#    fuente: propuesta del autor, pendiente de revisión por un perfil SGSI
+#    verificacion: documental               # automática | documental | manual
+#
+#  - id: rgpd.art13-14.informacion
+#    normativa: RGPD
+#    articulos: ["13-14"]
+#    resumen: Informar al interesado
+#    iso27001: [A.5.34]                     # correspondencia genérica (PI5, especificidad)
 #    ens: [mp.info.1]
 #    justificacion: >
-#      Requisito de privacidad: A.5.34 trata la protección de los datos personales y
-#      mp.info.1 remite a la normativa de protección de datos.
+#      <por qué el control y la medida acreditan la obligación>
+#    fuente: propuesta del autor, pendiente de revisión por un perfil SGSI
+#    verificacion: documental
 #
-# Clave alternativa «paginas» para guías sin articulado (en el índice de 9f173ce solo 8 de
-# 300 fragmentos de la guía de cookies tienen artículo). Páginas en base 1, como las cita el
-# informe; solo valen para la corpus_version con la que se redactó la tabla. Esta clave amplía
-# el diseño de la memoria, que deja «sin tipificar» las guías sin estructura articulada.
-#
-#  - id: cookies.consentimiento
-#    normativa: "Guía sobre uso de cookies - AEPD.pdf"
-#    paginas: [<n>, <m>]
-#    resumen: Obtención del consentimiento antes de instalar cookies no exentas
-#    iso27001: [A.5.34]
+#  - id: lssi.art10.informacion-prestador
+#    normativa: LSSI
+#    articulos: ["10"]
+#    resumen: Información general del prestador
+#    iso27001: [A.5.31]                     # solo el control de requisitos legales
 #    ens: []
 #    justificacion: >
-#      <por qué el control acredita la obligación; o «sin control técnico aplicable» con
-#      iso27001 y ens vacíos>
+#      sin control técnico aplicable: <por qué ninguna medida técnica lo acredita>
+#    fuente: propuesta del autor, pendiente de revisión por un perfil SGSI
+#    verificacion: manual
+#
+# Guías de la AEPD sin articulado (en el índice de 9f173ce solo 8 de 300 fragmentos de la
+# guía de cookies tienen artículo): ver el TODO de ObligacionTipificada.articulo en
+# app/obligations.py. Hasta que se decida su clave, sus obligaciones quedan sin tipificar.

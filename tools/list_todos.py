@@ -2,9 +2,9 @@
 
 Recorre app/, tests/, eval/, data/ y docs/mcp/ (además de Makefile y pyproject.toml) y
 recoge los marcadores formados por la palabra TODO seguida, sin espacio, de «(PTn)» o
-«(PTn/ID)»: PTn es el paquete de trabajo de la planificación de la memoria (PT1 a PT9) e ID
-el identificador del requisito, caso de uso, prueba, pregunta de investigación o criterio de
-aceptación que motiva el hueco (RF-22, RNF-15, CU-07, PP-01, PI1, CA-08...). Sirve para
+«(PTn/ID)»: PTn es el paquete de trabajo de la planificación de la memoria (PT1 a PT10) e
+ID el identificador del requisito, caso de uso, prueba, pregunta de investigación o criterio
+de aceptación que motiva el hueco (RF-22, RNF-18, CU-07, PP-01, PI7, CA-09...). Sirve para
 sincronizar el código con el anexo de pendientes de la memoria.
 
 Uso:
@@ -33,29 +33,35 @@ SCAN_FILES = ("Makefile", "pyproject.toml")
 SUFFIXES = {".py", ".md", ".yaml", ".yml", ".json", ".toml", ".txt", ""}
 SKIP_PARTS = {"__pycache__", ".pytest_cache", ".ruff_cache", "runs"}
 
-# Paquetes de trabajo (05-metodologia.tex, tabla de paquetes).
+# Paquetes de trabajo (05-metodologia.tex, tab:met-plan). PT10 se numera al final pero se
+# ejecuta antes de PT3 y PT4, que dependen de él.
 PACKAGES = {
-    "PT1": "Alta de la propuesta y arranque",
+    "PT1": "Arranque y línea base",
     "PT2": "Servidor MCP",
     "PT3": "Mapeo a controles y evidencias",
-    "PT4": "Gold standard acotado",
+    "PT4": "Conjunto de prueba",
     "PT5": "Líneas base y experimentos",
-    "PT6": "Acción de CI (opcional)",
+    "PT6": "Comprobación en CI (opcional)",
     "PT7": "Validación externa",
-    "PT8": "Análisis y redacción final",
-    "PT9": "Depósito y defensa",
+    "PT8": "Redacción y cierre técnico",
+    "PT9": "Defensa",
+    "PT10": "Segmentador v3",
 }
 
-# Identificadores del alcance ampliado definidos en la memoria: RF-22..RF-28 y RNF-15..RNF-17
-# (20-requisitos), CU-07..CU-09 (21-analisis), PP-01..PP-12 y PI1..PI6 (24-pruebas),
-# CA-08..CA-11 (criterios de aceptación pendientes).
+# Identificadores definidos en la memoria que pueden motivar un hueco (copia de trabajo del
+# 25/09/2026, comprobada con grep sobre capitulos/*.tex): RF-22..RF-28 y RNF-15..RNF-21
+# (20-requisitos), más RF-18, el reindexado que está «implementado en parte» y completa
+# PT10; CU-07..CU-09 (21-analisis); PP-01..PP-18 (24-pruebas, tab:pru-propuestas); PI1..PI8
+# (24-pruebas; PI7 y PI8 son de PT5); CA-01..CA-11 (20-requisitos, tab:req-aceptacion: los
+# del punto de partida pueden motivar un hueco, como CA-07 con el reindexado de PT10).
 KNOWN_IDS = (
     {f"RF-{n}" for n in range(22, 29)}
-    | {f"RNF-{n}" for n in range(15, 18)}
+    | {"RF-18"}
+    | {f"RNF-{n}" for n in range(15, 22)}
     | {f"CU-{n:02d}" for n in range(7, 10)}
-    | {f"PP-{n:02d}" for n in range(1, 13)}
-    | {f"PI{n}" for n in range(1, 7)}
-    | {f"CA-{n:02d}" for n in range(8, 12)}
+    | {f"PP-{n:02d}" for n in range(1, 19)}
+    | {f"PI{n}" for n in range(1, 9)}
+    | {f"CA-{n:02d}" for n in range(1, 12)}
 )
 
 _OPEN = "TODO" + "("  # partido para que este fichero no aparezca en su propio listado

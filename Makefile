@@ -21,10 +21,10 @@ todos:
 	uv run python tools/list_todos.py
 
 mcp-dev:
-	@echo "TODO(PT2/RF-22): servidor MCP sin implementar (app/mcp_server.py). Cuando exista: MCP_ENABLED=true uv run uvicorn app.main:app --reload y cliente en http://127.0.0.1:8000/mcp" >&2; exit 1
+	@echo "TODO(PT2/RF-22): servidor MCP sin implementar (app/mcp_server.py). Cuando exista: MCP_ENABLED=true API_KEYS=<clave> uv run uvicorn app.main:app --reload y cliente en http://localhost:8000/mcp (sin API_KEYS no se monta)" >&2; exit 1
 
 mcp-inspect:
-	@echo "TODO(PT2/RNF-16): inspección con un cliente MCP de referencia pendiente; comprobar antes que soporta la revisión 2026-07-28" >&2; exit 1
+	@echo "TODO(PT2/RNF-16): inspección pendiente con el modo CLI de MCP Inspector (npx @modelcontextprotocol/inspector --cli --method tools/list --transport http --server-url <URL>/mcp --header X-API-Key:...); comprobar antes que habla la revisión 2026-07-28" >&2; exit 1
 
 validate-mapping:
 	@echo "TODO(PT3/PP-09): validación de data/mapeo_controles.yaml contra data/catalogo_controles.yaml sin implementar (app/controls.py)" >&2; exit 1

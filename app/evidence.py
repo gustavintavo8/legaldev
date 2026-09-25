@@ -5,8 +5,11 @@ y RNF-17 (versiones del corpus y del mapeo en cada evidencia). Prueba: PP-10. Ca
 CU-08. Formato: 23-detalle.tex, lst:det-evidencia; esquema en ``data/evidence.schema.json``.
 
 La evidencia identifica el proyecto por los campos cerrados del cuestionario y nunca incluye
-``descripcion_breve`` (texto libre, posible PII). El servicio no la almacena (CU-08,
-postcondiciones). Módulo puro: no importa FastAPI, la biblioteca MCP ni LangChain.
+``descripcion_breve`` (texto libre, posible PII). Por obligación tipificada guarda datos
+deterministas (tipo, normativa, artículo, página, fragmento, cita y su verificación), los
+controles, las acciones del informe y el estado; no guarda la interpretación redactada por el
+modelo, que cambia entre ejecuciones. El servicio no la almacena (CU-08, postcondiciones).
+Módulo puro: no importa FastAPI, la biblioteca MCP ni LangChain.
 """
 
 from __future__ import annotations
@@ -18,7 +21,7 @@ from typing import Final
 
 from pydantic import BaseModel
 
-from app.controls import TablaMapeo
+from app.controls import DATA_DIR, TablaMapeo
 from app.models import (
     ComunidadAutonoma,
     Monetizacion,
@@ -28,14 +31,14 @@ from app.models import (
     TipoIA,
     TipoProyecto,
 )
-from app.obligations import ObligacionSinTipificar, ObligacionTipificada
+from app.obligations import MotivoSinTipificar
 
-SCHEMA_PATH: Final = (
-    Path(__file__).resolve().parent.parent / "data" / "evidence.schema.json"
-)
+# Misma raíz que la tabla de mapeo: ver en app/controls.py el TODO de la imagen Docker.
+SCHEMA_PATH: Final = DATA_DIR / "evidence.schema.json"
 
+# Texto de lst:det-evidencia.
 AVISO_EVIDENCIA: Final = (
-    "Orientación. No constituye asesoramiento legal ni declaración de aplicabilidad."
+    "Orientación; no constituye asesoramiento legal ni declaración de aplicabilidad."
 )
 
 
@@ -87,19 +90,39 @@ class ControlesAsociados(BaseModel):
 
 
 class ObligacionEvidencia(BaseModel):
+    """Obligación tipificada y mapeada (lst:det-evidencia)."""
+
     id_tipo: str  # EntradaMapeo.id
-    normativa: str
-    articulo: int | None = None
-    # TODO(PT3/RF-27): fijar la base de la página. El índice guarda metadata["page"] en base 0
-    # y el informe la muestra en base 1 (rag._build_user_message); la memoria (lst:det-evidencia)
-    # pone "pagina": 0. Propuesta: base 1, la que ve el lector en el PDF.
-    pagina: int | None = None
-    obligacion: str
-    cita: str
+    normativa: str  # identificador canónico, p. ej. "LSSI"
+    articulo: str  # número como cadena, p. ej. "22"
+    pagina: int  # base 1, como en el informe
+    fragmento: str  # app.service.fragment_id del fragmento de respaldo
+    cita: str  # literal, sin el prefijo sintético «(cont.)»
     cita_verificada: bool
     controles: ControlesAsociados
-    accion_tecnica: str
+    acciones: list[str]  # viñetas de «Implementación», en su orden
     estado: EstadoObligacion = EstadoObligacion.NO_INICIADO
+
+
+class SinTipificarEvidencia(BaseModel):
+    """Entrada de ``sin_tipificar`` (CU-08, flujo 3a): la cita y el motivo (lst:det-evidencia)."""
+
+    cita: str
+    motivo: MotivoSinTipificar
+
+
+class SinMapeoEvidencia(BaseModel):
+    """Entrada de ``sin_mapeo`` (CU-08, flujo 3b): tipificada pero sin entrada en la tabla.
+
+    Forma tomada de lst:det-alg-tipificacion, que añade a ``sin_mapeo`` el bloque, la
+    normativa y el artículo.
+    """
+
+    # TODO(PT3/PP-10): confirmar la forma. lst:det-evidencia solo muestra la lista vacía; si
+    # la revisión del SGSI necesita localizarla, añadir pagina y fragmento.
+    normativa: str
+    articulo: str
+    cita: str
 
 
 class EvidenceDocument(BaseModel):
@@ -110,9 +133,8 @@ class EvidenceDocument(BaseModel):
     request_id: str
     proyecto: ProyectoEvidencia
     obligaciones: list[ObligacionEvidencia]
-    sin_tipificar: list[ObligacionSinTipificar]
-    # Tipificadas sin entrada en la tabla (CU-08, flujo 3b).
-    sin_mapeo: list[ObligacionTipificada]
+    sin_tipificar: list[SinTipificarEvidencia]
+    sin_mapeo: list[SinMapeoEvidencia]
     aviso: str = AVISO_EVIDENCIA
 
 
@@ -135,11 +157,13 @@ def build_evidence(
     """Ensambla la evidencia a partir del informe, los fragmentos recuperados y la tabla.
 
     ``generado`` se recibe como parámetro (no se lee el reloj aquí) para que la función sea
-    pura y las pruebas deterministas.
+    pura y las pruebas deterministas: PP-10 exige que se reproduzca idéntica a partir del
+    mismo informe.
     """
     # TODO(PT3/RF-27): implementar sobre obligations.extract_obligations, locate_citations,
     # tipificar y controls.resolve_controls. Necesita los docs recuperados, que hoy
-    # run_pipeline no devuelve: exponerlos sin cambiar RAGResponse (la API pública).
+    # run_pipeline no devuelve: la caché de la capa de servicio guardará el análisis completo
+    # con los fragmentos (23-detalle, «Capa de servicio»), sin cambiar RAGResponse.
     raise NotImplementedError
 
 
@@ -156,4 +180,5 @@ def validate_against_schema(document: dict, schema_path: Path = SCHEMA_PATH) -> 
 
 
 # TODO(PT3/RF-27): añadir POST /v1/evidence en app/main.py (mismo limitador, clave de API y
-# caché que /v1/analyze; responde EvidenceResponse) cuando build_evidence exista.
+# caché que /v1/analyze; responde EvidenceResponse; 503 si la tabla o el catálogo son
+# inválidos, tab:det-mcp-errores) cuando build_evidence exista.

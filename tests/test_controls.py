@@ -30,6 +30,13 @@ def test_catalog_identifiers_have_valid_format():
     assert all(controls.ENS_ID.match(i) for i in catalogo.ens)
 
 
+def test_catalog_skeleton_covers_the_example_entry_of_the_memoria():
+    # lst:det-mapeo (23-detalle), reproducida como ejemplo en data/mapeo_controles.yaml.
+    catalogo = controls.Catalogo.model_validate(_load(controls.CATALOG_PATH))
+    assert {"A.8.11", "A.8.13", "A.8.24"} <= set(catalogo.iso27001)
+    assert {"mp.com.2", "mp.info.6", "mp.si.2"} <= set(catalogo.ens)
+
+
 @pytest.mark.skip(
     reason="TODO(PT3/PP-09): todo identificador del mapeo existe en el catálogo"
 )
@@ -38,24 +45,27 @@ def test_pp09_every_mapping_identifier_exists_in_catalog():
 
 
 @pytest.mark.skip(
-    reason="TODO(PT3/PP-09): cada entrada tiene normativa, artículos o páginas y justificación"
+    reason="TODO(PT3/PP-09): cada entrada tiene normativa, artículos y justificación"
 )
 def test_pp09_every_entry_has_source_key_and_justification():
-    """articulos y paginas no pueden estar ambos vacíos; justificación no vacía."""
+    """articulos no vacío y con formato ARTICULOS_ID («32», «13-14»); justificación y fuente
+    no vacías."""
 
 
 @pytest.mark.skip(
-    reason="TODO(PT3/PP-09): no hay identificadores de obligación duplicados"
+    reason="TODO(PT3/PP-09): ids únicos y rangos de una normativa sin solapes"
 )
-def test_pp09_no_duplicated_obligation_ids():
-    """Ni ids repetidos ni dos entradas que reclamen el mismo (normativa, artículo)."""
+def test_pp09_no_duplicated_ids_nor_overlapping_ranges():
+    """Ni ids repetidos ni dos entradas de una normativa cuyos rangos compartan un artículo,
+    para que resolve_controls sea determinista."""
 
 
 @pytest.mark.skip(
-    reason="TODO(PT3/PP-09): cada normativa del mapeo existe en app.corpus.REQUIRED_DOCS"
+    reason="TODO(PT3/PP-09): cada normativa del mapeo existe en el índice"
 )
-def test_pp09_mapping_normativas_are_corpus_files():
-    """La clave normativa es el nombre de fichero del corpus (anexo del corpus)."""
+def test_pp09_mapping_normativas_exist_in_the_index():
+    """La clave normativa es el identificador canónico (raíz del nombre de fichero, p. ej.
+    RGPD), el mismo de listar_normativas y de normativas_detectadas."""
 
 
 @pytest.mark.skip(
@@ -66,10 +76,11 @@ def test_rf26_resolve_controls_is_deterministic():
 
 
 @pytest.mark.skip(
-    reason="TODO(PT3/RF-26): entrada sin control técnico -> listas vacías y justificación fija"
+    reason="TODO(PT3/RF-26): entrada sin control técnico -> como mucho A.5.31 y sin ENS"
 )
 def test_rf26_entry_without_technical_control_uses_fixed_justification():
-    """iso27001 == ens == [] exige justificacion que empiece por SIN_CONTROL_TECNICO."""
+    """Una justificación que empieza por SIN_CONTROL_TECNICO exige iso27001 ⊆ {A.5.31} y ens
+    vacío (tab:det-mapeo-ejemplo, LSSI 10 y 21)."""
 
 
 @pytest.mark.skip(

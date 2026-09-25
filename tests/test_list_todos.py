@@ -1,7 +1,7 @@
 """Guarda de los marcadores de trabajo pendiente (tools/list_todos.py).
 
 Mantiene que un grep de los marcadores de paquete dé la lista completa y bien formada: todo
-marcador cita un paquete PT1-PT9 y, si lleva identificador, uno que la memoria define.
+marcador cita un paquete PT1-PT10 y, si lleva identificador, uno que la memoria define.
 """
 
 import sys
@@ -40,3 +40,11 @@ def test_scan_parses_package_identifier_and_continuation(tmp_path):
     ]
     assert len(malformed) == 1
     assert len(list_todos.problems(todos, malformed)) == 2
+
+
+def test_known_identifiers_include_those_added_by_the_memoria():
+    # Paquetes e identificadores que la memoria recortada añadió (grep sobre capitulos/*.tex).
+    assert list(list_todos.PACKAGES) == [f"PT{n}" for n in range(1, 11)]
+    added = {"RF-18", "RNF-18", "RNF-21", "PI7", "PI8", "PP-13", "PP-18", "CA-11"}
+    assert added <= list_todos.KNOWN_IDS
+    assert not {"PP-19", "RNF-22", "PI9", "CA-12"} & list_todos.KNOWN_IDS

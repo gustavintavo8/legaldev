@@ -37,9 +37,10 @@ class Settings(BaseSettings):
     retrieval_timeout: float = 60.0
     log_level: str = "INFO"
     api_keys: str = ""
-    # TODO(PT2/RF-22): montar app/mcp_server.py en /mcp cuando sea verdadero. Hoy no tiene
-    # efecto. La memoria (22-arquitectura) prevé que valga verdadero por defecto cuando el
-    # servidor exista; añadir MCP_ENABLED a .env.example en ese momento.
+    # TODO(PT2/RF-22): montar app/mcp_server.py en /mcp cuando sea verdadero y API_KEYS no
+    # esté vacía (RNF-15: /mcp exige siempre clave; 22-arquitectura, «Despliegue», y
+    # 30-manual-instalacion). Hoy no tiene efecto. Añadir MCP_ENABLED a .env.example cuando
+    # el servidor exista.
     mcp_enabled: bool = False
 
     @property

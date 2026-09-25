@@ -3,9 +3,10 @@
 > Estado: borrador de estructura. TODO(PT4): redactar los criterios de cada apartado, probarlos
 > con 5 casos piloto y fijar la guía (con fecha) antes de anotar el resto.
 
-Base en la memoria: capítulo de pruebas, «Ampliación del gold standard», «Métricas» y
-«Protocolo de validación externa» (escala `tab:pru-escala`). Alcance: RGPD, LOPDGDD, LSSI y la
-guía de cookies de la AEPD.
+Base en la memoria: capítulo de pruebas, «Conjuntos de desarrollo y de prueba», «Métricas y
+escala de valoración» (escala de dos ejes, `tab:pru-escala`) y «Protocolo de validación
+externa»; la guía congelada irá en el anexo de la memoria (`anexo:guia`). Alcance: RGPD,
+LOPDGDD, LSSI y la guía de cookies de la AEPD.
 
 ## 1. Principios
 
@@ -37,35 +38,35 @@ TODO(PT4): regla para artículos largos partidos en varios fragmentos y para con
 La pregunta PI3 tiene dos condiciones (obligación **respaldada por el texto citado** y
 **jurídicamente correcta**), así que cada obligación se valora en dos ejes independientes:
 
-**Eje J, jurídico** (¿la obligación es cierta y aplica a este proyecto?)
+Los valores son los de `tab:pru-escala`:
+
+**Eje jurídico** (¿la obligación es cierta y aplica a este proyecto?)
 
 | Valor | Criterio |
 |---|---|
-| J3 | Correcta y accionable: aplica, el sujeto obligado es el correcto y la implementación propuesta es adecuada. |
-| J2 | Correcta, implementación mejorable: aplica; la acción técnica es incompleta o imprecisa. |
-| J1 | Sobreaplicada: la obligación existe pero no aplica al proyecto tal como se describe. |
-| J0 | Incorrecta: no existe, atribuye el sujeto equivocado o contradice la norma. |
+| `correcta` | Aplica al proyecto descrito y recae sobre el sujeto correcto. |
+| `sobreaplicada` | Existe, pero no aplica al proyecto tal como se describe (exceso de prudencia). |
+| `sujeto_erroneo` | Existe, pero recae sobre otro sujeto (p. ej., el proveedor del modelo y no quien lo integra). |
+| `incorrecta` | No existe o contradice la norma. |
 
-**Eje R, respaldo de la cita** (¿el texto citado justifica la obligación?)
+**Eje de respaldo** (¿el texto citado justifica la obligación? Ordinal)
 
 | Valor | Criterio |
 |---|---|
-| R2 | La cita respalda la obligación por sí sola. |
-| R1 | La cita es pertinente pero insuficiente (hace falta otro artículo o contexto). |
-| R0 | La cita no la respalda o no existe en la norma (lo juzga la persona, no el verificador automático). |
+| `respalda` | La cita contiene la obligación o su supuesto de hecho. |
+| `parcial` | La cita es pertinente, pero la obligación exige más de lo que dice o se apoya solo en un considerando o en la exposición de motivos. |
+| `no_respalda` | La cita no guarda relación con la obligación, aunque sea literal (lo juzga la persona, no el verificador automático). |
 
-**Correspondencia con la escala 1-5 de la memoria (`tab:pru-escala`)**, para informar los
-resultados en el formato previsto: J0 → 1; si no, R0 → 2; si no, J1 → 3; J2 → 4; J3 → 5.
-
-TODO(PT4): decidir cómo cuenta R1 en la escala 1-5 (propuesta: como R2, e informar R1 aparte) y
-ajustar la memoria: hoy define una sola escala que mezcla los dos ejes.
+La adecuación de la acción técnica no es un eje: se anota como comentario.
 
 ## 5. Adecuación del control asignado (submuestra, PI5)
 
 `adecuado` | `parcial` | `inadecuado`, con justificación, para el control o la medida que el
-mapeo asigna a la obligación.
+mapeo asigna a la obligación, incluidas las marcadas «sin control técnico aplicable». La
+valora una persona con perfil de SGSI, no la revisora jurídica (CA-10: al menos el 80 %
+adecuadas).
 
-TODO(PT7/CA-08): criterios de adecuación compartidos con la persona revisora.
+TODO(PT7/CA-10): criterios de adecuación compartidos con la persona revisora de perfil SGSI.
 
 ## 6. Registro
 

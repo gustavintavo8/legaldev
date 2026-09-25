@@ -1,21 +1,25 @@
-# Conjunto de referencia acotado (gold standard)
+# Conjunto de prueba acotado
 
-> Estado: vacío. TODO(PT4): muestreo por estratos, redacción de los 40-60 casos y anotación
-> según `eval/annotation_guide.md`.
+> Estado: vacío. TODO(PT4): generar el núcleo combinatorio, redactar los 40-60 casos y
+> anotarlos según `eval/annotation_guide.md`.
 
-Diseño en la memoria: capítulo de pruebas, «Ampliación del gold standard» (tabla de estratos
-`tab:pru-estratos`). Este directorio no sustituye a `tools/eval_cases.yaml` (13 casos de
-recuperación de `make eval`), que se mantiene tal cual.
+Diseño en la memoria: capítulo de pruebas, «Conjuntos de desarrollo y de prueba» (factores
+del núcleo combinatorio en `tab:pru-estratos`). Es el conjunto de prueba; el de desarrollo es
+la batería de regresión de `tools/eval_cases.yaml` (13 casos de `make eval`), que se mantiene
+tal cual y no se mezcla con este.
 
 ## Alcance
 
-- Entre 40 y 60 casos, muestreados por los campos del cuestionario de forma que cada
-  combinación relevante aparezca al menos tres veces; un tercio fuera de dominio o límite
-  (sin datos personales, dominios lejanos, descripciones ambiguas, inyección de prompt).
+- Entre 40 y 60 casos nuevos en cuatro bloques: un núcleo combinatorio por pares
+  (*pairwise*) sobre los factores de `tab:pru-estratos`, generado con PICT con la restricción
+  de que el tipo de IA solo existe si hay IA; 10-15 casos adversos a las reglas (la semántica
+  del campo y la aplicabilidad divergen); casos fuera de dominio y límite (dominios lejanos,
+  descripciones ambiguas, inyección de instrucciones); y 5-10 proyectos reales con
+  repositorio público, que sirven también para PI7.
 - Se anotan solo cuatro fuentes: **RGPD, LOPDGDD, LSSI y la guía de cookies de la AEPD**. Las
   demás normativas que recupere el sistema no cuentan ni como acierto ni como falso positivo.
-- Las descripciones son ficticias: ningún caso describe un proyecto real de un tercero ni
-  contiene datos personales.
+- Salvo los proyectos reales, que remiten a un repositorio público, las descripciones son
+  ficticias. Ningún caso contiene datos personales.
 
 ## Formato previsto
 
@@ -24,7 +28,8 @@ sobre una base común, para que cada caso se lea y se congele por sí solo):
 
 ```yaml
 id: acotado-001
-estratos:                       # valores de tab:pru-estratos que cubre el caso
+bloque: nucleo                  # nucleo | adverso | fuera_de_dominio | real
+factores:                       # niveles de tab:pru-estratos (núcleo combinatorio)
   tipo_proyecto: ecommerce
   datos_personales: identificativos
   cookies_acceso_publico: cookies-publico
@@ -58,7 +63,8 @@ hash de contenido, que no sobrevive a un reindexado).
 ## Regla de congelación
 
 1. La anotación se hace **antes** de ver ninguna salida del sistema para ese caso.
-2. Antes de la **primera ejecución** de `eval/run.py` el conjunto se congela: se calcula el
+2. Antes de la **primera ejecución** de `eval/run.py` el conjunto y la guía de anotación se
+   congelan (la memoria publica su hash): se calcula el
    SHA-256 del contenido canónico de los casos (cada YAML parseado y volcado como JSON con
    claves ordenadas, UTF-8, en orden de nombre de fichero; así no influyen los comentarios ni
    los finales de línea que cambia `core.autocrlf` en Windows) y se guarda en

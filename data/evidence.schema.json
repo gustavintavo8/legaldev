@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:legaldev:schema:evidence:0.0.0",
-  "$comment": "TODO(PT3/PP-10): esqueleto de los campos de RF-27 (formato de 23-detalle.tex, lst:det-evidencia). Pendiente: enumeraciones del cuestionario, patrones de identificadores (A.x.y del Anexo A de ISO/IEC 27001:2022 y medidas del Anexo II del ENS), decidir si el esquema se mantiene a mano como contrato independiente o se contrasta con EvidenceDocument.model_json_schema(), y fijar la versión del esquema al publicar la primera evidencia.",
+  "$comment": "TODO(PT3/PP-10): esqueleto de lst:det-evidencia (23-detalle.tex), mantenido a mano como contrato independiente de EvidenceDocument (tests/test_evidence.py comprueba que declaran los mismos campos). Pendiente: enumeraciones del cuestionario, patrones de identificadores (A.x.y del Anexo A de ISO/IEC 27001:2022 y medidas del Anexo II del ENS) y fijar la versión del esquema al publicar la primera evidencia.",
   "title": "Evidencia de cumplimiento de LegalDev",
   "description": "Orientación generada automáticamente. No constituye asesoramiento legal ni declaración de aplicabilidad.",
   "type": "object",
@@ -72,14 +72,34 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["obligacion", "motivo"],
+        "additionalProperties": false,
+        "required": ["cita", "motivo"],
         "properties": {
-          "obligacion": { "type": "object" },
-          "motivo": { "enum": ["cita no verificada", "artículo desconocido"] }
+          "cita": { "type": "string" },
+          "motivo": {
+            "enum": [
+              "cita no verificada",
+              "cita repartida en varios fragmentos",
+              "fragmento sin artículo"
+            ]
+          }
         }
       }
     },
-    "sin_mapeo": { "type": "array", "items": { "type": "object" } },
+    "sin_mapeo": {
+      "$comment": "Forma pendiente de confirmar: ver el TODO de SinMapeoEvidencia en app/evidence.py.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["normativa", "articulo", "cita"],
+        "properties": {
+          "normativa": { "type": "string" },
+          "articulo": { "type": "string", "minLength": 1 },
+          "cita": { "type": "string" }
+        }
+      }
+    },
     "aviso": { "type": "string", "minLength": 1 }
   },
   "$defs": {
@@ -89,19 +109,21 @@
       "required": [
         "id_tipo",
         "normativa",
-        "obligacion",
+        "articulo",
+        "pagina",
+        "fragmento",
         "cita",
         "cita_verificada",
         "controles",
-        "accion_tecnica",
+        "acciones",
         "estado"
       ],
       "properties": {
         "id_tipo": { "type": "string" },
         "normativa": { "type": "string" },
-        "articulo": { "type": ["integer", "null"] },
-        "pagina": { "type": ["integer", "null"] },
-        "obligacion": { "type": "string" },
+        "articulo": { "type": "string", "minLength": 1 },
+        "pagina": { "type": "integer", "minimum": 1 },
+        "fragmento": { "type": "string", "pattern": "^[0-9a-f]{12}$" },
         "cita": { "type": "string" },
         "cita_verificada": { "type": "boolean" },
         "controles": {
@@ -113,7 +135,7 @@
             "ens": { "type": "array", "items": { "type": "string" } }
           }
         },
-        "accion_tecnica": { "type": "string" },
+        "acciones": { "type": "array", "items": { "type": "string" } },
         "estado": { "enum": ["no_iniciado", "en_curso", "implementado", "no_aplica"] }
       }
     }

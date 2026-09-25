@@ -1,9 +1,9 @@
 {
   "mcpServers": {
     "legaldev": {
-      "url": "<URL>/mcp",
+      "url": "https://gustavintavo8-legaldev.hf.space/mcp",
       "headers": {
-        "X-API-Key": "<X-API-Key>"
+        "X-API-Key": "${env:LEGALDEV_API_KEY}"
       }
     }
   }

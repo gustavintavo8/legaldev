@@ -4,7 +4,8 @@
 # NOTA SOBRE DERECHOS
 # - ISO/IEC 27001:2022 es una norma de pago con derechos de autor de ISO/IEC: este fichero NO
 #   reproduce el texto del Anexo A (ni sus títulos traducidos); solo guarda el identificador y
-#   una paráfrasis propia de su objeto, suficiente para revisar el mapeo.
+#   una paráfrasis propia de su objeto, escrita sin partir del enunciado del control y
+#   suficiente para revisar el mapeo.
 # - Las medidas del ENS salen del Anexo II del Real Decreto 311/2022, publicado en el BOE
 #   (BOE-A-2022-7191) y de libre reutilización: su nombre puede copiarse literalmente.
 #
@@ -13,14 +14,23 @@
 # contra un ejemplar legítimo de la norma. ENS: todas las medidas del Anexo II; pueden
 # extraerse de la tabla «org.1 Política de seguridad / op.pl.1 Análisis de riesgos /
 # mp.info.1 Datos personales...» del texto del BOE que ya está en el corpus.
-# Esqueleto: solo los identificadores que usa el ejemplo de data/mapeo_controles.yaml.
+#
+# Esqueleto: solo los identificadores de los tres ejemplos comentados de
+# data/mapeo_controles.yaml, que reproducen lst:det-mapeo (A.8.11, A.8.13, A.8.24, mp.com.2,
+# mp.info.6 y mp.si.2) y dos filas de tab:det-mapeo-ejemplo (A.5.34 y mp.info.1; A.5.31), en
+# 23-detalle.tex.
 
 version: "0.0.0"
 
 iso27001:
-  A.5.31: "Identificar los requisitos legales, reglamentarios y contractuales de seguridad y cumplirlos (paráfrasis propia)"
-  A.5.34: "Proteger la privacidad y los datos personales según la normativa aplicable (paráfrasis propia)"
-  A.8.24: "Definir y aplicar reglas de uso de la criptografía, incluida la gestión de claves (paráfrasis propia)"
+  A.5.31: "Tener localizadas y al día las exigencias legales y contractuales que afectan a la seguridad, y cómo se atienden (paráfrasis propia)"
+  A.5.34: "Privacidad y datos personales: atender lo que exigen las leyes y los contratos aplicables (paráfrasis propia)"
+  A.8.11: "Ocultar u ofuscar los datos (seudonimizar, anonimizar) cuando quien los usa no necesita verlos en claro (paráfrasis propia)"
+  A.8.13: "Hacer copias de respaldo y comprobar periódicamente que se pueden restaurar (paráfrasis propia)"
+  A.8.24: "Cifrado: cuándo emplearlo, con qué criterios y cómo se custodian las claves (paráfrasis propia)"
 
 ens:
+  mp.com.2: "Protección de la confidencialidad"
   mp.info.1: "Datos personales"
+  mp.info.6: "Copias de seguridad"
+  mp.si.2: "Criptografía"

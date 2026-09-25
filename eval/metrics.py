@@ -1,4 +1,5 @@
-"""Métricas de la evaluación extendida (24-pruebas, «Métricas» y «Análisis estadístico previsto»).
+"""Métricas de la evaluación extendida (24-pruebas, «Métricas y escala de valoración» y
+«Análisis estadístico»; plan por pregunta en tab:pru-ext-plan).
 
 Funciones puras sobre los registros de ``eval/runs``; ninguna llama al LLM ni al índice. Las
 métricas de normativa y de fragmento se restringen a las cuatro fuentes anotadas: el resto de
@@ -44,13 +45,42 @@ def citation_verified_rate(total: int, verificadas: int) -> float | None:
 
 def mapping_coverage(tipificadas: int, con_control: int, sin_control: int) -> dict:
     """Cobertura del mapeo, proporción «sin control técnico» y sin tipificar (PI5)."""
-    # TODO(PT5/PI5): implementar sobre las evidencias de S (tab:pru-ext-mapeo).
+    # TODO(PT5/PI5): implementar sobre las evidencias de S (resultados en tab:res-oe2).
     raise NotImplementedError
 
 
-def weighted_kappa(rater_a: Sequence[int], rater_b: Sequence[int]) -> float:
-    """Kappa de Cohen ponderada entre el autor y el revisor sobre la escala 1-5 (CA-08)."""
-    # TODO(PT7/CA-08): implementar y fijar la ponderación (lineal o cuadrática).
+# Controles que acreditan casi cualquier obligación y no cuentan para la especificidad
+# (24-pruebas, métrica «Mapeo»); 23-detalle cita también mp.info.1 como genérica.
+GENERIC_CONTROLS: Final[frozenset[str]] = frozenset({"A.5.31", "A.5.34"})
+
+
+def mapping_specificity(controles_por_obligacion: Sequence[Sequence[str]]) -> dict:
+    """Especificidad del mapeo (PI5): obligaciones con algún control no genérico y número
+    medio de controles por obligación."""
+    # TODO(PT5/PI5): implementar; decidir si mp.info.1 entra en GENERIC_CONTROLS.
+    raise NotImplementedError
+
+
+def field_accuracy(inferido: dict, anotado: dict) -> dict[str, float]:
+    """Exactitud por campo del cuestionario que infiere un asistente real (PI7).
+
+    Acierto en booleanos y enumeraciones; índice de Jaccard en ``tipos_datos_personales``.
+    ``descripcion_breve`` no se compara.
+    """
+    # TODO(PT5/PI7): implementar; el cuestionario inferido se registra en el cliente (los
+    # registros del servidor no guardan la descripción, RNF-04 y RNF-15).
+    raise NotImplementedError
+
+
+def cohen_kappa(
+    rater_a: Sequence[str], rater_b: Sequence[str], *, ordinal: bool = False
+) -> float:
+    """Kappa de Cohen entre el autor y el revisor en un eje de la escala (PI3; CA-08).
+
+    Se calcula por eje: sin ponderar en el jurídico (nominal) y ponderada en el de respaldo
+    (``ordinal=True``: respalda > parcial > no_respalda).
+    """
+    # TODO(PT7/CA-08): implementar y fijar la ponderación del eje ordinal (lineal o cuadrática).
     raise NotImplementedError
 
 

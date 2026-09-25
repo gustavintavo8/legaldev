@@ -6,16 +6,19 @@
 Protocolo de la memoria (capítulo de pruebas, «Protocolo de validación externa»; criterio de
 aceptación CA-08):
 
-- Entre 15 y 20 informes del sistema híbrido S sobre el conjunto acotado y, si la persona
-  revisora lo acepta, un subconjunto de B1 para comparar.
-- Valoración ciega: los informes se presentan con un identificador aleatorio; la tabla que
-  relaciona identificador, caso y configuración se guarda aparte y no se comparte hasta
-  terminar.
-- Cada obligación se valora con la escala de `eval/annotation_guide.md` (dos ejes, con su
-  correspondencia a la escala 1-5 de la memoria); en una submuestra, además, la adecuación del
-  control o la medida asignados (adecuado, parcial, inadecuado).
+- Entre 15 y 20 informes del sistema híbrido S sobre el conjunto de prueba y, para 8 a 10 de
+  sus cuestionarios, los informes de B1: la comparación con B1 forma parte del protocolo, no
+  es opcional.
+- Valoración ciega: antes de la revisión se quitan las secciones «Cobertura del análisis» y
+  «Verificación de citas», que delatan la configuración; los informes se presentan en orden
+  aleatorio y con un identificador aleatorio, y la tabla que relaciona identificador, caso y
+  configuración se guarda aparte y no se comparte hasta terminar.
+- Una persona con formación jurídica en derecho digital valora cada obligación en los dos ejes
+  de `eval/annotation_guide.md` (jurídico y de respaldo).
 - El autor valora los mismos informes de forma independiente; se calcula la kappa de Cohen
-  ponderada (`eval/metrics.py`).
+  por eje, ponderada en el de respaldo, que es ordinal (`eval/metrics.py`).
+- La muestra del mapeo (adecuado, parcial, inadecuado) la valora otra persona, con perfil de
+  SGSI (implantación o auditoría de ISO/IEC 27001), no la revisora jurídica.
 - Si no hay revisión jurídica, la memoria lo hará constar y presentará solo la valoración del
   autor con esa limitación explícita.
 
@@ -25,13 +28,16 @@ Este directorio **no contiene datos personales**. No se guardan aquí el nombre,
 la firma de la persona revisora, ni la correspondencia con ella: en el repositorio figura como
 «revisor A» con su perfil profesional genérico (p. ej. «formación jurídica en derecho
 digital»), y su consentimiento para citar esa descripción se conserva fuera del repositorio.
-Los informes valorados solo contienen cuestionarios ficticios del conjunto acotado.
+Los informes valorados solo contienen cuestionarios del conjunto de prueba, sin datos
+personales.
 
 ## Ficheros previstos
 
 - `muestra.csv`: identificador aleatorio y obligación (sin configuración).
-- `valoraciones_autor.csv` y `valoraciones_revisor_a.csv`: identificador, eje J, eje R,
-  adecuación del control (si aplica) y comentario.
+- `valoraciones_autor.csv` y `valoraciones_revisor_a.csv`: identificador, eje jurídico, eje
+  de respaldo y comentario (incluida la adecuación de la acción técnica).
+- `valoraciones_mapeo_revisor_b.csv`: identificador de la obligación, control o medida,
+  adecuación y comentario (perfil de SGSI).
 - `correspondencia.csv`: identificador -> caso y configuración; se añade al repositorio solo
   cuando ambas valoraciones están cerradas.
 

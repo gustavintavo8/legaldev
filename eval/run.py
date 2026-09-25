@@ -71,7 +71,12 @@ def main(argv: list[str] | None = None) -> int:
     parse_args(argv)
     # TODO(PT5/PI1): implementar el bucle casos x configuraciones sobre eval.baselines,
     # registrando tokens y latencia, y la vía MCP de S cuando exista el servidor.
-    # TODO(PT5/PI6): ejecutar S por --via rest y --via mcp y comparar (equivalencia con LLM real).
+    # TODO(PT5/PI6): ejecutar S por --via rest y --via mcp y comparar (equivalencia con LLM real
+    # y latencia p50/p95 en frío y en caliente).
+    # TODO(PT5/PI7): ejecutar S con el cuestionario inferido por el asistente frente al anotado
+    # en los repositorios del bloque de proyectos reales (recall emparejado por repositorio).
+    # TODO(PT5/PI8): recortable; la comparación del asistente con y sin LegalDev se hace en el
+    # anfitrión, fuera de este ejecutor, y aquí solo se registran sus resultados.
     print(
         "Pendiente (PT5): eval/run.py no está implementado (ver eval/cases/acotado/README.md)",
         file=sys.stderr,
