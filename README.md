@@ -156,7 +156,7 @@ Los documentos legales tienen artículos cortos y bien delimitados. Un chunk de 
 
 ### Cuestionario estructurado como interfaz de entrada
 
-En vez de texto libre ("tengo una app de salud para menores"), el cuestionario extrae campos específicos que se mapean directamente a términos legales en `_build_query()`. `descripcion_breve` encabeza la query — el texto del developer define el contexto base, y los campos estructurados añaden términos legales específicos a continuación. `usuarios_menores=True` → añade "usuarios menores de edad" a la query semántica, que orienta la búsqueda hacia los artículos sobre menores. Ese campo solo cambia la consulta: ninguna regla garantiza por él el art. 8 RGPD ni el art. 7 LOPDGDD. `usa_ia=True + tipo_ia="generativa"` → "inteligencia artificial generativa", que apunta al EU AI Act. Esta traducción estructurada produce queries semánticamente ricas sin depender de que el usuario sepa qué palabras clave usar.
+En vez de texto libre ("tengo una app de salud para menores"), el cuestionario extrae campos específicos que se mapean directamente a términos legales en `_build_query()`. `descripcion_breve` encabeza la query — el texto del developer define el contexto base, y los campos estructurados añaden términos legales específicos a continuación. `usuarios_menores=True` → añade "usuarios menores de edad" a la query semántica, que orienta la búsqueda hacia los artículos sobre menores. Ese campo no activa ninguna regla: cambia la consulta y llega al modelo como dato del proyecto, pero nada garantiza por él el art. 8 RGPD ni el art. 7 LOPDGDD. `usa_ia=True + tipo_ia="generativa"` → "inteligencia artificial generativa", que apunta al EU AI Act. Esta traducción estructurada produce queries semánticamente ricas sin depender de que el usuario sepa qué palabras clave usar.
 
 ### Query descriptiva + búsqueda auxiliar por dominio
 
@@ -215,7 +215,7 @@ Groq ofrece un Developer Plan gratuito con 500.000 tokens/día y latencias de ~2
 
 El modelo por defecto es `openai/gpt-oss-120b` (131k de contexto, 65k de salida). Groq retira modelos con pocos meses de aviso —`llama-4-scout`, el modelo original de LegalDev, dejó de existir el 17/07/2026 y la API estuvo devolviendo 503 hasta detectarlo—, así que el sistema (1) comprueba al arrancar que `GROQ_MODEL` existe (`GET /openai/v1/models/{model}`) y lo registra en `/health/deep`, (2) mantiene un segundo modelo (`GROQ_FALLBACK_MODEL`, por defecto `openai/gpt-oss-20b`) al que recurre si el principal falla por cualquier causa, y (3) informa en cada respuesta qué modelo la generó (`llm_model`). En gpt-oss los tokens de razonamiento cuentan como salida: `GROQ_REASONING_EFFORT=low` y `GROQ_MAX_TOKENS=8000`.
 
-Groq recibe el cuestionario completo, incluida la descripción libre del proyecto. Según su política de datos (consultada el 10.10.2026), conserva las entradas y salidas de la API hasta 30 días en EE. UU., salvo que se active la retención cero (ZDR). En este repositorio no consta que esté activada. Qué implica para el servicio y qué queda pendiente se explica en [Privacidad y datos](#-privacidad-y-datos).
+Groq recibe el cuestionario completo, incluida la descripción libre del proyecto. Según su política de datos (consultada el 10.10.2026), por defecto no conserva los datos de las peticiones, pero puede registrar entradas y salidas para resolver errores de la plataforma o investigar abusos. Esos registros se guardan hasta 30 días en EE. UU., salvo que se active la retención cero (ZDR). En este repositorio no consta que esté activada. Qué implica para el servicio y qué queda pendiente se explica en [Privacidad y datos](#-privacidad-y-datos).
 
 ### Un solo retrieval para API y eval
 
@@ -490,12 +490,12 @@ Esta sección describe qué datos trata hoy (10.10.2026) el servicio público: l
 
 Qué se trata y dónde:
 
-- **Cuestionario y descripción.** Se envían a la API de Groq para generar el informe. Según la política de datos de Groq (consultada el 10.10.2026), Groq conserva entradas y salidas hasta 30 días en EE. UU., salvo que la ley le obligue a más o que se active la retención cero (ZDR). En este repositorio no consta que esté activada.
+- **Cuestionario y descripción.** Se envían a la API de Groq para generar el informe. Según la política de datos de Groq (consultada el 10.10.2026), Groq no los conserva por defecto, pero puede registrar entradas y salidas para resolver errores de la plataforma o investigar abusos. Guarda esos registros hasta 30 días en EE. UU., salvo que la ley le obligue a más o que se active la retención cero (ZDR). En este repositorio no consta que esté activada.
 - **Caché de respuestas.** La API guarda cada respuesta en memoria durante una hora como máximo (256 entradas), con una clave SHA-256 del cuestionario. Se pierde al reiniciar el proceso.
 - **Dirección IP.** La API la usa como clave del límite de peticiones (`RATE_LIMIT`). Hugging Face, que aloja la API en EE. UU., registra además la IP de cada petición según su política de privacidad.
 - **Registros de la aplicación.** No guardan la descripción, sino su longitud y un resumen SHA-256 truncado a 8 caracteres hexadecimales (32 bits). También guardan el tipo de proyecto y el identificador de petición. Ese identificador lo genera el servidor, pero hoy se acepta sin validar el que envíe el cliente en `X-Request-ID`.
 - **Valoraciones (`POST /v1/feedback`).** Se añaden a `feedback.jsonl` dentro del contenedor, con el identificador de petición, la puntuación y un comentario libre opcional de hasta 2000 caracteres. El disco de un Space no es persistente, así que hoy no se conservan de forma fiable.
-- **Web.** La sirve Vercel. Su ubicación y su mecanismo de transferencia están por comprobar.
+- **Web.** La sirve Vercel. Su ubicación y su mecanismo de transferencia están por comprobar. La página carga además las tipografías desde Google Fonts y la biblioteca marked desde jsDelivr, y la página `/docs` de la API carga swagger-ui desde jsDelivr y su icono desde fastapi.tiangolo.com. Esos servicios reciben la IP de quien visita la página.
 
 Groq, Hugging Face y Vercel tratan estos datos por cuenta del servicio, es decir, como encargados del tratamiento (art. 28 RGPD). Groq y Hugging Face lo hacen en EE. UU., lo que exige las garantías del capítulo V del RGPD.
 

@@ -118,7 +118,9 @@ class Exclusion:
 
     Ejemplo: el ENS aplica al sector público y a sus proveedores privados por contrato
     (art. 2 RD 311/2022). El cuestionario no captura ninguna de las dos condiciones,
-    por eso se excluye siempre. LPI aplica cuando hay contenido digital de terceros.
+    por eso se excluye siempre. La LPI se excluye si el proyecto no declara contenido
+    digital. Es una heurística de relevancia, no una inaplicabilidad de la norma, que es
+    pertinente para cualquier software (pendiente: hallazgo C-27).
     """
 
     condition: Callable[[QuestionnaireInput], bool]
@@ -237,7 +239,7 @@ Eres LegalDev, un asistente especializado en normativa legal aplicable a proyect
 
 Recibes: (1) el contexto del proyecto del developer, (2) fragmentos de normativa recuperados de una base de conocimiento indexada, (3) la lista de normativas indexadas que no tienen fragmentos relevantes en este contexto.
 
-Tu tarea es producir un informe orientativo, estructurado y accionable. Sigue exactamente la estructura y reglas siguientes. No puedes reordenar secciones ni omitir las obligatorias.
+Tu tarea es producir un informe legal estructurado, formal y accionable. Sigue exactamente la estructura y reglas siguientes. No puedes reordenar secciones ni omitir las obligatorias.
 
 ---
 

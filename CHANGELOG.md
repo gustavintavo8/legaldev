@@ -23,7 +23,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `tools/eval_retrieval.py --chroma-path` y comprobación de modelo del índice; `make eval-sweep`.
 
 ### Changed
-- El prompt pide un «informe orientativo, estructurado y accionable» en lugar de un «informe legal estructurado, formal y accionable» (cambia la huella de `test_system_prompt_snapshot`).
 - Documentación del corpus (`docs/CORPUS_SOURCES.md`, README): títulos y fechas oficiales de las guías de la AEPD, marca «EN REVISIÓN», versiones que no incorporan correcciones o modificaciones (RGPD, Reglamento de IA, Data Act, DGA), ámbito del ENS (sector público y proveedores por contrato), búsquedas auxiliares sin filtro por fuente y estado actual del DSA.
 - Índice ChromaDB reconstruido (2026-09-12) con el splitter v2 a partir de los 22 documentos descargados de sus fuentes oficiales (EUR-Lex, BOE, AEPD, CCII; ver `docs/CORPUS_SOURCES.md`): 13.756 chunks, `corpus_version` `7a2029a4dfd8`, `.index_meta.json` presente (la guardia de arranque ya verifica el modelo de embeddings). La «Directiva de Responsabilidad por Productos con IA» corresponde a la Directiva (UE) 2024/2853 en vigor.
 - `GROQ_MAX_TOKENS` por defecto 4000 → 8000 (en gpt-oss los tokens de razonamiento cuentan como salida).

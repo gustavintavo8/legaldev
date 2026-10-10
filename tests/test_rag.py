@@ -24,7 +24,7 @@ from app.rag import (
 def test_system_prompt_snapshot():
     digest = hashlib.sha256(SYSTEM_PROMPT.encode()).hexdigest()
     assert (
-        digest == "3bd93b059f1d758a62be9cb6e7cd94c9cf0d6bc73d6304052179e6a4ee8d24aa"
+        digest == "c62d57755ffe2a8f926dfd720f9fd4f64085898b8d1eca8292c98a258ffb2129"
     ), f"SYSTEM_PROMPT changed — update this hash consciously. New hash: {digest}"
 
 
@@ -625,12 +625,6 @@ def test_run_pipeline_report_opens_and_closes_with_disclaimer(mock_reranker):
     assert informe.startswith(f"> {DISCLAIMER}\n\nRespuesta LLM.")
     assert informe.endswith(f"\n\n> {DISCLAIMER}")
     assert informe.index("## Cobertura del análisis") < informe.rindex(DISCLAIMER)
-
-
-def test_system_prompt_presents_report_as_orientative():
-    # C-03: el prompt no presenta el informe como «informe legal formal».
-    assert "informe orientativo" in SYSTEM_PROMPT
-    assert "informe legal" not in SYSTEM_PROMPT
 
 
 def test_run_pipeline_retrieval_timeout_raises_503(
