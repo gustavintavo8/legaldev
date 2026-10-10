@@ -6,8 +6,12 @@
 #   reproduce el texto del Anexo A (ni sus títulos traducidos); solo guarda el identificador y
 #   una paráfrasis propia de su objeto, escrita sin partir del enunciado del control y
 #   suficiente para revisar el mapeo.
-# - Las medidas del ENS salen del Anexo II del Real Decreto 311/2022, publicado en el BOE
-#   (BOE-A-2022-7191) y de libre reutilización: su nombre puede copiarse literalmente.
+# - Las medidas del ENS salen del Anexo II del Real Decreto 311/2022 (BOE-A-2022-7191). Como
+#   disposición reglamentaria no es objeto de propiedad intelectual (art. 13 LPI), y el BOE
+#   permite reutilizarla citando la fuente, así que su nombre puede copiarse literalmente con
+#   la atribución «Fuente de los datos: Agencia Estatal Boletín Oficial del Estado»
+#   (https://www.boe.es). Si se toma del texto consolidado, hay que indicar que es un texto
+#   consolidado de carácter meramente informativo.
 #
 # TODO(PT3/RNF-17): completar el catálogo. ISO/IEC 27001:2022: los 93 controles (A.5.1 a
 # A.5.37, A.6.1 a A.6.8, A.7.1 a A.7.14, A.8.1 a A.8.34) con paráfrasis propia, comprobados

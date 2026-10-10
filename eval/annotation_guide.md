@@ -5,8 +5,9 @@
 
 Base en la memoria: capítulo de pruebas, «Conjuntos de desarrollo y de prueba», «Métricas y
 escala de valoración» (escala de dos ejes, `tab:pru-escala`) y «Protocolo de validación
-externa»; la guía congelada irá en el anexo de la memoria (`anexo:guia`). Alcance: RGPD,
-LOPDGDD, LSSI y la guía de cookies de la AEPD.
+externa»; la guía congelada irá en el anexo de la memoria (`anexo:guia`). Alcance: tres
+normas (RGPD, LOPDGDD y LSSI) y la guía de cookies de la AEPD, que es un criterio
+interpretativo del art. 22.2 LSSI y no una norma.
 
 ## 1. Principios
 
@@ -19,9 +20,11 @@ LOPDGDD, LSSI y la guía de cookies de la AEPD.
 
 Por cada una de las cuatro fuentes: `si` | `no` | `dudosa`, con justificación.
 
-TODO(PT4): criterios de aplicabilidad por fuente (ámbito material y territorial del RGPD,
-LOPDGDD como desarrollo en España, noción de servicio de la sociedad de la información de la
-LSSI, uso de cookies o tecnologías similares para la guía) y lista de casos límite con su
+TODO(PT4): criterios de aplicabilidad por fuente (ámbito material y territorial del RGPD;
+LOPDGDD como norma que adapta el ordenamiento español al RGPD y completa sus disposiciones,
+art. 1.a, y garantiza los derechos digitales, art. 1.b; noción de servicio de la sociedad de
+la información de la LSSI; para la guía de cookies, criterio interpretativo del art. 22.2
+LSSI y no norma, uso de cookies o tecnologías similares) y lista de casos límite con su
 decisión. Ejemplo de caso dudoso ya identificado en la memoria: el DSA en plataformas cerradas
 (fuera del alcance anotado, pero la guía debe decir cómo tratarlo si aparece).
 

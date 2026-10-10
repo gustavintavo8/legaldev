@@ -11,7 +11,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Final
 
-# Stems (nombre de fichero sin .pdf) de las fuentes del conjunto acotado.
+# Stems (nombre de fichero sin .pdf) de las fuentes del conjunto acotado: tres normas y la
+# guía de cookies de la AEPD, criterio interpretativo del art. 22.2 LSSI y no norma.
 ANNOTATED_SOURCES: Final[frozenset[str]] = frozenset(
     {"RGPD", "LOPDGDD", "LSSI", "Guía sobre uso de cookies - AEPD"}
 )

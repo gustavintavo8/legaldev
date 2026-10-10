@@ -10,8 +10,10 @@ lenguaje no decide ningún control. Cada entrada define un tipo de obligación p
 (identificador canónico, p. ej. «RGPD») y una lista de artículos o rangos («32», «13-14»).
 Una obligación tipificada sin entrada en la tabla se devuelve «sin mapeo» (CU-08, flujo 3b).
 Una obligación «sin control técnico aplicable» (CA-10) solo la acredita, como mucho, el
-control de requisitos legales A.5.31 y ninguna medida del ENS (tab:det-mapeo-ejemplo, LSSI 10
-y 21); su justificación empieza por ``SIN_CONTROL_TECNICO``.
+control de requisitos legales A.5.31 (por cotejar con el texto de la norma) y ninguna medida
+del ENS (tab:det-mapeo-ejemplo, LSSI 10); su justificación empieza por
+``SIN_CONTROL_TECNICO``. El art. 21 LSSI no entra en ese caso: es un control organizativo
+con verificación técnica posible (la baja en cada envío).
 
 Módulo puro: no importa FastAPI, la biblioteca MCP ni LangChain.
 """

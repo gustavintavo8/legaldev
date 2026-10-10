@@ -24,10 +24,11 @@ aceptación CA-08):
 
 ## Datos personales
 
-Este directorio **no contiene datos personales**. No se guardan aquí el nombre, el contacto ni
-la firma de la persona revisora, ni la correspondencia con ella: en el repositorio figura como
-«revisor A» con su perfil profesional genérico (p. ej. «formación jurídica en derecho
-digital»), y su consentimiento para citar esa descripción se conserva fuera del repositorio.
+Este directorio no contiene datos identificativos de la persona revisora: figura con un
+seudónimo, «revisor A», y un perfil genérico (p. ej. «formación jurídica en derecho
+digital»). No se guardan aquí su nombre, su contacto ni su firma. Sus valoraciones son datos
+seudonimizados (art. 4.5 RGPD), que siguen siendo datos personales para el autor, que conserva
+fuera del repositorio la correspondencia y el consentimiento (arts. 6.1.a y 7.1 RGPD).
 Los informes valorados solo contienen cuestionarios del conjunto de prueba, sin datos
 personales.
 

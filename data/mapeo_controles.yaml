@@ -3,9 +3,10 @@
 # Formato: 23-detalle.tex, lst:det-mapeo.
 #
 # TODO(PT3/RF-26): redactar las entradas de las cuatro fuentes del conjunto acotado (RGPD,
-# LOPDGDD, LSSI y la guía de cookies de la AEPD), cada una con su justificación, y revisarlas
-# con una persona de perfil SGSI (CA-10), contrastándolas con la guía CCN-STIC 825. Versión
-# 0.0.0 = esqueleto sin entradas.
+# LOPDGDD, LSSI y la guía de cookies de la AEPD), cada una con su justificación, revisarlas
+# con una persona de perfil SGSI (CA-10) y contrastar la pareja control ISO/IEC 27001 ↔
+# medida ENS de cada entrada con la guía CCN-STIC 825 (que no cubre la correspondencia con
+# las obligaciones legales). Versión 0.0.0 = esqueleto sin entradas.
 # TODO(PT3/RNF-17): al publicar la primera versión, fijar version (semver) y fecha; ambas se
 # copian en cada evidencia junto con la corpus_version para poder reproducirla.
 #
@@ -31,10 +32,12 @@ entradas: []
 #    articulos: ["32"]                      # números o rangos, como cadenas
 #    resumen: Seguridad del tratamiento
 #    iso27001: [A.8.11, A.8.13, A.8.24]     # identificadores exactos del catálogo
-#    ens: [mp.com.2, mp.info.6, mp.si.2]
+#    ens: [mp.com.2, mp.info.6, mp.si.2]    # desde BAJO, BAJO y MEDIO; mp.si.2, parcial
 #    justificacion: >
-#      El artículo 32.1 cita la seudonimización y el cifrado (letra a) y la
-#      capacidad de restaurar la disponibilidad tras un incidente (letra c).
+#      Propuesta (pendiente de revisión SGSI): el art. 32.1 a) y c) RGPD se
+#      relaciona con A.8.11, A.8.24 y A.8.13 y con mp.com.2 (desde BAJO),
+#      mp.info.6 (desde BAJO) y mp.si.2 (desde MEDIO; parcial, soportes).
+#      No cubre las letras b) y d).
 #    fuente: propuesta del autor, pendiente de revisión por un perfil SGSI
 #    verificacion: documental               # automática | documental | manual
 #
@@ -42,10 +45,13 @@ entradas: []
 #    normativa: RGPD
 #    articulos: ["13-14"]
 #    resumen: Informar al interesado
-#    iso27001: [A.5.34]                     # correspondencia genérica (PI5, especificidad)
-#    ens: [mp.info.1]
+#    iso27001: [A.5.34]                     # genérica (PI5); por cotejar con la norma
+#    ens: [mp.info.1]                       # indirecta: remite a los arts. 24 y 32 RGPD
 #    justificacion: >
-#      <por qué el control y la medida acreditan la obligación>
+#      El deber de informar es documental (cláusula o política de privacidad) y
+#      ningún control técnico lo acredita. mp.info.1 solo se relaciona de forma
+#      indirecta: su requisito mp.info.1.1 remite a los arts. 24 y 32 RGPD, no a
+#      los arts. 13-14. A.5.34 queda por cotejar con el texto de la norma.
 #    fuente: propuesta del autor, pendiente de revisión por un perfil SGSI
 #    verificacion: documental
 #
@@ -53,12 +59,15 @@ entradas: []
 #    normativa: LSSI
 #    articulos: ["10"]
 #    resumen: Información general del prestador
-#    iso27001: [A.5.31]                     # solo el control de requisitos legales
+#    iso27001: [A.5.31]                     # requisitos legales; por cotejar con la norma
 #    ens: []
 #    justificacion: >
 #      sin control técnico aplicable: <por qué ninguna medida técnica lo acredita>
 #    fuente: propuesta del autor, pendiente de revisión por un perfil SGSI
 #    verificacion: manual
+#
+# El art. 21 LSSI (comunicaciones comerciales) no es «sin control técnico»: es un control
+# organizativo con verificación técnica posible (la baja en cada envío).
 #
 # Guías de la AEPD sin articulado (en el índice de 9f173ce solo 8 de 300 fragmentos de la
 # guía de cookies tienen artículo): ver el TODO de ObligacionTipificada.articulo en
