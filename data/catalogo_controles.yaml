@@ -11,7 +11,8 @@
 #   permite reutilizarla citando la fuente, así que su nombre puede copiarse literalmente con
 #   la atribución «Fuente de los datos: Agencia Estatal Boletín Oficial del Estado»
 #   (https://www.boe.es). Si se toma del texto consolidado, hay que indicar que es un texto
-#   consolidado de carácter meramente informativo.
+#   consolidado de carácter meramente informativo y la fecha de su última modificación
+#   (6.11.2024 en el PDF del corpus).
 #
 # TODO(PT3/RNF-17): completar el catálogo. ISO/IEC 27001:2022: los 93 controles (A.5.1 a
 # A.5.37, A.6.1 a A.6.8, A.7.1 a A.7.14, A.8.1 a A.8.34) con paráfrasis propia, comprobados
