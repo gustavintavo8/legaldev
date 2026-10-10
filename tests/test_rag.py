@@ -24,7 +24,7 @@ from app.rag import (
 def test_system_prompt_snapshot():
     digest = hashlib.sha256(SYSTEM_PROMPT.encode()).hexdigest()
     assert (
-        digest == "c62d57755ffe2a8f926dfd720f9fd4f64085898b8d1eca8292c98a258ffb2129"
+        digest == "3bd93b059f1d758a62be9cb6e7cd94c9cf0d6bc73d6304052179e6a4ee8d24aa"
     ), f"SYSTEM_PROMPT changed — update this hash consciously. New hash: {digest}"
 
 
@@ -272,7 +272,9 @@ def test_run_pipeline_returns_rag_response(sample_input, mock_reranker):
 
     result = asyncio.run(run_pipeline(sample_input, state))
 
-    assert result.respuesta_completa == "Debes implementar consentimiento explícito."
+    assert result.respuesta_completa == (
+        f"> {DISCLAIMER}\n\nDebes implementar consentimiento explícito.\n\n> {DISCLAIMER}"
+    )
     assert result.chunks_utilizados == 4
     assert result.disclaimer == DISCLAIMER
     assert "RGPD" in result.normativas_detectadas
@@ -609,6 +611,26 @@ def test_run_pipeline_no_coverage_section_when_all_retrieved(mock_reranker):
 
 def test_system_prompt_does_not_contain_cobertura_section():
     assert "Cobertura del análisis" not in SYSTEM_PROMPT
+
+
+def test_run_pipeline_report_opens_and_closes_with_disclaimer(mock_reranker):
+    # C-03: el aviso de no asesoramiento abre el informe y lo cierra después de
+    # las secciones generadas en código, además de ir en el campo disclaimer.
+    docs = [_make_mock_doc("RGPD.pdf")]
+    state = _make_state(docs, llm_response="Respuesta LLM.")
+    result = asyncio.run(run_pipeline(_make_input(), state))
+    informe = result.respuesta_completa
+    assert "asesoramiento legal" in DISCLAIMER
+    assert result.disclaimer == DISCLAIMER
+    assert informe.startswith(f"> {DISCLAIMER}\n\nRespuesta LLM.")
+    assert informe.endswith(f"\n\n> {DISCLAIMER}")
+    assert informe.index("## Cobertura del análisis") < informe.rindex(DISCLAIMER)
+
+
+def test_system_prompt_presents_report_as_orientative():
+    # C-03: el prompt no presenta el informe como «informe legal formal».
+    assert "informe orientativo" in SYSTEM_PROMPT
+    assert "informe legal" not in SYSTEM_PROMPT
 
 
 def test_run_pipeline_retrieval_timeout_raises_503(

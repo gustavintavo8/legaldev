@@ -8,7 +8,7 @@ from prometheus_client import REGISTRY
 from app.config import settings
 from app.main import _check_groq_model, _make_groq_client
 from app.models import QuestionnaireInput
-from app.rag import _content_to_text, run_pipeline
+from app.rag import DISCLAIMER, _content_to_text, run_pipeline
 
 
 def _settings(**overrides):
@@ -128,7 +128,8 @@ def _metric(name, **labels):
 
 def test_primary_success_reports_primary_model(mock_reranker):
     result = asyncio.run(run_pipeline(_input(), _state()))
-    assert result.respuesta_completa.startswith("Respuesta principal")
+    informe = result.respuesta_completa.removeprefix(f"> {DISCLAIMER}\n\n")
+    assert informe.startswith("Respuesta principal")
     assert result.llm_model == settings.groq_model
 
 
@@ -137,7 +138,8 @@ def test_fallback_used_when_primary_fails(mock_reranker, caplog):
     state.groq_client.invoke.side_effect = Exception("model_decommissioned")
     before = _metric("legaldev_llm_fallback_total", reason="Exception")
     result = asyncio.run(run_pipeline(_input(), state))
-    assert result.respuesta_completa.startswith("Respuesta del respaldo")
+    informe = result.respuesta_completa.removeprefix(f"> {DISCLAIMER}\n\n")
+    assert informe.startswith("Respuesta del respaldo")
     assert result.llm_model == settings.groq_fallback_model
     assert _metric("legaldev_llm_fallback_total", reason="Exception") == before + 1
     assert '"event": "llm_fallback"' in caplog.text
