@@ -9,7 +9,8 @@
 [![ChromaDB](https://img.shields.io/badge/ChromaDB-1.5-ff6b35)](https://www.trychroma.com/)
 [![Groq](https://img.shields.io/badge/Groq-gpt--oss--120b-f55036?logo=groq)](https://groq.com/)
 [![HF Spaces](https://img.shields.io/badge/🤗_Space-LegalDev-yellow)](https://huggingface.co/spaces/gustavintavo8/legaldev)
-[![Tests](https://img.shields.io/badge/Tests-288_passed-22c55e?logo=pytest)](./tests/)
+[![Tests](https://img.shields.io/badge/Tests-295_passed-22c55e?logo=pytest)](./tests/)
+[![Coverage](https://img.shields.io/badge/Coverage-93%25-22c55e?logo=pytest)](https://github.com/gustavintavo8/legaldev/actions/workflows/ci.yml)
 
 [Highlights](#-highlights-técnicos) · [Cómo funciona](#-cómo-funciona) · [Tech Stack](#️-tech-stack) · [Decisiones técnicas](#-decisiones-técnicas) · [Instalación](#-instalación) · [API](#-api) · [Deploy](#-deploy)
 
@@ -336,7 +337,7 @@ Genera `chroma_db/`. Si falta alguno de los 22 PDFs, el script aborta con un err
 
 ```bash
 make dev    # uvicorn app.main:app --reload → http://localhost:8000
-make test   # pytest -v (289 tests; CI ejecuta 288 con -m "not slow": el E2E usa ChromaDB y embeddings reales)
+make test   # pytest -v (296 tests; CI ejecuta 295 con -m "not slow" y cobertura, y el E2E, que usa ChromaDB y embeddings reales, en un job aparte)
 ```
 
 ---
