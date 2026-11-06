@@ -4,7 +4,9 @@
 `MCP_ENABLED=true` y `API_KEYS` no está vacía; sin claves no se monta aunque se active
 (RNF-15). Requisitos RF-22 a RF-25, RNF-15, RNF-16 y RNF-18 a RNF-21; caso de uso CU-07;
 pruebas PP-01 a PP-08 y PP-13 a PP-17 (PP-18 pendiente de RNF-20); criterio CA-09; paquete de
-trabajo PT2. No está desplegado en el Space de Hugging Face.
+trabajo PT2. Desplegado en el Space de Hugging Face desde el 06/11/2026
+(`https://gustavintavo8-legaldev.hf.space/mcp`, con `MCP_API_KEYS` propias; la API REST sigue
+abierta para la web).
 
 ## Diseño resumido
 
@@ -127,11 +129,18 @@ que solo lo admiten.
 ## Despliegue en el Space de Hugging Face
 
 El Space (`https://gustavintavo8-legaldev.hf.space`) se despliega con `make push-space` desde
-`main`. Para activar el servidor MCP, en *Settings → Variables and secrets*: `MCP_ENABLED` =
+`main` (activado el 06/11/2026 con `main@a80c8b1`). Para activar el servidor MCP, en *Settings → Variables and secrets*: `MCP_ENABLED` =
 `true` y `MCP_API_KEYS` con las claves que se repartan (secreto); `API_KEYS` sigue vacía para
 la web. Los asistentes se conectan a `https://gustavintavo8-legaldev.hf.space/mcp` con la
 cabecera `X-API-Key` (ejemplos en `clients/`). El cupo de `analizar_proyecto` es por clave y
 comparte la cuota de Groq con la web.
+
+Comprobado en producción el 06/11/2026, con el cliente del SDK por internet y en las dos eras:
+sin clave, 401; con una clave falsa, 403; GET, 405; las tres herramientas con el índice del
+Space (22 documentos). `analizar_proyecto` con Groq tardó 20,4 s en la primera llamada (6
+normativas, 18 fragmentos, 12 de 13 citas verificadas, informe en `structuredContent`) y 0,29 s
+desde la caché al repetirla desde la otra era; `consultar_obligaciones`, unos 3,8 s. La API REST
+sigue sin pedir clave (`/v1/analyze` con un cuerpo inválido responde 422, no 401).
 
 ## Primera prueba con un asistente real (Claude Code, 06/11/2026)
 
