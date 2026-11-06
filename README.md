@@ -397,6 +397,10 @@ ALLOWED_ORIGINS=*
 | `RETRIEVAL_TIMEOUT` | Timeout global del retrieval (búsquedas ChromaDB + reranker CPU), en segundos | `60` |
 | `RATE_LIMIT` | Límite de requests por IP en `/v1/analyze` y `/v1/feedback` (cubos independientes) | `10/minute` |
 | `ALLOWED_ORIGINS` | CORS origins (coma-separados) | `*` |
+| `API_KEYS` | Claves de API (coma-separadas) para `/v1/analyze`; vacía, la API queda abierta | — |
+| `MCP_ENABLED` | Monta el servidor MCP en `POST /mcp` (solo si hay claves para él) | `false` |
+| `MCP_API_KEYS` | Claves propias de `/mcp`; vacía, usa las de `API_KEYS`. `/mcp` nunca queda abierto | — |
+| `MCP_ALLOWED_ORIGINS` | Orígenes de navegador admitidos en `/mcp` (sin `*`); los clientes de escritorio no envían `Origin` | — |
 
 Cualquier clave de `.env` que no coincida con un setting conocido se ignora (`extra="ignore"` en `Settings`) — un `.env` con una variable renombrada o retirada no rompe el arranque.
 
@@ -482,6 +486,17 @@ El resultado se cachea 60 segundos, así que llamadas repetidas dentro de esa ve
 
 ---
 
+### `POST /mcp` (servidor MCP)
+
+Servidor [MCP](https://modelcontextprotocol.io) con tres herramientas de solo lectura para asistentes de programación (Claude Code, VS Code, Cursor): `analizar_proyecto` (el mismo análisis que `/v1/analyze`, con la misma caché), `listar_normativas` y `consultar_obligaciones` (fragmentos de una normativa, sin LLM). Atiende la revisión 2026-07-28 del protocolo y la anterior (2025-11-25). Está desactivado por defecto: se activa con `MCP_ENABLED=true` y una clave en `MCP_API_KEYS` (o en `API_KEYS`), y exige siempre la cabecera `X-API-Key`.
+
+```bash
+claude mcp add --transport http legaldev https://<username>-legaldev.hf.space/mcp \
+  --header "X-API-Key: <clave>"
+```
+
+Diseño, seguridad, decisiones y configuración de VS Code y Cursor: [`docs/mcp/README.md`](docs/mcp/README.md).
+
 ## 🔒 Privacidad y datos
 
 Esta sección describe qué datos trata hoy (10.10.2026) el servicio público: la API en Hugging Face Spaces y la web en Vercel. Todavía no se publica toda la información que exige el art. 13 RGPD, y lo que falta se indica al final.
@@ -564,6 +579,16 @@ git add chroma_db/ && git commit -m "chore: rebuild index"
 git push            # GitHub main
 make push-space     # HF Space (re-genera hf-space sobre el main actualizado)
 ```
+
+### Activar el servidor MCP en el Space
+
+En *Settings → Variables and secrets* del Space:
+
+- `MCP_ENABLED` = `true` (variable).
+- `MCP_API_KEYS` = una o varias claves separadas por comas (secreto). Son las que se reparten a quien vaya a usar el MCP.
+- `API_KEYS` se deja vacía mientras la web llame a `/v1/analyze` sin clave.
+
+El Space se reinicia solo al guardar. La URL del servidor es `https://<username>-legaldev.hf.space/mcp`; `GET /health` sigue respondiendo como siempre y `POST /mcp` sin clave responde 401.
 
 ### Qué hace make push-space
 

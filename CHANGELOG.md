@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Servidor MCP en `POST /mcp` (`MCP_ENABLED`, desactivado por defecto; exige `API_KEYS`), sobre el SDK oficial `mcp==2.3.0`: herramientas `analizar_proyecto`, `listar_normativas` y `consultar_obligaciones`, con salida estructurada. Atiende la revisión 2026-07-28 y la era del `initialize`. Guarda propia de `Origin` (`MCP_ALLOWED_ORIGINS`), clave y límite. Detalles y decisiones en `docs/mcp/README.md`.
+- Servidor MCP en `POST /mcp` (`MCP_ENABLED`, desactivado por defecto; exige `API_KEYS`), sobre el SDK oficial `mcp==2.3.0`: herramientas `analizar_proyecto`, `listar_normativas` y `consultar_obligaciones`, con salida estructurada. Atiende la revisión 2026-07-28 y la era del `initialize`. Guarda propia de `Origin` (`MCP_ALLOWED_ORIGINS`), clave y límite. Claves propias opcionales (`MCP_API_KEYS`) para desplegarlo junto a la web pública sin cerrar `/v1/analyze`. El informe completo va también en `structuredContent.informe`. Detalles y decisiones en `docs/mcp/README.md`.
 - Capa de servicio común REST/MCP (`app/service.py`): una entrada de caché por cuestionario para las dos vías y métrica `legaldev_analyze_requests_total{via}`.
 - El aviso de no asesoramiento abre y cierra `respuesta_completa`, además de ir en el campo `disclaimer`, para que acompañe al informe cuando se copia o cuando un cliente solo muestra ese texto.
 - `NOTICE.md`: licencias y atribución de los textos de terceros del índice (guías de la AEPD con CC BY-NC-SA 4.0, BOE, EUR-Lex y CCII). Sección «Privacidad y datos» en el README con lo que trata hoy el servicio y lo que falta por publicar.

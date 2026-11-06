@@ -46,3 +46,14 @@ curl -X POST https://<username>-legaldev.hf.space/v1/analyze \
     "colegiado": null
   }'
 ```
+
+## Servidor MCP
+
+El Space expone también un servidor [MCP](https://modelcontextprotocol.io) en `/mcp` con tres herramientas (`analizar_proyecto`, `listar_normativas` y `consultar_obligaciones`) para usar LegalDev desde Claude Code, VS Code o Cursor. Requiere una clave de acceso (cabecera `X-API-Key`), que se solicita al autor:
+
+```bash
+claude mcp add --transport http legaldev https://gustavintavo8-legaldev.hf.space/mcp \
+  --header "X-API-Key: <clave>"
+```
+
+Configuración de otros clientes en `docs/mcp/README.md` del repositorio.

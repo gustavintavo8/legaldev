@@ -59,7 +59,8 @@ Quién comprueba qué, en este orden (`mcp_guard.CHECK_ORDER`):
 1. `Origin` (RNF-18, `McpGuard`): 403 si viene y no está en `MCP_ALLOWED_ORIGINS`, una lista
    propia de `/mcp` independiente de CORS (que admite `*`; esta lista no) (PP-16).
 2. Clave de API (RNF-15, `McpGuard`): siempre obligatoria; 401 sin clave (con
-   `WWW-Authenticate: ApiKey header="X-API-Key"`), 403 con una desconocida (PP-07).
+   `WWW-Authenticate: ApiKey header="X-API-Key"`), 403 con una desconocida (PP-07). Las
+   claves son las de `MCP_API_KEYS` o, si está vacía, las de `API_KEYS`.
 3. Límite (RNF-21, `McpGuard`): solo `tools/call` de `analizar_proyecto`, la única
    herramienta que consume cuota del modelo; mismo cupo (`RATE_LIMIT`) y mismo almacén que la
    API, por resumen SHA-256 de la clave; 429 con `Retry-After` (PP-17). Método y herramienta
@@ -123,6 +124,35 @@ TODO(PT2/CU-07): registrar `/mcp` en VS Code, Cursor y Claude Code con la versi�
 cada cliente y anotar qué revisión negocia cada uno; puente o modo `stdio` para los clientes
 que solo lo admiten.
 
+## Despliegue en el Space de Hugging Face
+
+El Space (`https://gustavintavo8-legaldev.hf.space`) se despliega con `make push-space` desde
+`main`. Para activar el servidor MCP, en *Settings → Variables and secrets*: `MCP_ENABLED` =
+`true` y `MCP_API_KEYS` con las claves que se repartan (secreto); `API_KEYS` sigue vacía para
+la web. Los asistentes se conectan a `https://gustavintavo8-legaldev.hf.space/mcp` con la
+cabecera `X-API-Key` (ejemplos en `clients/`). El cupo de `analizar_proyecto` es por clave y
+comparte la cuota de Groq con la web.
+
+## Primera prueba con un asistente real (Claude Code, 06/11/2026)
+
+Cuestionario: aplicación web de una empresa de Madrid, de acceso público, con usuarios
+registrados en la UE (también menores), nombre y email, cookies, IA generativa, datos a
+terceros, contenido digital y publicidad. Claude Code hizo las preguntas que faltaban, llamó
+a `analizar_proyecto` y completó con `consultar_obligaciones`, separando en su respuesta lo
+que venía de LegalDev de su conocimiento general. Lo que señaló:
+
+- No veía el informe (corregido: ver «Informe en `structuredContent`»).
+- `normativas_detectadas` dejaba fuera la LOPDGDD con menores aunque había un fragmento suyo
+  en el contexto (regla de al menos dos fragmentos por normativa), y la guía de la AEPD
+  sobre IA no salía con IA generativa y datos personales.
+- Ruido en la recuperación del RGPD (una nota al pie del DOUE en una consulta sobre registro
+  de usuarios; el art. 28 no salió en ninguna consulta).
+- Un fragmento de la guía de IA etiquetado como «Considerando 49127» (son las notas 124 y
+  125) y palabras partidas por la extracción de los PDF del DOUE («inf or mación»).
+
+Salvo el primero, son límites conocidos del motor y del índice (reglas, divisor y extracción);
+quedan como evidencia para la evaluación y no se tocan aquí porque cambian las cifras medidas.
+
 ## Decisiones de la prueba de concepto (06/11/2026)
 
 - **SDK `mcp==2.3.0`.** Atiende la revisión 2026-07-28 y las anteriores, y valida él mismo
@@ -159,6 +189,15 @@ que solo lo admiten.
   del modelo), pero ocupa unos 4 s de CPU por llamada. Con la clave obligatoria el riesgo es
   bajo; si hiciera falta, un cupo propio más amplio o un semáforo alrededor de la recuperación.
 - **stdio.** Aplazado: `run_stdio` sigue sin implementar.
+- **Claves propias de `/mcp` (`MCP_API_KEYS`).** La web pública llama a `/v1/analyze` sin
+  clave (una clave en el JavaScript de la web sería pública), así que en producción
+  `API_KEYS` tiene que quedar vacía. Para no dejar `/mcp` abierto, tiene su propio conjunto
+  de claves; si `MCP_API_KEYS` está vacía, se usan las de `API_KEYS`, como pedía RNF-15.
+- **Informe en `structuredContent`.** En la primera prueba con Claude Code (06/11/2026) el
+  asistente recibió las normativas, los fragmentos y el recuento de citas, pero no el
+  informe: Claude Code solo pasa al modelo el contenido estructurado cuando la herramienta
+  declara `outputSchema`, y el informe iba solo en el texto. Desde entonces va también en
+  `structuredContent.informe`; el JSON del texto no lo repite.
 
 ## Cambios que necesita la memoria
 
@@ -173,7 +212,12 @@ que solo lo admiten.
   `usa_ia` -> `tipo_ia`.
 - RNF-21, 22-arquitectura y 23-detalle: el límite es por clave («o, si no la hay, por IP»),
   como `tab:ana-errores-mcp`.
-- 30-manual-instalacion: variables `MCP_ENABLED` y `MCP_ALLOWED_ORIGINS`.
+- 30-manual-instalacion: variables `MCP_ENABLED`, `MCP_API_KEYS` y `MCP_ALLOWED_ORIGINS`, y
+  la activación en el Space.
+- RNF-15: las claves de `/mcp` pueden ser un conjunto propio (`MCP_API_KEYS`), porque la web
+  pública obliga a dejar abierta la API REST.
+- tab:det-mcp-herramientas: el contenido estructurado de `analizar_proyecto` lleva el
+  `informe`.
 - tab:det-mcp-herramientas: el cuestionario devuelto excluye `descripcion_breve`; campo
   `sin_cobertura`.
 
