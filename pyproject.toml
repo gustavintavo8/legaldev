@@ -20,10 +20,10 @@ dependencies = [
     "httpx~=0.28.1",
     "slowapi~=0.1.9",
     "prometheus-fastapi-instrumentator~=7.1.0",
+    # SDK oficial de MCP; 2.3.0 sirve la revisión 2026-07-28 y la era de initialize (PT2).
+    "mcp==2.3.0",
 ]
 # Dependencias futuras del TFG (no se añaden hasta que el código las use; uv.lock no cambia):
-# TODO(PT2/RNF-16): "mcp==<versión 2.x fijada>", el SDK oficial de Python que elige la memoria
-#   (declara soporte de la revisión 2026-07-28); la versión la fija la prueba de concepto de PT2.
 # TODO(PT3/RF-26): "pyyaml~=6.0" explícita para data/*.yaml (hoy llega transitivamente vía
 #   langchain-core y huggingface-hub; tools/eval_retrieval.py ya lo importa).
 # TODO(PT3/PP-10): "jsonschema~=4.26" explícita para validar data/evidence.schema.json (hoy
