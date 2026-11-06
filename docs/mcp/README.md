@@ -113,7 +113,11 @@ Comprobado el 06/11/2026 con el cliente del propio SDK por HTTP contra el índic
 documentos), en las dos eras (`mode="auto"` negocia 2026-07-28; `mode="legacy"`, 2025-11-25):
 las tres herramientas, los errores de normativa desconocida y de cuestionario inválido, la
 herramienta desconocida (-32602) y las notificaciones de progreso. `consultar_obligaciones`
-tarda unos 4 s en CPU (búsqueda y reordenador); `analizar_proyecto` no se probó con Groq real.
+tarda unos 4 s en CPU (búsqueda y reordenador). Con Groq real (`openai/gpt-oss-120b`), un
+`analizar_proyecto` en frío tardó 24,5 s (15,5 s de recuperación en CPU y 9 s del modelo), con
+notificaciones de progreso cada 5 s; detectó 6 normativas con 18 fragmentos y 12 de 13 citas
+verificadas. La misma llamada desde el cliente de la era antigua salió de la caché común
+(0,03 s). El registro no contenía la descripción.
 
 TODO(PT2/CU-07): registrar `/mcp` en VS Code, Cursor y Claude Code con la versión vigente de
 cada cliente y anotar qué revisión negocia cada uno; puente o modo `stdio` para los clientes
