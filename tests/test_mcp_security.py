@@ -371,3 +371,77 @@ def test_cu07_metrics_are_labelled_by_access_path(mcp_http, sample_input_dict):
 
     assert _metric("legaldev_analyze_requests_total", via="rest") == rest_antes + 1
     assert _metric("legaldev_analyze_requests_total", via="mcp") == mcp_antes + 1
+
+
+# ------------------------------------------------------------- cuerpos que la guarda no lee
+
+
+@pytest.mark.parametrize(
+    ("nombre", "cuerpo", "codigo"),
+    [
+        ("JSON roto", b'{"jsonrpc": "2.0", "id": 1, "method": ', -32700),
+        ("anidamiento excesivo", b"[" * 100_000 + b"]" * 100_000, -32700),
+        (
+            "entero de 5000 cifras",
+            b'{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":'
+            b'"analizar_proyecto","arguments":{"pad":' + b"1" * 5000 + b"}}}",
+            -32700,
+        ),
+        (
+            "nombre de herramienta repetido",
+            b'{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":'
+            b'"listar_normativas","name":"analizar_proyecto","arguments":{}}}',
+            -32700,
+        ),
+        ("lote", b'[{"jsonrpc":"2.0","id":1,"method":"tools/list"}]', -32600),
+        ("cadena suelta", b'"hola"', -32600),
+        ("vacío", b"", -32700),
+    ],
+    ids=lambda v: v if isinstance(v, str) else "",
+)
+def test_guard_rejects_bodies_it_cannot_read(mcp_http, nombre, cuerpo, codigo):
+    """Lo que la guarda no puede leer no llega al SDK: si los dos analizadores discreparan,
+    una invocación de analizar_proyecto podría saltarse el límite."""
+    headers = {
+        "Accept": "application/json, text/event-stream",
+        "Content-Type": "application/json",
+        "X-API-Key": MCP_TEST_KEYS[0],
+    }
+    r = mcp_http.post("/mcp", content=cuerpo, headers=headers)
+    assert r.status_code == 400, nombre
+    assert r.json()["error"]["code"] == codigo, nombre
+    mcp_http.app.state.groq_client.invoke.assert_not_called()
+
+
+def test_unreadable_body_without_key_is_still_401(mcp_http):
+    r = mcp_http.post(
+        "/mcp", content=b"[" * 100_000, headers={"Content-Type": "application/json"}
+    )
+    assert r.status_code == 401
+
+
+def test_non_ascii_api_key_is_rejected_not_a_server_error(mcp_http):
+    with pytest.raises(mcp_guard.InvalidApiKey):
+        mcp_guard.check_api_key("café", frozenset(MCP_TEST_KEYS))
+    r = mcp_http.post(
+        "/mcp",
+        json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
+        headers={"X-API-Key": "caf\xe9".encode("latin-1")},
+    )
+    assert r.status_code == 403
+
+
+def test_non_ascii_configured_key_is_accepted():
+    clave = "clave-ñ"
+    mcp_guard.check_api_key(clave.encode("utf-8").decode("latin-1"), frozenset({clave}))
+
+
+def test_composite_rate_limit_counts_every_window(mcp_http, sample_input_dict):
+    """RATE_LIMIT con varios límites, como admite slowapi en la API REST."""
+    with patch.object(config.settings, "rate_limit", "1/minute;100/day"):
+        assert (
+            rpc(mcp_http, "tools/call", _analizar(sample_input_dict)).status_code == 200
+        )
+        assert (
+            rpc(mcp_http, "tools/call", _analizar(sample_input_dict)).status_code == 429
+        )

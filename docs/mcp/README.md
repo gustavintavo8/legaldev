@@ -72,6 +72,10 @@ Quién comprueba qué, en este orden (`mcp_guard.CHECK_ORDER`):
 Después: herramienta desconocida, -32602 (middleware `reject_unknown_tools`); argumentos
 inválidos, resultado con `isError` y los campos que fallan, sin repetir los valores (PP-04).
 GET y DELETE responden 405 desde la propia ruta; el cuerpo admite como mucho 256 KiB (413).
+La guarda solo deja pasar un único objeto JSON-RPC que ella misma pueda leer: JSON roto,
+anidamiento excesivo, enteros enormes, claves repetidas y lotes reciben 400 antes del SDK, para
+que no haya cuerpos que el SDK ejecute y la guarda no cuente. Las herramientas validan los
+argumentos tal como llegan, no la copia que el SDK convierte cuando una cadena parece JSON.
 
 Además: descripciones, títulos, instrucciones y descripciones de campo estáticos, fijados por
 una prueba de instantánea (RNF-15); registros sin la descripción libre ni el `contexto`
@@ -147,6 +151,9 @@ que solo lo admiten.
 - **Clave del límite.** Por clave de API (resumen SHA-256), y por IP solo si no la hubiera
   (inalcanzable con RNF-15). El «tope diario por clave» del modelo de amenazas sigue sin
   concretar.
+- **Cupo de `consultar_obligaciones`.** No se limita (RNF-21 solo limita lo que consume cuota
+  del modelo), pero ocupa unos 4 s de CPU por llamada. Con la clave obligatoria el riesgo es
+  bajo; si hiciera falta, un cupo propio más amplio o un semáforo alrededor de la recuperación.
 - **stdio.** Aplazado: `run_stdio` sigue sin implementar.
 
 ## Cambios que necesita la memoria

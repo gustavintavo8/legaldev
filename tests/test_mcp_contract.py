@@ -237,6 +237,14 @@ def _cuestionarios(sample_input_dict):
             dict(base, tipos_datos_personales=["adn"]),
             False,
         ),
+        # El SDK convertiría estas cadenas en lista y en nulo antes de llamar a la herramienta
+        # (pre_parse_json); la herramienta valida los argumentos tal como llegan.
+        (
+            "lista dentro de una cadena",
+            dict(base, tipos_datos_personales='["email"]'),
+            False,
+        ),
+        ("descripción que parece JSON", dict(base, descripcion_breve="null"), True),
     ]
 
 
@@ -460,3 +468,14 @@ def test_analizar_proyecto_reports_progress_when_the_client_asks(
     assert avisos[0] == (0, None, "Recuperando la normativa aplicable")
     assert len(avisos) >= 3
     assert all(m == "Generando el informe" for _, _, m in avisos[1:])
+
+
+def test_consultar_obligaciones_keeps_a_contexto_that_looks_like_json(client, mock_doc):
+    """Un contexto «[]» es texto, no una lista: se consulta con él tal cual."""
+    result = call_in_process(
+        client.app.state,
+        "consultar_obligaciones",
+        {"normativa": "RGPD", "contexto": "[]"},
+    )
+    assert result.is_error is False
+    assert result.structured_content["fragmentos"][0]["texto"] == mock_doc.page_content

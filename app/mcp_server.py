@@ -31,7 +31,7 @@ import copy
 import inspect
 import json
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from typing import Annotated, Any, Final, Literal
 
 from mcp.server import MCPServer
@@ -345,6 +345,19 @@ def _campos_invalidos(
     return lineas
 
 
+def _raw_arguments(ctx: Context) -> dict[str, Any]:
+    """Los argumentos tal como llegaron en ``tools/call``.
+
+    No se usan los que el SDK pasa a la función: su ``pre_parse_json`` convierte en lista,
+    objeto o nulo cualquier cadena que sea JSON válido (``'["email"]'``, ``"null"``) cuando
+    el parámetro no está anotado como ``str``, y eso cambiaría el veredicto de la validación
+    estricta y alteraría texto libre que casualmente parece JSON.
+    """
+    params = ctx.request_context.params or {}
+    argumentos = params.get("arguments")
+    return dict(argumentos) if isinstance(argumentos, Mapping) else {}
+
+
 def _strict_validate(model: type[BaseModel], argumentos: dict[str, Any]) -> Any:
     # Modo estricto sobre JSON, como el esquema publicado: «true» no es un booleano y 1 no es
     # una cadena. Las entradas que llegan por MCP ya son JSON, así que no se pierde nada.
@@ -413,8 +426,8 @@ def build_mcp_server(state, *, version: str = "0.0.0") -> MCPServer:
 
     # ---------------------------------------------------------------- analizar_proyecto
 
-    async def analizar_proyecto(ctx: Context, **campos: Any) -> Any:
-        argumentos = {k: v for k, v in campos.items() if v is not None}
+    async def analizar_proyecto(ctx: Context, **_campos: Any) -> Any:
+        argumentos = _raw_arguments(ctx)
         try:
             cuestionario = _strict_validate(QuestionnaireInput, argumentos)
         except ValidationError as exc:
@@ -480,8 +493,8 @@ def build_mcp_server(state, *, version: str = "0.0.0") -> MCPServer:
 
     # ----------------------------------------------------------- consultar_obligaciones
 
-    async def consultar_obligaciones(**campos: Any) -> Any:
-        argumentos = {k: v for k, v in campos.items() if v is not None}
+    async def consultar_obligaciones(ctx: Context, **_campos: Any) -> Any:
+        argumentos = _raw_arguments(ctx)
         try:
             args = _strict_validate(_ConsultaArgs, argumentos)
         except ValidationError as exc:
@@ -530,9 +543,10 @@ def _set_signature(fn, campos: list[str], retorno: Any) -> None:
     """Firma explícita para una herramienta que recibe ``**campos``.
 
     El SDK deriva de la firma el modelo de argumentos. Todos los campos son ``Any`` con
-    valor ``None``, de modo que el SDK no rechaza nada y la validación es solo la del modelo
-    Pydantic, en un único sitio y con mensajes que no repiten la entrada. El ``inputSchema``
-    publicado se sustituye después por el posprocesado (``_register``).
+    valor ``None``, de modo que el SDK no rechaza nada; la herramienta ignora los valores que
+    recibe y valida los argumentos en crudo (``_raw_arguments``) con el modelo Pydantic, en
+    un único sitio y con mensajes que no repiten la entrada. El ``inputSchema`` publicado se
+    sustituye después por el posprocesado (``_register``).
     """
     params = []
     if "ctx" in inspect.signature(fn).parameters:

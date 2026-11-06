@@ -29,8 +29,9 @@ CU-07 ponían las cabeceras y la versión antes que la clave; con el SDK no es p
 duplicar su validación, y que un cliente sin clave reciba 401 antes que un error de protocolo
 no revela nada. La memoria debe unificarse con este orden.
 
-Los argumentos los valida cada herramienta, y un fallo es un resultado con ``isError``, no un
-rechazo del transporte (PP-04). GET y DELETE sobre ``/mcp`` responden 405 desde la ruta
+Antes del límite, la guarda exige un único objeto JSON-RPC legible (sin lotes ni claves
+duplicadas): lo que no puede leer no lo deja pasar. Los argumentos los valida cada
+herramienta, y un fallo es un resultado con ``isError``, no un rechazo del transporte (PP-04). GET y DELETE sobre ``/mcp`` responden 405 desde la ruta
 (``mcp_server.mount``), y ``Mcp-Session-Id`` se ignora (PP-16).
 """
 
@@ -49,7 +50,6 @@ from starlette.responses import JSONResponse
 from starlette.types import Receive, Scope, Send
 
 from app import config
-from app.service import Via
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +112,19 @@ class BodyTooLarge(GuardRejection):
     status = 413
 
 
+class InvalidJson(GuardRejection):
+    """Cuerpo que no se puede analizar (JSON roto, anidamiento excesivo, enteros de más de
+    4300 cifras, claves duplicadas). Se rechaza aquí y no se deja al SDK: si los dos
+    analizadores discreparan, la guarda podría no ver una invocación que el SDK sí ejecuta."""
+
+    jsonrpc_code = -32700
+
+
+class InvalidMessage(GuardRejection):
+    """Un JSON que no es un único objeto JSON-RPC (lotes incluidos, que ninguna de las dos
+    eras admite ya)."""
+
+
 def validate_origin(origin: str | None, allowed: frozenset[str]) -> None:
     """Acepta la ausencia de ``Origin``; si está presente, exige que esté en ``allowed``."""
     if origin is None:
@@ -130,7 +143,11 @@ def check_api_key(x_api_key: str | None, key_set: frozenset[str]) -> None:
         raise InvalidApiKey("El servidor MCP no tiene claves de API configuradas")
     if not x_api_key:
         raise MissingApiKey("Falta la cabecera X-API-Key")
-    if not any(hmac.compare_digest(x_api_key, k) for k in key_set):
+    # En bytes: compare_digest no admite str con caracteres no ASCII (y Starlette decodifica
+    # las cabeceras como latin-1, así que pueden llegar). latin-1 devuelve los bytes que envió
+    # el cliente; las claves configuradas se comparan en UTF-8.
+    candidata = x_api_key.encode("latin-1", errors="replace")
+    if not any(hmac.compare_digest(candidata, k.encode("utf-8")) for k in key_set):
         raise InvalidApiKey("Clave de API no válida")
 
 
@@ -151,32 +168,40 @@ def rate_limit_key(api_key: str | None, client_ip: str) -> str:
     return "mcp:ip:" + client_ip
 
 
-def request_via(path: str, headers: dict[str, str] | None = None) -> Via:
-    """Vía de acceso: ``Via.MCP`` bajo ``/mcp``; en el resto, ``Via.REST``."""
-    # TODO(PT6/RF-28): Via.CI necesita una señal propia de la acción de CI (cabecera o
-    # User-Agent); ver Via en app/service.py.
-    if path == "/mcp" or path.startswith("/mcp/"):
-        return Via.MCP
-    return Via.REST
+class _DuplicateKey(ValueError):
+    pass
 
 
-def _invocations(payload: Any) -> list[tuple[str | None, str | None]]:
-    """``(method, params.name)`` de cada mensaje (la era antigua admitía lotes)."""
-    mensajes = payload if isinstance(payload, list) else [payload]
-    out = []
-    for msg in mensajes:
-        if not isinstance(msg, dict):
-            continue
-        params = msg.get("params")
-        name = params.get("name") if isinstance(params, dict) else None
-        method = msg.get("method")
-        out.append(
-            (
-                method if isinstance(method, str) else None,
-                name if isinstance(name, str) else None,
-            )
-        )
-    return out
+def _sin_duplicados(pares: list[tuple[str, Any]]) -> dict[str, Any]:
+    objeto: dict[str, Any] = {}
+    for clave, valor in pares:
+        if clave in objeto:
+            # Con «name» repetido, dos analizadores podrían quedarse con valores distintos.
+            raise _DuplicateKey(clave)
+        objeto[clave] = valor
+    return objeto
+
+
+def _parse(body: bytes) -> tuple[dict[str, Any] | None, GuardRejection | None]:
+    """El mensaje JSON-RPC, o el rechazo que corresponde si no es un único objeto válido."""
+    try:
+        payload = json.loads(body, object_pairs_hook=_sin_duplicados)
+    except (ValueError, RecursionError):
+        return None, InvalidJson("El cuerpo no es un JSON válido")
+    if not isinstance(payload, dict):
+        return None, InvalidMessage("Se espera un único mensaje JSON-RPC (sin lotes)")
+    return payload, None
+
+
+def _invocation(payload: dict[str, Any]) -> tuple[str | None, str | None]:
+    """``(method, params.name)`` del mensaje."""
+    params = payload.get("params")
+    name = params.get("name") if isinstance(params, dict) else None
+    method = payload.get("method")
+    return (
+        method if isinstance(method, str) else None,
+        name if isinstance(name, str) else None,
+    )
 
 
 def _request_id(payload: Any) -> Any:
@@ -192,13 +217,17 @@ def _client_ip(request: Request) -> str:
 
 
 def _hit_rate_limit(scope: Scope, key: str) -> None:
-    """Cuenta una invocación en el limitador de la API (mismo almacén y mismo cupo)."""
+    """Cuenta una invocación en el limitador de la API (mismo almacén y mismo cupo).
+
+    ``RATE_LIMIT`` admite varios límites («10/minute;100/day»), como en slowapi: se cuentan
+    todos y basta con que se agote uno.
+    """
     limiter = scope["app"].state.limiter
-    item = limits.parse(config.settings.rate_limit)
-    if not limiter._limiter.hit(item, key):
-        reset_at = limiter._limiter.get_window_stats(item, key)[0]
-        retry_after = max(1, int(reset_at - time.time()))
-        raise RateLimited("Límite de peticiones superado", retry_after)
+    for item in limits.parse_many(config.settings.rate_limit):
+        if not limiter._limiter.hit(item, key):
+            reset_at = limiter._limiter.get_window_stats(item, key)[0]
+            retry_after = max(1, int(reset_at - time.time()))
+            raise RateLimited("Límite de peticiones superado", retry_after)
 
 
 async def _read_body(receive: Receive) -> bytes:
@@ -242,19 +271,20 @@ class McpGuard:
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         request = Request(scope)
-        payload: Any = None
+        payload: dict[str, Any] | None = None
         try:
             body = await _read_body(receive)
-            try:
-                payload = json.loads(body) if body else None
-            except ValueError:
-                payload = None  # el SDK responde el error de análisis JSON-RPC
+            # Se analiza antes de autenticar solo para devolver el id en los rechazos; un
+            # cuerpo ilegible se rechaza después de comprobar el origen y la clave.
+            payload, invalido = _parse(body)
             validate_origin(
                 request.headers.get("origin"), config.settings.mcp_origin_set
             )
             api_key = request.headers.get("x-api-key")
             check_api_key(api_key, config.settings.api_key_set)
-            if any(is_rate_limited(m, t) for m, t in _invocations(payload)):
+            if invalido is not None:
+                raise invalido
+            if is_rate_limited(*_invocation(payload)):
                 _hit_rate_limit(scope, rate_limit_key(api_key, _client_ip(request)))
         except GuardRejection as rej:
             logger.info(
@@ -277,5 +307,4 @@ class McpGuard:
             )
             await response(scope, receive, send)
             return
-        scope.setdefault("state", {})["via"] = request_via(scope["path"]).value
         await self.handler(scope, _replay(body, receive), send)
