@@ -18,6 +18,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
+from app import mcp_server as _mcp_server
 from app import reranker as _reranker
 from app import service, store
 from app.config import settings
@@ -171,7 +172,9 @@ async def lifespan(app: FastAPI):
     logger.info("Warming up reranker (%s)", _reranker._MODEL_NAME)
     _reranker.warmup()
     logger.info("LegalDev is ready — %d chunks indexed", count)
-    yield
+    # Servidor MCP en /mcp, solo si la ruta está montada (MCP_ENABLED y API_KEYS).
+    async with _mcp_server.serve(app, version=app.version):
+        yield
 
 
 app = FastAPI(
@@ -302,3 +305,6 @@ def feedback_v1(input: FeedbackInput, request: Request):
 
 
 app.include_router(v1)
+
+# Servidor MCP en POST /mcp: solo con MCP_ENABLED y API_KEYS (RNF-15).
+_mcp_server.mount_if_enabled(app)

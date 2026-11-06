@@ -37,11 +37,13 @@ class Settings(BaseSettings):
     retrieval_timeout: float = 60.0
     log_level: str = "INFO"
     api_keys: str = ""
-    # TODO(PT2/RF-22): montar app/mcp_server.py en /mcp cuando sea verdadero y API_KEYS no
-    # esté vacía (RNF-15: /mcp exige siempre clave; 22-arquitectura, «Despliegue», y
-    # 30-manual-instalacion). Hoy no tiene efecto. Añadir MCP_ENABLED a .env.example cuando
-    # el servidor exista.
+    # Servidor MCP en POST /mcp (app/mcp_server.py). Solo se monta si además API_KEYS no está
+    # vacía (RNF-15: /mcp exige siempre clave; 22-arquitectura, «Despliegue»).
     mcp_enabled: bool = False
+    # Orígenes de navegador admitidos en /mcp (RNF-18, protección frente a DNS rebinding),
+    # separados por comas. Independiente de ALLOWED_ORIGINS (CORS de la web): los clientes MCP
+    # de escritorio no envían Origin, así que la lista vacía solo rechaza a los navegadores.
+    mcp_allowed_origins: str = ""
 
     @property
     def api_key_set(self) -> frozenset[str]:
@@ -58,6 +60,23 @@ class Settings(BaseSettings):
                 f"ALLOWED_ORIGINS: '*' must be the only value when present, got: {v!r}"
             )
         return v
+
+    @field_validator("mcp_allowed_origins")
+    @classmethod
+    def validate_mcp_allowed_origins(cls, v: str) -> str:
+        if "*" in (p.strip() for p in v.split(",")):
+            raise ValueError(
+                "MCP_ALLOWED_ORIGINS no admite '*': la validación de Origin no protegería de nada"
+            )
+        return v
+
+    @property
+    def mcp_origin_set(self) -> frozenset[str]:
+        return frozenset(
+            o.strip().rstrip("/")
+            for o in self.mcp_allowed_origins.split(",")
+            if o.strip()
+        )
 
     @property
     def cors_origins(self) -> list[str]:

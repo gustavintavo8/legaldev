@@ -2,7 +2,8 @@ import os
 
 os.environ.setdefault("GROQ_API_KEY", "test-key-not-real")
 
-from unittest.mock import MagicMock
+from contextlib import contextmanager
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -103,10 +104,9 @@ def mock_reranker():
         yield
 
 
-@pytest.fixture
-def client(mock_doc, mock_reranker):
-    from unittest.mock import patch
-
+@contextmanager
+def _patched_app(mock_doc):
+    """La aplicación con el índice, los embeddings y Groq simulados (sin red ni disco)."""
     with (
         patch("app.main.HuggingFaceEmbeddings"),
         patch("app.main.Chroma") as mock_chroma_cls,
@@ -136,9 +136,42 @@ def client(mock_doc, mock_reranker):
         )
         mock_groq_cls.return_value = mock_llm
 
-        from fastapi.testclient import TestClient
-
         from app.main import app
 
-        with TestClient(app) as c:
-            yield c
+        yield app
+
+
+@pytest.fixture
+def client(mock_doc, mock_reranker):
+    from fastapi.testclient import TestClient
+
+    with _patched_app(mock_doc) as app, TestClient(app) as c:
+        yield c
+
+
+MCP_TEST_KEYS = ("test-key-1", "test-key-2")
+MCP_TEST_ORIGIN = "https://legaldev.example"
+
+
+@pytest.fixture
+def mcp_http(mock_doc, mock_reranker):
+    """TestClient con /mcp montado: MCP_ENABLED, dos claves de prueba y un origen permitido."""
+    from fastapi.testclient import TestClient
+
+    from app import config, mcp_server
+
+    settings = (
+        config.settings
+    )  # el objeto vigente (tests/test_config.py recarga el módulo)
+    with (
+        patch.object(settings, "mcp_enabled", True),
+        patch.object(settings, "api_keys", ",".join(MCP_TEST_KEYS)),
+        patch.object(settings, "mcp_allowed_origins", MCP_TEST_ORIGIN),
+        _patched_app(mock_doc) as app,
+    ):
+        assert mcp_server.mount_if_enabled(app)
+        try:
+            with TestClient(app) as c:
+                yield c
+        finally:
+            mcp_server.unmount(app)
