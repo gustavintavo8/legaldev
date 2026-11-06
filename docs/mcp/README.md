@@ -191,6 +191,26 @@ corpus de lo que aportaba él. Lo que señaló de LegalDev:
   responsable, un número de clics inventado atribuido al código del CCII, un consentimiento
   explícito para la IA sin respaldo y tres «citas del RGPD» que son considerandos.
 
+## Tercera prueba con Claude Code, contra el Space (06/11/2026)
+
+Cuestionario: ingeniero colegiado (persona física) de Andalucía, aplicación web de acceso
+público con modelo freemium, usuarios registrados en la UE (sin menores), nombre y email,
+cookies, IA generativa de un proveedor externo y datos a terceros. El asistente preguntó los
+datos que faltaban, hizo 9 llamadas a LegalDev y marcó con la página del corpus cada punto que
+salía de él, separándolo de lo que aportaba por su cuenta. Lo que señaló:
+
+- **Normativas detectadas que el informe no desarrolla** (se repite de la segunda prueba): el
+  RGPD y la EU AI Act estaban en `normativas_detectadas`, pero el informe no les dedicaba
+  sección y el asistente tuvo que consultarlas con `consultar_obligaciones`. Depende del modelo
+  y del prompt (decisión D-1); candidato a una comprobación en código que lo señale, como la
+  lista de cobertura.
+- **Puntos del informe descartados por no venir al caso**: el consentimiento para descargar
+  software de la LSSI (se refiere a los programas de marcación), la exportación de datos no
+  personales del art. 12 ter (no son los datos de los usuarios), los datos WHOIS para las
+  autoridades y mencionar el modelo freemium en el banner de cookies (la guía no lo pide).
+  Evidencia para PI8: la recuperación trae fragmentos de la norma correcta que no aplican al
+  caso, y el modelo los convierte en obligaciones.
+
 ## Decisiones de la prueba de concepto (06/11/2026)
 
 - **SDK `mcp==2.3.0`.** Atiende la revisión 2026-07-28 y las anteriores, y valida él mismo
