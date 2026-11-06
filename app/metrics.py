@@ -49,3 +49,9 @@ citations_unverified_total = Counter(
     "legaldev_citations_unverified_total",
     "LLM quotes not found verbatim in the retrieved chunks",
 )
+
+analyze_requests_total = Counter(
+    "legaldev_analyze_requests_total",
+    "Analysis requests by access path (rest, mcp, ci), cache hits included",
+    ["via"],
+)

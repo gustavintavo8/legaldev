@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from app.config import settings
+from app.errors import HTTP_STATUS, LegalDevError
 from app.models import QuestionnaireInput
 from app.rag import (
     DISCLAIMER,
@@ -325,7 +326,8 @@ def test_run_pipeline_groq_error_raises_503(sample_input, mock_reranker):
     with pytest.raises(Exception) as exc_info:
         asyncio.run(run_pipeline(sample_input, state))
 
-    assert exc_info.value.status_code == 503
+    assert isinstance(exc_info.value, LegalDevError)
+    assert HTTP_STATUS[type(exc_info.value)] == 503
 
 
 def test_run_pipeline_calls_relevance_search_with_correct_k(
@@ -363,7 +365,8 @@ def test_run_pipeline_no_relevant_docs_raises_404(mock_reranker):
     with pytest.raises(Exception) as exc_info:
         asyncio.run(run_pipeline(inp, state))
 
-    assert exc_info.value.status_code == 404
+    assert isinstance(exc_info.value, LegalDevError)
+    assert HTTP_STATUS[type(exc_info.value)] == 404
 
 
 def test_run_pipeline_colegiado_triggers_auxiliary_search(mock_reranker):
@@ -643,7 +646,8 @@ def test_run_pipeline_retrieval_timeout_raises_503(
     with pytest.raises(Exception) as exc_info:
         asyncio.run(run_pipeline(sample_input, state))
 
-    assert exc_info.value.status_code == 503
+    assert isinstance(exc_info.value, LegalDevError)
+    assert HTTP_STATUS[type(exc_info.value)] == 503
     assert "timed out" in exc_info.value.detail
 
 

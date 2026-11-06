@@ -23,19 +23,32 @@ REST/MCP»; 23-detalle, «Capa de servicio y traducción de errores»):
 * las firmas nuevas de recuperación que necesitan RF-25 (filtro por documento) y las líneas
   base B2/B3 de la evaluación (``RetrievalConfig``).
 
-Nada de lo que hay aquí está conectado a ``app/main.py``: salvo ``fragment_id``, las
-funciones lanzan ``NotImplementedError`` y el comportamiento de producción no cambia.
+``POST /v1/analyze`` y la herramienta MCP ``analizar_proyecto`` pasan los dos por
+``analyze``; las excepciones viven en ``app/errors.py`` y los identificadores de fragmento en
+``app/fragments.py``, y este módulo los reexporta.
 """
 
 from __future__ import annotations
 
-import hashlib
 from dataclasses import dataclass
 from enum import StrEnum
 
 from pydantic import BaseModel
 
-from app.models import QuestionnaireInput, RAGResponse
+from app import cache as _cache
+from app import metrics as _metrics
+from app import rag as _rag
+from app.errors import (  # noqa: F401  (reexportados: parte del contrato de la capa)
+    HTTP_STATUS,
+    InvalidMappingError,
+    LegalDevError,
+    LLMUnavailableError,
+    NoCoverageError,
+    RetrievalTimeoutError,
+    UnknownNormativaError,
+)
+from app.fragments import FragmentoRef, fragment_id  # noqa: F401
+from app.models import PipelineResult, QuestionnaireInput
 
 
 class Via(StrEnum):
@@ -53,72 +66,8 @@ class Via(StrEnum):
 
 
 # --------------------------------------------------------------------------------------
-# Excepciones de dominio (ErrorDominio en fig:det-mcp-clases)
+# Modelos compartidos (23-detalle, «Herramientas, identificadores y resultado»)
 # --------------------------------------------------------------------------------------
-
-
-class LegalDevError(Exception):
-    """Base de los errores de dominio. No depende de FastAPI ni de la biblioteca MCP."""
-
-
-class NoCoverageError(LegalDevError):
-    """``SinCobertura``: ningún fragmento supera el umbral (hoy ``HTTPException(404)``).
-
-    Por MCP no es un error: resultado con ``isError: false``, sin obligaciones y con las
-    normativas indexadas no relevantes.
-    """
-
-
-class LLMUnavailableError(LegalDevError):
-    """``ModeloNoDisponible``: fallan el principal y el de respaldo (hoy ``HTTPException(503)``)."""
-
-
-class RetrievalTimeoutError(LegalDevError):
-    """``TiempoAgotado``: el retrieval supera ``settings.retrieval_timeout`` (hoy 503)."""
-
-
-class UnknownNormativaError(LegalDevError):
-    """``NormativaDesconocida``: ``consultar_obligaciones`` recibe una normativa que no está
-    en el índice (RF-25, PP-06). Solo existe por MCP."""
-
-    def __init__(self, normativa: str, disponibles: list[str]) -> None:
-        super().__init__(f"Normativa desconocida: {normativa!r}")
-        self.normativa = normativa
-        self.disponibles = disponibles
-
-
-class InvalidMappingError(LegalDevError):
-    """``TablaMapeoInvalida``: la tabla de mapeo o el catálogo no validan al arrancar.
-
-    ``POST /v1/evidence`` responde 503; ``analizar_proyecto`` devuelve el resultado sin
-    obligaciones tipificadas y ``/health/deep`` señala el fallo (tab:det-mcp-errores).
-    """
-
-
-# Traducción a la API REST (tab:det-mcp-errores). Los tres primeros reproducen los códigos que
-# devuelve hoy run_pipeline. UnknownNormativaError no tiene equivalente REST.
-HTTP_STATUS: dict[type[LegalDevError], int] = {
-    NoCoverageError: 404,
-    LLMUnavailableError: 503,
-    RetrievalTimeoutError: 503,
-    InvalidMappingError: 503,
-}
-
-
-# --------------------------------------------------------------------------------------
-# Identificadores y modelos compartidos (23-detalle, «Herramientas, identificadores y
-# resultado»)
-# --------------------------------------------------------------------------------------
-
-
-def fragment_id(texto: str) -> str:
-    """Identificador de un fragmento: los 12 primeros hexadecimales del MD5 de su texto.
-
-    Es el mismo resumen con el que ``rag._retrieve`` deduplica los candidatos
-    (``rag._content_hash``), así que se conserva entre reconstrucciones del índice mientras el
-    texto no cambie, a diferencia del UUID de ChromaDB. Es lo que compara PP-05 (CA-09).
-    """
-    return hashlib.md5(texto.encode()).hexdigest()[:12]
 
 
 class NormativaInfo(BaseModel):
@@ -140,16 +89,6 @@ class ListadoNormativas(BaseModel):
     corpus_version: str
 
 
-class FragmentoRef(BaseModel):
-    """Fragmento tal como sale por las herramientas y la evidencia."""
-
-    identificador: str  # fragment_id
-    normativa: str  # raíz del nombre de fichero
-    pagina: int  # base 1, como en el prompt y el informe (metadata["page"] + 1)
-    articulo: str | None = None  # número como cadena; None si el fragmento no lo tiene
-    texto: str | None = None  # solo en consultar_obligaciones
-
-
 class ConsultaNormativa(BaseModel):
     """Resultado de ``consultar_obligaciones`` (RF-25; tab:det-mcp-herramientas)."""
 
@@ -162,22 +101,33 @@ class ConsultaNormativa(BaseModel):
 # --------------------------------------------------------------------------------------
 
 
-async def analyze(inp: QuestionnaireInput, state, *, via: Via) -> RAGResponse:
-    """Caso de uso CU-01 común a ``POST /v1/analyze`` y a ``analizar_proyecto`` (RF-23).
+@dataclass(frozen=True)
+class Analysis:
+    """Resultado de ``analyze``: el análisis (respuesta y fragmentos) y si vino de la caché."""
 
-    Contrato previsto:
-    * clave de caché ``app.cache.make_key(inp.model_dump_json())``, la misma que calcula hoy
-      ``analyze_v1``, para que una petición idéntica por cualquier vía comparta entrada; la
-      entrada guarda el análisis completo (respuesta y fragmentos del contexto), porque la
-      tipificación y el resultado de ``analizar_proyecto`` necesitan los fragmentos;
-    * ``run_pipeline`` lanza las excepciones de dominio de este módulo en sus cuatro puntos
-      de error y ``main.py`` las traduce con ``HTTP_STATUS``, con los mismos códigos y
-      mensajes que hoy;
-    * ``via`` se propaga a métricas y a los registros estructurados.
+    result: PipelineResult
+    cache_hit: bool
+
+
+async def analyze(inp: QuestionnaireInput, state, *, via: Via) -> Analysis:
+    """Caso de uso CU-01 común a ``POST /v1/analyze`` y a ``analizar_proyecto`` (RF-22, RF-23).
+
+    * Una sola entrada de caché por cuestionario para todas las vías: la clave es
+      ``cache.make_key(inp.model_dump_json())`` y el valor el ``PipelineResult`` completo,
+      porque ``analizar_proyecto`` necesita los fragmentos además de la respuesta.
+    * El motor lanza los errores de dominio de ``app.errors``; REST los traduce con
+      ``HTTP_STATUS`` y MCP con resultados de herramienta.
+    * ``via`` etiqueta la métrica ``legaldev_analyze_requests_total`` y el registro del
+      pipeline (CU-07, postcondiciones).
     """
-    # TODO(PT2/RF-22): implementar. El cambio de run_pipeline es de producción: lo protegen
-    # tests/test_api.py y la prueba de equivalencia PP-05.
-    raise NotImplementedError
+    _metrics.analyze_requests_total.labels(via=via.value).inc()
+    key = _cache.make_key(inp.model_dump_json())
+    cached = _cache.get(key)
+    if cached is not None:
+        return Analysis(result=cached, cache_hit=True)
+    result = await _rag.run_pipeline_detailed(inp, state, via=via.value)
+    _cache.set(key, result)
+    return Analysis(result=result, cache_hit=False)
 
 
 def list_normativas(state) -> ListadoNormativas:

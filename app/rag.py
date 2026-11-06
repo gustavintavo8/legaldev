@@ -8,15 +8,16 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from fastapi import HTTPException
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from app import metrics as _metrics
 from app import reranker as _reranker
 from app.citations import verify_citations
 from app.config import settings
+from app.errors import LLMUnavailableError, NoCoverageError, RetrievalTimeoutError
+from app.fragments import FragmentoRef
 from app.middleware import request_id_var
-from app.models import CitationStats, QuestionnaireInput, RAGResponse
+from app.models import CitationStats, PipelineResult, QuestionnaireInput, RAGResponse
 
 logger = logging.getLogger(__name__)
 
@@ -561,7 +562,7 @@ def _content_to_text(content) -> str:
 async def _invoke_llm(state, messages: list) -> tuple[str, str]:
     """Invoca el modelo principal; si falla por cualquier motivo, reintenta una vez con el respaldo.
 
-    Devuelve (texto, modelo_usado). Lanza HTTPException(503) si ningún modelo responde.
+    Devuelve (texto, modelo_usado). Lanza LLMUnavailableError (REST 503) si ningún modelo responde.
     Se hace fallback ante cualquier excepción: Groq devuelve 400 model_decommissioned para
     modelos retirados, 404 para desconocidos, 429 por cuota y 5xx en incidentes — en todos
     los casos el segundo modelo (cuota independiente) puede responder.
@@ -573,10 +574,9 @@ async def _invoke_llm(state, messages: list) -> tuple[str, str]:
         fallback = getattr(state, "groq_fallback_client", None)
         if fallback is None:
             logger.error("Groq API error: %s", e)
-            raise HTTPException(
-                status_code=503,
-                detail="LLM service unavailable. Please try again later.",
-            )
+            raise LLMUnavailableError(
+                "LLM service unavailable. Please try again later."
+            ) from e
         logger.warning(
             json.dumps(
                 {
@@ -594,13 +594,24 @@ async def _invoke_llm(state, messages: list) -> tuple[str, str]:
         return _content_to_text(response.content), settings.groq_fallback_model
     except Exception as e:
         logger.error("Groq fallback API error: %s", e)
-        raise HTTPException(
-            status_code=503,
-            detail="LLM service unavailable. Please try again later.",
-        )
+        raise LLMUnavailableError(
+            "LLM service unavailable. Please try again later."
+        ) from e
 
 
 async def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
+    """Análisis completo; devuelve solo la respuesta REST (ver run_pipeline_detailed)."""
+    return (await run_pipeline_detailed(input, state)).response
+
+
+async def run_pipeline_detailed(
+    input: QuestionnaireInput, state, *, via: str = "rest"
+) -> PipelineResult:
+    """Análisis completo con los fragmentos que recibe el modelo, en su orden.
+
+    Lanza los errores de dominio de app.errors (sin cobertura, tiempo agotado, modelo no
+    disponible); cada vía de acceso los traduce. ``via`` solo etiqueta el registro.
+    """
     if _detect_injection(input.descripcion_breve):
         logger.warning(
             json.dumps(
@@ -630,10 +641,7 @@ async def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
                 }
             )
         )
-        raise HTTPException(
-            status_code=503,
-            detail="Retrieval timed out. Please try again.",
-        )
+        raise RetrievalTimeoutError("Retrieval timed out. Please try again.") from None
     docs = retrieval.docs
     t_retrieval = time.perf_counter()
     _metrics.retrieval_duration.observe(t_retrieval - t0)
@@ -653,9 +661,8 @@ async def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
             )
         )
         _metrics.no_coverage_total.inc()
-        raise HTTPException(
-            status_code=404,
-            detail="No se encontraron normativas aplicables a este tipo de proyecto en la base de conocimiento.",
+        raise NoCoverageError(
+            "No se encontraron normativas aplicables a este tipo de proyecto en la base de conocimiento."
         )
 
     retrieved_sources = {
@@ -702,6 +709,7 @@ async def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
             {
                 "event": "rag_pipeline",
                 "request_id": request_id_var.get(),
+                "via": via,
                 "tipo_proyecto": input.tipo_proyecto,
                 "descripcion_length": len(input.descripcion_breve),
                 "descripcion_hash": hashlib.sha256(
@@ -726,7 +734,7 @@ async def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
 
     coverage_section = _render_coverage_section(not_retrieved)
     citation_section = _render_citation_section(citations)
-    return RAGResponse(
+    response = RAGResponse(
         respuesta_completa=_with_disclaimer(
             answer + coverage_section + citation_section
         ),
@@ -736,4 +744,8 @@ async def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
         corpus_version=state.corpus_version,
         llm_model=llm_model,
         citas=citations,
+    )
+    return PipelineResult(
+        response=response,
+        fragmentos=[FragmentoRef.from_doc(doc, con_texto=False) for doc in docs],
     )

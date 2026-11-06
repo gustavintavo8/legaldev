@@ -3,6 +3,8 @@ from typing import Self
 
 from pydantic import BaseModel, Field, model_validator
 
+from app.fragments import FragmentoRef
+
 
 class TipoProyecto(StrEnum):
     APP_WEB = "app_web"
@@ -109,6 +111,18 @@ class RAGResponse(BaseModel):
     citas: CitationStats = Field(
         default_factory=lambda: CitationStats(total=0, verificadas=0, no_verificadas=[])
     )
+
+
+class PipelineResult(BaseModel):
+    """Resultado interno de un análisis: la respuesta REST y los fragmentos del contexto.
+
+    La API REST devuelve solo ``response`` (su forma pública no cambia); ``analizar_proyecto``
+    publica además los fragmentos, sin texto, en el orden en que los recibe el modelo. Es lo
+    que guarda la caché común (``service.analyze``).
+    """
+
+    response: RAGResponse
+    fragmentos: list[FragmentoRef]
 
 
 class FeedbackInput(BaseModel):

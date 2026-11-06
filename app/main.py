@@ -9,6 +9,7 @@ import httpx
 from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Request
 from fastapi import Response as FastAPIResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from langchain_chroma import Chroma
 from langchain_groq import ChatGroq
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -17,14 +18,13 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
-from app import cache as _cache
 from app import reranker as _reranker
-from app import store
+from app import service, store
 from app.config import settings
 from app.corpus import EMBEDDING_MODEL
+from app.errors import HTTP_STATUS, LegalDevError
 from app.middleware import RequestIDMiddleware
 from app.models import FeedbackInput, QuestionnaireInput, RAGResponse
-from app.rag import run_pipeline
 
 logging.basicConfig(level=getattr(logging, settings.log_level.upper(), logging.INFO))
 logger = logging.getLogger(__name__)
@@ -195,8 +195,15 @@ app.add_middleware(RequestIDMiddleware)
 Instrumentator().instrument(app).expose(app)
 
 
-async def _analyze_handler(input: QuestionnaireInput, request: Request) -> RAGResponse:
-    return await run_pipeline(input, request.app.state)
+async def _legaldev_error_handler(request: Request, exc: LegalDevError) -> JSONResponse:
+    """Errores de dominio del motor a la API REST: mismos códigos y textos que el antiguo
+    HTTPException de app/rag.py (tab:det-mcp-errores)."""
+    return JSONResponse(
+        status_code=HTTP_STATUS.get(type(exc), 500), content={"detail": exc.detail}
+    )
+
+
+app.add_exception_handler(LegalDevError, _legaldev_error_handler)
 
 
 def _normativas_handler(request: Request) -> dict:
@@ -280,15 +287,9 @@ async def analyze_v1(
     response: FastAPIResponse,
     _: None = Depends(_verify_api_key),
 ):
-    cache_key = _cache.make_key(input.model_dump_json())
-    cached = _cache.get(cache_key)
-    if cached is not None:
-        response.headers["X-Cache"] = "HIT"
-        return cached
-    result = await _analyze_handler(input, request)
-    _cache.set(cache_key, result)
-    response.headers["X-Cache"] = "MISS"
-    return result
+    analysis = await service.analyze(input, request.app.state, via=service.Via.REST)
+    response.headers["X-Cache"] = "HIT" if analysis.cache_hit else "MISS"
+    return analysis.result.response
 
 
 @v1.post("/feedback", status_code=201)

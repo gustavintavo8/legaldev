@@ -6,6 +6,7 @@ import pytest
 from prometheus_client import REGISTRY
 
 from app.config import settings
+from app.errors import HTTP_STATUS, LegalDevError
 from app.main import _check_groq_model, _make_groq_client
 from app.models import QuestionnaireInput
 from app.rag import DISCLAIMER, _content_to_text, run_pipeline
@@ -151,7 +152,8 @@ def test_503_when_both_models_fail(mock_reranker):
     state.groq_fallback_client.invoke.side_effect = Exception("also down")
     with pytest.raises(Exception) as exc_info:
         asyncio.run(run_pipeline(_input(), state))
-    assert exc_info.value.status_code == 503
+    assert isinstance(exc_info.value, LegalDevError)
+    assert HTTP_STATUS[type(exc_info.value)] == 503
 
 
 def test_503_when_no_fallback_configured(mock_reranker):
@@ -160,7 +162,8 @@ def test_503_when_no_fallback_configured(mock_reranker):
     state.groq_fallback_client = None
     with pytest.raises(Exception) as exc_info:
         asyncio.run(run_pipeline(_input(), state))
-    assert exc_info.value.status_code == 503
+    assert isinstance(exc_info.value, LegalDevError)
+    assert HTTP_STATUS[type(exc_info.value)] == 503
 
 
 def test_content_to_text_accepts_str_and_blocks():
