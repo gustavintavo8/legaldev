@@ -1,7 +1,8 @@
 # Servidor MCP de LegalDev
 
 **Estado: implementado, desactivado por defecto.** `POST /mcp` existe cuando
-`MCP_ENABLED=true` y `API_KEYS` no está vacía; sin claves no se monta aunque se active
+`MCP_ENABLED=true` y hay claves (`MCP_API_KEYS` o, si está vacía, `API_KEYS`); sin claves no
+se monta aunque se active
 (RNF-15). Requisitos RF-22 a RF-25, RNF-15, RNF-16 y RNF-18 a RNF-21; caso de uso CU-07;
 pruebas PP-01 a PP-08 y PP-13 a PP-17 (PP-18 pendiente de RNF-20); criterio CA-09; paquete de
 trabajo PT2. Desplegado en el Space de Hugging Face desde el 06/11/2026
@@ -209,7 +210,7 @@ corpus de lo que aportaba él. Lo que señaló de LegalDev:
   del SDK no sigue esa redirección).
 - **Validación estricta.** Los argumentos se validan con los modelos Pydantic en modo estricto
   sobre JSON, como el esquema publicado: `"true"` no es un booleano. La API REST sigue en modo
-  flexible. PP-02 comprueba que esquema y herramienta dan el mismo veredicto en 11 casos.
+  flexible. PP-02 comprueba que esquema y herramienta dan el mismo veredicto en 13 casos.
 - **Esquema publicado.** El de `QuestionnaireInput` con las referencias en línea, una
   descripción por campo (las preguntas del formulario de la web) y `if`/`then` para
   `usa_ia` -> `tipo_ia`. Un cuestionario inválido recibe todos los fallos a la vez, también

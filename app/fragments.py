@@ -28,7 +28,9 @@ class FragmentoRef(BaseModel):
     identificador: str  # fragment_id
     normativa: str  # raíz del nombre de fichero («RGPD», «LSSI»)
     pagina: int  # base 1, como en el prompt y el informe (metadata["page"] + 1)
-    articulo: str | None = None  # número como cadena; None si el fragmento no lo tiene
+    # Encabezado que guarda el divisor del índice («Artículo 22», «Considerando 32»); None si
+    # el fragmento no lo tiene (todos los del RGPD con el índice actual).
+    articulo: str | None = None
     texto: str | None = None  # solo en consultar_obligaciones
 
     @classmethod

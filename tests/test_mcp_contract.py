@@ -392,6 +392,8 @@ def test_rf25_consultar_obligaciones_returns_located_fragments_without_llm(
     ]
     client.app.state.groq_client.invoke.assert_not_called()
     assert mock_doc.page_content in text_of(result)
+    # El aviso va también en structuredContent: hay clientes que solo leen ese contenido.
+    assert data["aviso"] == mcp_server.AVISO
 
 
 def test_rf23_no_coverage_is_tool_result_not_http_404(

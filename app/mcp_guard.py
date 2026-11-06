@@ -1,6 +1,7 @@
 """Controles de acceso del punto de entrada ``/mcp`` (guarda ASGI delante del SDK).
 
-Requisitos: RNF-15 (clave de API siempre obligatoria, del mismo conjunto que la API REST),
+Requisitos: RNF-15 (clave de API siempre obligatoria: ``MCP_API_KEYS`` o, si está vacía,
+las de la API REST),
 RNF-16 (cabeceras y versión, que valida el SDK), RNF-18 (validación de ``Origin``) y RNF-21
 (límite por invocación). Pruebas: PP-07 (clave), PP-08 (registros), PP-14 (cabeceras), PP-16
 (``Origin`` y 405) y PP-17 (límite); criterio CA-09. Errores: tab:ana-errores-mcp.

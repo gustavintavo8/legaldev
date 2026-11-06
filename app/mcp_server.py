@@ -211,6 +211,16 @@ class AnalisisProyecto(BaseModel):
     aviso: str = AVISO
 
 
+class ConsultaObligaciones(ConsultaNormativa):
+    """``structuredContent`` de ``consultar_obligaciones``: los fragmentos y el aviso.
+
+    El aviso va también aquí por la misma razón que el ``informe`` de ``analizar_proyecto``:
+    hay clientes que solo pasan al modelo el contenido estructurado.
+    """
+
+    aviso: str = AVISO
+
+
 class _ConsultaArgs(BaseModel):
     normativa: str
     contexto: str = Field(min_length=1, max_length=CONTEXTO_MAX)
@@ -541,12 +551,14 @@ def build_mcp_server(state, *, version: str = "0.0.0") -> MCPServer:
         for f in consulta.fragmentos:
             donde = f"p. {f.pagina}" + (f", art. {f.articulo}" if f.articulo else "")
             lineas.append(f"\n[{f.identificador}] {f.normativa}, {donde}\n{f.texto}")
-        return _structured_result("\n".join(lineas), consulta)
+        return _structured_result(
+            "\n".join(lineas), ConsultaObligaciones(**consulta.model_dump())
+        )
 
     _set_signature(
         consultar_obligaciones,
         ["normativa", "contexto"],
-        Annotated[CallToolResult, ConsultaNormativa],
+        Annotated[CallToolResult, ConsultaObligaciones],
     )
     _register(
         server,

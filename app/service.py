@@ -1,4 +1,4 @@
-"""Capa de servicio común a la API REST y al servidor MCP (propuesta; no se usa en producción).
+"""Capa de servicio común a la API REST y al servidor MCP (RF-22; CU-01 y CU-07).
 
 Hoy la lógica de los casos de uso vive repartida entre ``app/main.py`` (caché, claves de
 API, límite) y ``app/rag.py`` (motor), y el motor señala sus fallos con
