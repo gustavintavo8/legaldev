@@ -593,6 +593,39 @@ def test_render_coverage_section_empty_returns_empty_string():
     assert _render_coverage_section([]) == ""
 
 
+def test_render_coverage_section_lists_single_fragment_normativas():
+    """Una normativa con un solo fragmento no se desarrolla (hacen falta dos) y antes no
+    aparecía en ninguna lista (prueba con Claude Code, 06/11/2026)."""
+    result = _render_coverage_section(["DORA"], ["LOPDGDD", "Data Act"])
+    assert "## Cobertura del análisis" in result
+    sin, uno = result.split("un solo fragmento")
+    assert "DORA" in sin and "LOPDGDD" not in sin
+    assert "- Data Act\n- LOPDGDD" in uno
+    assert (
+        "este análisis" in sin
+    )  # no afirma que el índice no tenga nada de esa normativa
+
+
+def test_render_coverage_section_only_single_fragment():
+    result = _render_coverage_section([], ["LOPDGDD"])
+    assert "## Cobertura del análisis" in result
+    assert "- LOPDGDD" in result
+
+
+def test_run_pipeline_lists_normativa_with_a_single_fragment(mock_reranker):
+    # RGPD con dos fragmentos (se desarrolla) y LOPDGDD con uno (no se desarrolla).
+    docs = [
+        _make_mock_doc("RGPD.pdf"),
+        _make_mock_doc("RGPD.pdf"),
+        _make_mock_doc("LOPDGDD.pdf", "normativa_española"),
+    ]
+    state = _make_state(docs, llm_response="Respuesta LLM.")
+    result = asyncio.run(run_pipeline(_make_input(), state))
+    assert result.normativas_detectadas == ["RGPD"]
+    _, uno = result.respuesta_completa.split("un solo fragmento")
+    assert "- LOPDGDD" in uno
+
+
 def test_run_pipeline_appends_coverage_section_when_not_retrieved(mock_reranker):
     # state.indexed_normativas = {"RGPD", "LOPDGDD"}, only RGPD retrieved → LOPDGDD in coverage
     docs = [_make_mock_doc("RGPD.pdf")]
@@ -603,8 +636,11 @@ def test_run_pipeline_appends_coverage_section_when_not_retrieved(mock_reranker)
 
 
 def test_run_pipeline_no_coverage_section_when_all_retrieved(mock_reranker):
+    # Dos fragmentos de cada una: las dos se desarrollan y no queda nada que señalar.
     docs = [
         _make_mock_doc("RGPD.pdf"),
+        _make_mock_doc("RGPD.pdf"),
+        _make_mock_doc("LOPDGDD.pdf", "normativa_española"),
         _make_mock_doc("LOPDGDD.pdf", "normativa_española"),
     ]
     state = _make_state(docs, llm_response="Respuesta LLM.")

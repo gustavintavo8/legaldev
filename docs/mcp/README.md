@@ -162,6 +162,34 @@ que venía de LegalDev de su conocimiento general. Lo que señaló:
 Salvo el primero, son límites conocidos del motor y del índice (reglas, divisor y extracción);
 quedan como evidencia para la evaluación y no se tocan aquí porque cambian las cifras medidas.
 
+## Segunda prueba con Claude Code, ya contra el Space (06/11/2026)
+
+Cuestionario: persona física colegiada de Asturias, aplicación web de acceso público con
+suscripción, usuarios registrados en la UE (también menores), nombre y email, cookies, IA
+generativa y datos a terceros. El asistente preguntó los datos que faltaban («las instrucciones
+del servidor piden preguntarlos en vez de suponerlos»), recibió el informe completo y lo
+contrastó con cuatro llamadas a `consultar_obligaciones`, separando lo que tenía respaldo en el
+corpus de lo que aportaba él. Lo que señaló de LegalDev:
+
+- **Citas no verificadas por los guiones (corregido).** 4 de las 13 citas se rechazaron solo
+  porque el modelo escribe el guion de corte de línea como U+2011 (que la normalización NFKC
+  convierte en U+2010) donde el PDF tiene «-». `app/citations.py` ignora ahora U+2010,
+  U+2011, U+2012, U+2212 y U+2043, como el resto de guiones; la web, que repite esas reglas
+  para marcar las citas, también.
+- **Normativas con un solo fragmento en ninguna lista (corregido).** Una normativa con un
+  único fragmento no llega a `normativas_detectadas` (hacen falta dos) ni a la lista de
+  «Cobertura del análisis», que solo recogía las que no tenían ninguno. Esa sección tiene
+  ahora dos listas: sin fragmentos en este análisis (con la aclaración de que se pueden
+  consultar por separado, porque el asistente la leyó como «el índice no tiene nada») y con
+  un solo fragmento.
+- **EU AI Act detectada sin sección en el informe** (sin corregir: depende del modelo y del
+  prompt). Estaba en `normativas_detectadas` con fragmentos suyos en el contexto.
+- **Partes del informe que no conviene seguir** (sin corregir; evidencia para PI8):
+  `navigator.cookieEnabled` como gestor de consentimiento, *opt-out* para las cookies no
+  técnicas, un plazo de conservación de registros sacado de un fragmento que no trata del
+  responsable, un número de clics inventado atribuido al código del CCII, un consentimiento
+  explícito para la IA sin respaldo y tres «citas del RGPD» que son considerandos.
+
 ## Decisiones de la prueba de concepto (06/11/2026)
 
 - **SDK `mcp==2.3.0`.** Atiende la revisión 2026-07-28 y las anteriores, y valida él mismo

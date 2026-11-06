@@ -38,7 +38,10 @@ _ELLIPSIS_RE = re.compile(r"\[\s*(?:\.\.\.|…)\s*\]|\.\.\.|…")
 # Espacio en blanco, comillas, guiones, "|" (separador de chunks — ver
 # verify_citations) y caracteres invisibles (ZWSP/ZWNJ/ZWJ/word joiner/BOM) que
 # el texto extraído de PDFs a veces intercala dentro de una misma palabra.
-_STRIP_RE = re.compile(r"[\s\"“”«»'‘’\-–—­|​‌‍⁠﻿]+")
+# Guiones Unicode que el modelo escribe donde el PDF tiene «-» (U+2011, que NFKC convierte en
+# U+2010; U+2012, U+2212 y U+2043): sin ellos, una cita literal partida por un guion de
+# corte de línea no se verificaba (prueba con Claude Code, 06/11/2026).
+_STRIP_RE = re.compile(r"[\s\"“”«»'‘’\-‐‑‒−⁃–—­|​‌‍⁠﻿]+")
 
 
 def _split_paragraph(paragraph: str) -> list[str]:

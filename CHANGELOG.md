@@ -35,6 +35,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Dependencias: eliminadas `langchain` y `langchain-community`; `langchain-core` explícita.
 
 ### Fixed
+- Verificación de citas: se ignoran los guiones Unicode (U+2010, U+2011, U+2012, U+2212, U+2043) que el modelo escribe donde el PDF tiene «-»; antes una cita literal partida por un guion de corte de línea se daba por no verificada.
+- «Cobertura del análisis» lista también las normativas con un solo fragmento recuperado, que el informe no desarrolla y antes no salían en ninguna parte, y aclara que «sin fragmentos» se refiere a ese análisis.
 - `make ingest` ejecuta `python -m app.ingest` (con `python app/ingest.py` el paquete `app` no se resolvía y la ingesta fallaba al importar).
 - Verificación de citas: se tolera hasta un 10 % de diferencia en cada extremo del segmento (punto final añadido por el LLM, palabra cortada en el borde del chunk). Medido en producción: 4 de 12 citas literales se marcaban como no verificadas; la cita ajena al contexto sigue detectándose.
 - Producción devolvía 503 en todos los análisis desde el 17/07/2026: Groq retiró `meta-llama/llama-4-scout-17b-16e-instruct`. El modelo por defecto pasa a `openai/gpt-oss-120b` (sustituto recomendado por Groq).

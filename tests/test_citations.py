@@ -3,6 +3,7 @@ import time
 import unicodedata
 from unittest.mock import MagicMock
 
+import pytest
 from prometheus_client import REGISTRY
 
 from app.citations import extract_quotes, normalize, verify_citations
@@ -85,6 +86,20 @@ def test_verify_tolerates_line_break_hyphenation():
     chunk = "serán tratados de manera lícita, leal y trans-\nparente en relación"
     stats = verify_citations(
         '> "leal y transparente en relación" — RGPD', [_doc(chunk)]
+    )
+    assert stats.verificadas == 1
+
+
+@pytest.mark.parametrize(
+    "guion", [chr(c) for c in (0x2010, 0x2011, 0x2012, 0x2212, 0xAD)]
+)
+def test_verify_tolerates_unicode_hyphens_written_by_the_model(guion):
+    """El modelo escribe el guion de corte de línea como U+2011 (o U+2010, U+2012, U+2212)
+    donde el PDF tiene «-»: la cita es literal y debe verificarse (prueba con Claude Code,
+    06/11/2026: 4 de 13 citas rechazadas solo por eso)."""
+    chunk = "serán tratados de manera lícita, leal y trans- parente en relación"
+    stats = verify_citations(
+        f'> "leal y trans{guion} parente en relación" — RGPD', [_doc(chunk)]
     )
     assert stats.verificadas == 1
 
