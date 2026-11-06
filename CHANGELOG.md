@@ -36,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Verificación de citas: se ignoran los guiones Unicode (U+2010, U+2011, U+2012, U+2212, U+2043) que el modelo escribe donde el PDF tiene «-»; antes una cita literal partida por un guion de corte de línea se daba por no verificada.
+- «Cobertura del análisis» lista primero las normativas detectadas a las que el informe no dedica sección (encabezado con su nombre o cita verificada en sus fragmentos), y `analizar_proyecto` las devuelve en `normativas_sin_desarrollar`; `consultar_obligaciones` lleva el aviso también en `structuredContent`.
 - «Cobertura del análisis» lista también las normativas con un solo fragmento recuperado, que el informe no desarrolla y antes no salían en ninguna parte, y aclara que «sin fragmentos» se refiere a ese análisis.
 - `make ingest` ejecuta `python -m app.ingest` (con `python app/ingest.py` el paquete `app` no se resolvía y la ingesta fallaba al importar).
 - Verificación de citas: se tolera hasta un 10 % de diferencia en cada extremo del segmento (punto final añadido por el LLM, palabra cortada en el borde del chunk). Medido en producción: 4 de 12 citas literales se marcaban como no verificadas; la cita ajena al contexto sigue detectándose.

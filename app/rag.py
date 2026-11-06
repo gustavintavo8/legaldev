@@ -12,7 +12,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 from app import metrics as _metrics
 from app import reranker as _reranker
-from app.citations import verify_citations
+from app.citations import normativas_sin_desarrollar, verify_citations
 from app.config import settings
 from app.errors import LLMUnavailableError, NoCoverageError, RetrievalTimeoutError
 from app.fragments import FragmentoRef
@@ -293,18 +293,29 @@ Formato de cada obligación (repite el bloque por cada obligación identificada)
 
 
 def _render_coverage_section(
-    not_retrieved: list[str], single_fragment: list[str] | None = None
+    not_retrieved: list[str],
+    single_fragment: list[str] | None = None,
+    undeveloped: list[str] | None = None,
 ) -> str:
     """Sección «Cobertura del análisis»: lo que el informe no desarrolla y por qué.
 
-    Dos listas: las normativas de las que este análisis no recuperó ningún fragmento, y las
-    que solo tienen uno, que no llegan a normativas_detectadas (hacen falta dos) y antes no
-    salían en ninguna parte (prueba con Claude Code, 06/11/2026).
+    Hasta tres listas: las normativas detectadas que el informe no desarrolla, las que solo
+    tienen un fragmento (no llegan a normativas_detectadas, porque hacen falta dos) y las de
+    las que este análisis no recuperó ninguno (pruebas con Claude Code, 06/11/2026).
     """
     single = sorted(single_fragment or [])
-    if not not_retrieved and not single:
+    sin_desarrollar = list(undeveloped or [])
+    if not not_retrieved and not single and not sin_desarrollar:
         return ""
     lines = ["\n\n## Cobertura del análisis"]
+    if sin_desarrollar:
+        lines.append(
+            "Normativas detectadas que este informe no desarrolla (consúltalas por "
+            "separado):"
+        )
+        lines.extend(f"- {name}" for name in sin_desarrollar)
+        if not_retrieved or single:
+            lines.append("")
     if not_retrieved:
         lines.append(
             "Normativas indexadas de las que este análisis no recuperó ningún fragmento "
@@ -742,6 +753,7 @@ async def run_pipeline_detailed(
     normativas = [stem for stem, count in _chunks_per_norm.items() if count >= 2]
 
     citations = verify_citations(answer, docs)
+    sin_desarrollar = normativas_sin_desarrollar(answer, docs, normativas)
     if citations.total:
         _metrics.citations_verified_ratio.observe(
             citations.verificadas / citations.total
@@ -773,6 +785,7 @@ async def run_pipeline_detailed(
                 "llm_model": llm_model,
                 "citations_total": citations.total,
                 "citations_verified": citations.verificadas,
+                "normativas_sin_desarrollar": len(sin_desarrollar),
             }
         )
     )
@@ -780,6 +793,7 @@ async def run_pipeline_detailed(
     coverage_section = _render_coverage_section(
         not_retrieved,
         [stem for stem, count in _chunks_per_norm.items() if count == 1],
+        sin_desarrollar,
     )
     citation_section = _render_citation_section(citations)
     response = RAGResponse(
@@ -796,4 +810,5 @@ async def run_pipeline_detailed(
     return PipelineResult(
         response=response,
         fragmentos=[FragmentoRef.from_doc(doc, con_texto=False) for doc in docs],
+        normativas_sin_desarrollar=sin_desarrollar,
     )

@@ -302,6 +302,7 @@ def test_pp03_analizar_proyecto_returns_report_and_structured_content(
     assert "Respuesta de prueba sobre RGPD" in data["informe"]
     assert data["informe"].startswith("> ⚠️")
     assert data["informe"].count("no constituye asesoramiento legal") == 2
+    assert data["normativas_sin_desarrollar"] == []
     assert "descripcion_breve" not in data["cuestionario"]
     assert data["cuestionario"]["tipo_proyecto"] == sample_input_dict["tipo_proyecto"]
     texto = text_of(result)

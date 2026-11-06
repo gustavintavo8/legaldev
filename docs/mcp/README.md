@@ -202,8 +202,12 @@ salía de él, separándolo de lo que aportaba por su cuenta. Lo que señaló:
 - **Normativas detectadas que el informe no desarrolla** (se repite de la segunda prueba): el
   RGPD y la EU AI Act estaban en `normativas_detectadas`, pero el informe no les dedicaba
   sección y el asistente tuvo que consultarlas con `consultar_obligaciones`. Depende del modelo
-  y del prompt (decisión D-1); candidato a una comprobación en código que lo señale, como la
-  lista de cobertura.
+  y del prompt (decisión D-1), así que no se corrige ahí: una comprobación en código
+  (`citations.normativas_sin_desarrollar`) las señala. Una normativa detectada cuenta como
+  desarrollada si el informe tiene un encabezado con su nombre (comparando solo letras y
+  dígitos) o una cita verificada en sus propios fragmentos; las demás salen las primeras en
+  «Cobertura del análisis» y en `structuredContent.normativas_sin_desarrollar`, para que el
+  asistente sepa qué tiene que consultar aparte.
 - **Puntos del informe descartados por no venir al caso**: el consentimiento para descargar
   software de la LSSI (se refiere a los programas de marcación), la exportación de datos no
   personales del art. 12 ter (no son los datos de los usuarios), los datos WHOIS para las

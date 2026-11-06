@@ -6,7 +6,12 @@ from unittest.mock import MagicMock
 import pytest
 from prometheus_client import REGISTRY
 
-from app.citations import extract_quotes, normalize, verify_citations
+from app.citations import (
+    extract_quotes,
+    normalize,
+    normativas_sin_desarrollar,
+    verify_citations,
+)
 from app.models import CitationStats, QuestionnaireInput
 from app.rag import _render_citation_section, run_pipeline
 
@@ -559,3 +564,75 @@ def test_verify_tolerance_does_not_shorten_below_min_segment():
         ).verificadas
         == 0
     )
+
+
+# ------------------------------------------------- normativas detectadas sin desarrollar
+
+
+def _doc_de(texto, source):
+    d = _doc(texto)
+    d.metadata = {"source": source}
+    return d
+
+
+DOCS_TRES = [
+    _doc_de(
+        "Los datos personales serán tratados de manera lícita, leal y transparente.",
+        "RGPD.pdf",
+    ),
+    _doc_de(
+        "El consentimiento de un menor solo será lícito si es mayor de catorce años.",
+        "LOPDGDD.pdf",
+    ),
+    _doc_de(
+        "Los sistemas de IA destinados a interactuar con personas físicas informarán de ello.",
+        "EU AI Act.pdf",
+    ),
+]
+
+
+def test_sin_desarrollar_lists_detected_normativas_without_heading_or_quote():
+    """Pruebas con Claude Code (06/11/2026): el informe no desarrollaba normativas que él
+    mismo daba por detectadas, y el asistente tenía que consultarlas aparte."""
+    informe = "\n".join(
+        [
+            "## RGPD",
+            '> "tratados de manera lícita, leal y transparente" — RGPD, p. 36',
+            "Interpretación: ...",
+        ]
+    )
+    assert normativas_sin_desarrollar(
+        informe, DOCS_TRES, ["RGPD", "LOPDGDD", "EU AI Act"]
+    ) == ["LOPDGDD", "EU AI Act"]
+
+
+def test_sin_desarrollar_accepts_a_heading_with_other_punctuation():
+    informe = "## Eu ai act (Reglamento de IA)\nTexto sin citas."
+    assert normativas_sin_desarrollar(informe, DOCS_TRES, ["EU AI Act"]) == []
+
+
+def test_sin_desarrollar_accepts_a_verified_quote_without_heading():
+    informe = (
+        '## Menores\n> "solo será lícito si es mayor de catorce años" — Ley 3/2018'
+    )
+    assert normativas_sin_desarrollar(informe, DOCS_TRES, ["LOPDGDD"]) == []
+
+
+def test_sin_desarrollar_ignores_quotes_that_do_not_verify():
+    informe = '## Menores\n> "requiere el consentimiento de ambos progenitores siempre" — LOPDGDD'
+    assert normativas_sin_desarrollar(informe, DOCS_TRES, ["LOPDGDD"]) == ["LOPDGDD"]
+
+
+@pytest.mark.parametrize(
+    ("stem", "encabezado"),
+    [
+        (
+            "Guía de Privacidad desde el Diseño - AEPD",
+            "## Guía de Privacidad desde el Diseño (AEPD)",
+        ),
+        ("LSSI", "## LSSI\u20111 (Ley 34/2002)"),
+        ("LOPDGDD", "### Ley Orgánica 3/2018 (LOPDGDD)"),
+    ],
+)
+def test_sin_desarrollar_matches_headings_whatever_the_punctuation(stem, encabezado):
+    assert normativas_sin_desarrollar(encabezado + "\nTexto.", [], [stem]) == []

@@ -123,6 +123,8 @@ class PipelineResult(BaseModel):
 
     response: RAGResponse
     fragmentos: list[FragmentoRef]
+    # Detectadas a las que el informe no dedica sección (citations.normativas_sin_desarrollar).
+    normativas_sin_desarrollar: list[str] = Field(default_factory=list)
 
 
 class FeedbackInput(BaseModel):

@@ -19,6 +19,7 @@ from app.rag import (
     _render_coverage_section,
     retrieve_docs_sync,
     run_pipeline,
+    run_pipeline_detailed,
 )
 
 
@@ -269,12 +270,14 @@ def test_run_pipeline_returns_rag_response(sample_input, mock_reranker):
         _make_mock_doc("LOPDGDD.pdf", "normativa_española"),
         _make_mock_doc("LOPDGDD.pdf", "normativa_española"),
     ]
-    state = _make_state(docs, "Debes implementar consentimiento explícito.")
+    # El informe desarrolla las dos normativas detectadas: no hay sección de cobertura.
+    informe = "## RGPD\nDebes implementar consentimiento explícito.\n\n## LOPDGDD\nY la LOPDGDD."
+    state = _make_state(docs, informe)
 
     result = asyncio.run(run_pipeline(sample_input, state))
 
     assert result.respuesta_completa == (
-        f"> {DISCLAIMER}\n\nDebes implementar consentimiento explícito.\n\n> {DISCLAIMER}"
+        f"> {DISCLAIMER}\n\n{informe}\n\n> {DISCLAIMER}"
     )
     assert result.chunks_utilizados == 4
     assert result.disclaimer == DISCLAIMER
@@ -612,6 +615,30 @@ def test_render_coverage_section_only_single_fragment():
     assert "- LOPDGDD" in result
 
 
+def test_render_coverage_section_lists_undeveloped_normativas_first():
+    result = _render_coverage_section([], [], ["EU AI Act"])
+    assert "## Cobertura del análisis" in result
+    assert "no desarrolla" in result
+    assert "- EU AI Act" in result
+
+
+def test_run_pipeline_flags_detected_normativa_without_section(mock_reranker):
+    # RGPD y LOPDGDD con dos fragmentos cada una (detectadas); el modelo solo escribe la del RGPD.
+    docs = [
+        _make_mock_doc("RGPD.pdf"),
+        _make_mock_doc("RGPD.pdf"),
+        _make_mock_doc("LOPDGDD.pdf", "normativa_española"),
+        _make_mock_doc("LOPDGDD.pdf", "normativa_española"),
+    ]
+    state = _make_state(docs, llm_response="## RGPD\nTexto del RGPD.")
+    result = asyncio.run(run_pipeline_detailed(_make_input(), state))
+    assert sorted(result.response.normativas_detectadas) == ["LOPDGDD", "RGPD"]
+    assert result.normativas_sin_desarrollar == ["LOPDGDD"]
+    informe = result.response.respuesta_completa
+    _, resto = informe.split("no desarrolla", 1)
+    assert "- LOPDGDD" in resto.split("\n\n")[0]
+
+
 def test_run_pipeline_lists_normativa_with_a_single_fragment(mock_reranker):
     # RGPD con dos fragmentos (se desarrolla) y LOPDGDD con uno (no se desarrolla).
     docs = [
@@ -636,14 +663,14 @@ def test_run_pipeline_appends_coverage_section_when_not_retrieved(mock_reranker)
 
 
 def test_run_pipeline_no_coverage_section_when_all_retrieved(mock_reranker):
-    # Dos fragmentos de cada una: las dos se desarrollan y no queda nada que señalar.
+    # Dos fragmentos de cada una y una sección para cada una: no queda nada que señalar.
     docs = [
         _make_mock_doc("RGPD.pdf"),
         _make_mock_doc("RGPD.pdf"),
         _make_mock_doc("LOPDGDD.pdf", "normativa_española"),
         _make_mock_doc("LOPDGDD.pdf", "normativa_española"),
     ]
-    state = _make_state(docs, llm_response="Respuesta LLM.")
+    state = _make_state(docs, llm_response="## RGPD\nTexto.\n\n## LOPDGDD\nTexto.")
     result = asyncio.run(run_pipeline(_make_input(), state))
     assert "## Cobertura del análisis" not in result.respuesta_completa
 

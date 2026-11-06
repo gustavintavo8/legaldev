@@ -202,6 +202,13 @@ class AnalisisProyecto(BaseModel):
     # el resultado no refleja el texto libre del usuario (RNF-20, PP-18).
     cuestionario: dict[str, Any]
     normativas_detectadas: list[str]
+    normativas_sin_desarrollar: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Detectadas a las que el informe no dedica sección: consúltalas con "
+            "consultar_obligaciones."
+        ),
+    )
     fragmentos: list[FragmentoRef]  # sin texto, en el orden en que los recibe el modelo
     llm_model: str | None = None
     corpus_version: str
@@ -498,6 +505,7 @@ def build_mcp_server(state, *, version: str = "0.0.0") -> MCPServer:
             informe=response.respuesta_completa,
             cuestionario=eco,
             normativas_detectadas=response.normativas_detectadas,
+            normativas_sin_desarrollar=analysis.result.normativas_sin_desarrollar,
             fragmentos=analysis.result.fragmentos,
             llm_model=response.llm_model,
             corpus_version=response.corpus_version,

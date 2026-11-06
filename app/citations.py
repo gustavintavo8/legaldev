@@ -8,6 +8,7 @@ que el LLM corrige al citar.
 
 import re
 import unicodedata
+from pathlib import Path
 
 from app.models import CitationStats
 
@@ -164,20 +165,62 @@ def _segment_found(segment: str, corpus: str) -> bool:
     return False
 
 
+def _quote_found(quote: str, corpus: str) -> bool:
+    """¿Están en el corpus (normalizado) todos los segmentos de la cita?"""
+    segments = [normalize(s) for s in _ELLIPSIS_RE.split(quote)]
+    segments = [s for s in segments if len(s) >= MIN_SEGMENT_CHARS]
+    return bool(segments) and all(_segment_found(s, corpus) for s in segments)
+
+
 def verify_citations(answer: str, docs: list) -> CitationStats:
     # La normalización elimina "|", por lo que el separador no puede aparecer
     # dentro de un chunk normalizado: une chunks sin riesgo de falsos positivos
     # en una cita que en realidad abarque dos fragmentos distintos.
     corpus = "|".join(normalize(d.page_content) for d in docs)
     quotes = extract_quotes(answer)
-    unverified: list[str] = []
-    for quote in quotes:
-        segments = [normalize(s) for s in _ELLIPSIS_RE.split(quote)]
-        segments = [s for s in segments if len(s) >= MIN_SEGMENT_CHARS]
-        if not segments or not all(_segment_found(s, corpus) for s in segments):
-            unverified.append(quote[:MAX_REPORTED_CHARS])
+    unverified = [q[:MAX_REPORTED_CHARS] for q in quotes if not _quote_found(q, corpus)]
     return CitationStats(
         total=len(quotes),
         verificadas=len(quotes) - len(unverified),
         no_verificadas=unverified,
     )
+
+
+_HEADING_RE = re.compile(r"^\s*#{2,3}\s+(.+?)\s*$", re.MULTILINE)
+_NO_ALNUM_RE = re.compile(r"[\W_]+")
+
+
+def _clave(texto: str) -> str:
+    """Solo letras y dígitos, sin mayúsculas: «Guía de cookies (AEPD)» y «Guía de cookies -
+    AEPD» dan la misma clave."""
+    return _NO_ALNUM_RE.sub("", unicodedata.normalize("NFKC", texto)).casefold()
+
+
+def normativas_sin_desarrollar(
+    answer: str, docs: list, normativas: list[str]
+) -> list[str]:
+    """Normativas detectadas a las que el informe no dedica sección, en su orden.
+
+    En las pruebas con Claude Code (06/11/2026) el informe dejaba sin desarrollar normativas
+    que el propio resultado daba por detectadas (el RGPD, la EU AI Act), y el asistente tenía
+    que consultarlas aparte. Una normativa cuenta como desarrollada si el informe tiene un
+    encabezado (``##`` o ``###``) que contiene su nombre (solo letras y dígitos), o al
+    menos una cita literal que se verifica en sus propios fragmentos. Sin tocar el prompt ni
+    la recuperación: solo lo señala.
+    """
+    encabezados = [_clave(h) for h in _HEADING_RE.findall(answer)]
+    citas = extract_quotes(answer)
+    pendientes: list[str] = []
+    for stem in normativas:
+        nombre = _clave(stem)
+        if nombre and any(nombre in h for h in encabezados):
+            continue
+        corpus = "|".join(
+            normalize(d.page_content)
+            for d in docs
+            if Path(d.metadata.get("source", "")).stem == stem
+        )
+        if corpus and any(_quote_found(q, corpus) for q in citas):
+            continue
+        pendientes.append(stem)
+    return pendientes
