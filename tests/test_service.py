@@ -37,6 +37,22 @@ def _no_injection_input(sample_input_dict):
     )
 
 
+def _index_state(docs):
+    """Estado con un vectorstore simulado que contiene ``docs``."""
+    state = MagicMock()
+    state.vectorstore._collection.get.return_value = {
+        "metadatas": [d.metadata for d in docs]
+    }
+    state.vectorstore.similarity_search_with_relevance_scores.return_value = [
+        (d, 0.5) for d in docs
+    ]
+    state.indexed_normativas = frozenset(
+        d.metadata["source"].removesuffix(".pdf") for d in docs
+    )
+    state.corpus_version = "v-test"
+    return state
+
+
 def _metric(name, **labels):
     return REGISTRY.get_sample_value(name, labels) or 0.0
 
@@ -192,33 +208,99 @@ def test_fragmentos_follow_llm_order_and_have_no_text(sample_input, mock_reranke
     assert considerando.articulo is None
 
 
-@pytest.mark.skip(
-    reason="TODO(PT2/RF-24): list_normativas() con identificador, tipo, páginas y corpus_version"
-)
 def test_rf24_list_normativas_returns_id_type_pages_and_corpus_version():
     """Una entrada por documento indexado, identificada por la raíz del nombre de fichero."""
+    state = _index_state(
+        [
+            _doc("a", "RGPD.pdf", page=0),
+            _doc("b", "RGPD.pdf", page=87),
+            _doc("c", "LSSI.pdf", page=40, doc_type="normativa_española"),
+        ]
+    )
+    state.vectorstore._collection.get.return_value["metadatas"].append(
+        {"source": "Guia.pdf"}  # sin doc_type ni page
+    )
+
+    listado = service.list_normativas(state)
+
+    assert listado.corpus_version == "v-test"
+    assert [n.model_dump() for n in listado.normativas] == [
+        {"identificador": "Guia", "tipo": "desconocido", "paginas": 0},
+        {"identificador": "LSSI", "tipo": "normativa_española", "paginas": 41},
+        {"identificador": "RGPD", "tipo": "normativa_europea", "paginas": 88},
+    ]
 
 
-@pytest.mark.skip(
-    reason="TODO(PT2/RF-25): _retrieve_for_source filtra por documento con el mismo reordenador"
-)
-def test_rf25_retrieve_for_source_only_returns_chunks_of_that_source():
+def test_rf25_retrieve_for_source_only_returns_chunks_of_that_source(mock_reranker):
     """Todos los fragmentos devueltos tienen metadata['source'] igual al documento pedido."""
+    vs = MagicMock()
+    vs.similarity_search_with_relevance_scores.return_value = [
+        (_doc("rgpd 1", "RGPD.pdf"), 0.9),
+        (
+            _doc("lssi 1", "LSSI.pdf"),
+            0.8,
+        ),  # el filtro de Chroma no debería dejarlo pasar
+        (_doc("rgpd 1", "RGPD.pdf"), 0.7),  # duplicado
+        (_doc("rgpd 2", "RGPD.pdf"), 0.1),  # sin umbral: también vale
+    ]
+
+    docs = rag.retrieve_for_source(
+        "registro de usuarios", vs, "RGPD", fetch_k=30, top_k=6
+    )
+
+    assert [d.page_content for d in docs] == ["rgpd 1", "rgpd 2"]
+    kwargs = vs.similarity_search_with_relevance_scores.call_args.kwargs
+    assert kwargs == {"k": 30, "filter": {"source": "RGPD.pdf"}}
 
 
-@pytest.mark.skip(
-    reason="TODO(PT2/RF-25): normativa desconocida -> UnknownNormativaError con las disponibles"
-)
-def test_rf25_unknown_normativa_lists_available_sources():
+@pytest.mark.parametrize("normativa", ["rgpd", "RGPD.pdf", "XYZ", ""])
+def test_rf25_unknown_normativa_lists_available_sources(normativa):
     """El error lleva la lista de normativas indexadas para que el asistente corrija."""
+    state = _index_state([_doc("a", "RGPD.pdf"), _doc("b", "LSSI.pdf")])
+
+    with pytest.raises(service.UnknownNormativaError) as exc_info:
+        asyncio.run(
+            service.consultar_obligaciones(
+                normativa, "cookies", state, via=service.Via.MCP
+            )
+        )
+
+    assert exc_info.value.normativa == normativa
+    assert exc_info.value.disponibles == ["LSSI", "RGPD"]
+    state.vectorstore.similarity_search_with_relevance_scores.assert_not_called()
 
 
-@pytest.mark.skip(
-    reason="TODO(PT2/RF-25): consultar_obligaciones no invoca al modelo de lenguaje"
-)
-def test_rf25_consultar_obligaciones_is_deterministic_and_does_not_call_the_llm():
+def test_rf25_consultar_obligaciones_is_deterministic_and_does_not_call_the_llm(
+    mock_reranker, caplog
+):
     """Dos llamadas iguales devuelven los mismos fragmentos en el mismo orden; el LLM simulado
     no recibe ninguna llamada y el contexto no aparece en los registros."""
+    caplog.set_level("DEBUG")
+    sentinel = "CONTEXTO-CENTINELA-7f3a"
+    state = _index_state(
+        [
+            _doc("Artículo 22. Cookies.", "LSSI.pdf", page=16, article="22"),
+            _doc("Artículo 21. Comunicaciones.", "LSSI.pdf", page=15, article="21"),
+        ]
+    )
+
+    first = asyncio.run(
+        service.consultar_obligaciones("LSSI", sentinel, state, via=service.Via.MCP)
+    )
+    second = asyncio.run(
+        service.consultar_obligaciones("LSSI", sentinel, state, via=service.Via.MCP)
+    )
+
+    assert first == second
+    assert first.normativa == "LSSI"
+    assert [(f.articulo, f.pagina) for f in first.fragmentos] == [
+        ("22", 17),
+        ("21", 16),
+    ]
+    assert all(f.texto and f.normativa == "LSSI" for f in first.fragmentos)
+    state.groq_client.invoke.assert_not_called()
+    assert sentinel not in caplog.text
+    assert '"event": "consulta_normativa"' in caplog.text
 
 
 @pytest.mark.skip(

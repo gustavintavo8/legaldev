@@ -30,14 +30,20 @@ REST/MCP»; 23-detalle, «Capa de servicio y traducción de errores»):
 
 from __future__ import annotations
 
+import asyncio
+import json
+import logging
 from dataclasses import dataclass
 from enum import StrEnum
+from pathlib import Path
 
 from pydantic import BaseModel
 
 from app import cache as _cache
 from app import metrics as _metrics
 from app import rag as _rag
+from app import store
+from app.config import settings
 from app.errors import (  # noqa: F401  (reexportados: parte del contrato de la capa)
     HTTP_STATUS,
     InvalidMappingError,
@@ -48,7 +54,14 @@ from app.errors import (  # noqa: F401  (reexportados: parte del contrato de la 
     UnknownNormativaError,
 )
 from app.fragments import FragmentoRef, fragment_id  # noqa: F401
+from app.middleware import request_id_var
 from app.models import PipelineResult, QuestionnaireInput
+
+logger = logging.getLogger(__name__)
+
+# consultar_obligaciones: candidatos que se piden a Chroma y fragmentos que se devuelven.
+CONSULTA_FETCH_K = 30
+CONSULTA_TOP_K = 6
 
 
 class Via(StrEnum):
@@ -77,11 +90,8 @@ class NormativaInfo(BaseModel):
     # normativas_detectadas y del argumento de consultar_obligaciones. GET /normativas
     # devuelve hoy el nombre con «.pdf»; CA-09 compara los dos listados por la raíz.
     identificador: str
-    tipo: str  # tipo de documento: metadato doc_type del índice
-    paginas: int
-    # TODO(PT2/RF-24): tipo y páginas salen de los metadatos de los fragmentos (doc_type y el
-    # máximo de page + 1 por source), sin importar app.ingest (arrastra load_dotenv y
-    # logging.basicConfig).
+    tipo: str  # metadato doc_type del índice; «desconocido» si falta
+    paginas: int  # máximo de metadata["page"] + 1 entre sus fragmentos; 0 si falta
 
 
 class ListadoNormativas(BaseModel):
@@ -133,11 +143,32 @@ async def analyze(inp: QuestionnaireInput, state, *, via: Via) -> Analysis:
 def list_normativas(state) -> ListadoNormativas:
     """RF-24: documentos indexados con tipo, páginas y versión del corpus.
 
-    Reutiliza ``store.list_sources`` como ``GET /normativas``; a diferencia de ese endpoint,
-    un fallo del índice no debe ocultarse como lista vacía.
+    Lee los metadatos de los fragmentos (``doc_type`` y el máximo de ``page`` por ``source``)
+    sin importar ``app.ingest``. A diferencia de ``GET /normativas``, un fallo del índice se
+    propaga en lugar de ocultarse como lista vacía.
     """
-    # TODO(PT2/RF-24): implementar sobre app.store.
-    raise NotImplementedError
+    por_fuente: dict[str, dict] = {}
+    for meta in store.list_metadatas(state.vectorstore):
+        source = meta.get("source")
+        if not source:
+            continue
+        info = por_fuente.setdefault(Path(source).stem, {"tipo": None, "max_page": -1})
+        if info["tipo"] is None and meta.get("doc_type"):
+            info["tipo"] = str(meta["doc_type"])
+        page = meta.get("page")
+        if isinstance(page, int) and page > info["max_page"]:
+            info["max_page"] = page
+    return ListadoNormativas(
+        normativas=[
+            NormativaInfo(
+                identificador=stem,
+                tipo=info["tipo"] or "desconocido",
+                paginas=info["max_page"] + 1,
+            )
+            for stem, info in sorted(por_fuente.items())
+        ],
+        corpus_version=state.corpus_version,
+    )
 
 
 async def consultar_obligaciones(
@@ -145,20 +176,57 @@ async def consultar_obligaciones(
 ) -> ConsultaNormativa:
     """RF-25: fragmentos más pertinentes de una normativa para un contexto breve.
 
-    Determinista y sin LLM (20-requisitos, 22-arquitectura y tab:det-mcp-herramientas):
-    recupera con ``_retrieve_for_source`` (misma búsqueda y mismo reordenador que el análisis,
-    filtrando por documento) y devuelve los fragmentos con su localización, en el orden del
-    reordenador. No consume cuota del modelo ni envía el ``contexto`` a Groq; aun así, el
-    ``contexto`` es texto libre y los registros siguen la política de ``descripcion_breve``
-    (RNF-04; PP-08). Una normativa desconocida lanza ``UnknownNormativaError`` con las
-    disponibles.
+    Determinista y sin LLM: ``rag.retrieve_for_source`` (misma búsqueda y mismo reordenador
+    que el análisis, filtrando por documento) y los fragmentos con su localización y su
+    texto, en el orden del reordenador. No consume cuota del modelo ni envía el ``contexto``
+    a Groq; aun así, el ``contexto`` es texto libre y no se registra (RNF-04; PP-08).
+
+    El identificador se compara tal cual (sensible a mayúsculas, sin «.pdf»): uno que no está
+    en el índice lanza ``UnknownNormativaError`` con los disponibles, para que el asistente
+    corrija la llamada.
     """
-    # TODO(PT2/RF-25): implementar. Varios pasajes de la memoria describen aún la variante con
-    # LLM («obligaciones ... con citas verificadas»): 31-manual-usuario (tabla de
-    # herramientas), 21-analisis (objetivo y flujo 3a de CU-07: «obligaciones de una
-    # normativa») y el orden de recorte de 05-metodologia («en una versión determinista sin
-    # LLM»). Corregirlos.
-    raise NotImplementedError
+    if normativa not in state.indexed_normativas:
+        raise UnknownNormativaError(normativa, sorted(state.indexed_normativas))
+    try:
+        docs = await asyncio.wait_for(
+            asyncio.to_thread(
+                _rag.retrieve_for_source,
+                contexto,
+                state.vectorstore,
+                normativa,
+                fetch_k=CONSULTA_FETCH_K,
+                top_k=CONSULTA_TOP_K,
+            ),
+            timeout=settings.retrieval_timeout,
+        )
+    except TimeoutError:
+        logger.error(
+            json.dumps(
+                {
+                    "event": "retrieval_timeout",
+                    "request_id": request_id_var.get(),
+                    "via": via.value,
+                    "timeout_s": settings.retrieval_timeout,
+                }
+            )
+        )
+        raise RetrievalTimeoutError("Retrieval timed out. Please try again.") from None
+    logger.info(
+        json.dumps(
+            {
+                "event": "consulta_normativa",
+                "request_id": request_id_var.get(),
+                "via": via.value,
+                "normativa": normativa,
+                "contexto_length": len(contexto),
+                "fragmentos": len(docs),
+            }
+        )
+    )
+    return ConsultaNormativa(
+        normativa=normativa,
+        fragmentos=[FragmentoRef.from_doc(doc, con_texto=True) for doc in docs],
+    )
 
 
 # --------------------------------------------------------------------------------------
@@ -191,17 +259,3 @@ class RetrievalConfig:
     # parte del reordenado (se mantiene); la memoria no lo precisa.
     use_diversity_cap: bool = True
     use_injections: bool = True
-
-
-def _retrieve_for_source(query: str, vs, source: str, *, k: int, threshold: float):
-    """Recuperación filtrada por un documento para ``consultar_obligaciones`` (RF-25).
-
-    Devolverá un ``app.rag.RetrievalResult``. El filtro usa la API de langchain_chroma
-    ``filter={"source": source}`` (no ``where=``), como las inyecciones de ``rag._retrieve``;
-    22-arquitectura («Qué cambia y qué se conserva») lo justifica: ``_retrieve`` exige un
-    ``QuestionnaireInput`` completo y no admite filtro.
-    """
-    # TODO(PT2/RF-25): implementar junto a rag._retrieve (moverla a app/rag.py) reutilizando
-    # el mismo reordenador; tests/test_rag.py y tests/test_retrieval_selection.py deben seguir
-    # pasando sin cambios.
-    raise NotImplementedError

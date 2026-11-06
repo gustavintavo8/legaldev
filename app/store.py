@@ -20,6 +20,12 @@ def list_sources(vectorstore) -> list[str]:
     return sorted({m["source"] for m in result["metadatas"] if m.get("source")})
 
 
+def list_metadatas(vectorstore) -> list[dict]:
+    """Metadatos de todos los fragmentos del índice (source, page, doc_type, article...)."""
+    result = vectorstore._collection.get(include=["metadatas"])
+    return [m for m in result["metadatas"] if m]
+
+
 def read_corpus_version(chroma_db_path: str) -> str:
     version_file = Path(chroma_db_path) / ".corpus_version"
     if version_file.exists():

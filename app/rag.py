@@ -539,6 +539,31 @@ def _retrieve(inp: QuestionnaireInput, vs, threshold: float) -> RetrievalResult:
     )
 
 
+def retrieve_for_source(query: str, vs, stem: str, *, fetch_k: int, top_k: int) -> list:
+    """Fragmentos de una sola normativa para ``consultar_obligaciones`` (RF-25).
+
+    La misma búsqueda por similitud y el mismo reordenador que el análisis, filtrando por
+    documento con la API de langchain_chroma (``filter=``, como las inyecciones) y sin umbral:
+    quien pregunta ya ha elegido la normativa. Devuelve como mucho ``top_k`` fragmentos en el
+    orden del reordenador. Síncrona y bloqueante, como ``_retrieve``.
+    """
+    candidates = vs.similarity_search_with_relevance_scores(
+        query, k=fetch_k, filter={"source": f"{stem}.pdf"}
+    )
+    docs: list = []
+    seen: set[str] = set()
+    for doc, _score in candidates:
+        # Defensa en profundidad: el filtro lo aplica Chroma, pero un fragmento de otra
+        # normativa aquí sería un error silencioso en la respuesta.
+        if _stem(doc) != stem:
+            continue
+        h = _content_hash(doc)
+        if h not in seen:
+            seen.add(h)
+            docs.append(doc)
+    return _reranker.rerank(query, docs, top_k=top_k)
+
+
 def retrieve_docs_sync(inp: QuestionnaireInput, vs, threshold: float) -> list:
     """Documentos del retrieval como lista plana (herramientas de eval y diagnóstico)."""
     return _retrieve(inp, vs, threshold).docs
