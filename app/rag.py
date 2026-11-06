@@ -26,6 +26,17 @@ DISCLAIMER = (
     "en derecho digital."
 )
 
+
+def _with_disclaimer(report: str) -> str:
+    """Abre y cierra el informe con el aviso de no asesoramiento.
+
+    El aviso va dentro de respuesta_completa, además de en el campo disclaimer,
+    para que acompañe al informe cuando se copia o cuando un cliente de la API
+    solo muestra ese texto.
+    """
+    return f"> {DISCLAIMER}\n\n{report}\n\n> {DISCLAIMER}"
+
+
 _INJECTION_PATTERNS = [
     "</descripcion_usuario>",
     "ignore previous instructions",
@@ -98,14 +109,18 @@ AUXILIARY_SEARCHES: list[AuxSearch] = [
 
 @dataclass(frozen=True)
 class Exclusion:
-    """Filtro de exclusión para normativas estructuralmente no aplicables según el contexto.
+    """Filtro de exclusión: retira una normativa del contexto según el cuestionario.
 
-    Añadir una entrada cuando una normativa tiene condiciones de aplicación que el modelo
-    puede inferir de los campos del cuestionario. La condición indica cuándo excluir:
-    si es True, los chunks de esa normativa se descartan del retrieval final.
+    Añadir una entrada cuando los campos del cuestionario indican que una normativa no
+    es pertinente para el proyecto, o cuando no permiten determinar si se aplica.
+    La condición indica cuándo excluir: si es True, los chunks de esa normativa se
+    descartan del retrieval final.
 
-    Ejemplo: ENS aplica solo a sector público — sin campo sector_publico en el cuestionario,
-    sus chunks son ruido sistemático. LPI aplica cuando hay contenido digital de terceros.
+    Ejemplo: el ENS aplica al sector público y a sus proveedores privados por contrato
+    (art. 2 RD 311/2022). El cuestionario no captura ninguna de las dos condiciones,
+    por eso se excluye siempre. La LPI se excluye si el proyecto no declara contenido
+    digital. Es una heurística de relevancia, no una inaplicabilidad de la norma, que es
+    pertinente para cualquier software (pendiente: hallazgo C-27).
     """
 
     condition: Callable[[QuestionnaireInput], bool]
@@ -113,10 +128,11 @@ class Exclusion:
 
 
 EXCLUSIONS: list[Exclusion] = [
+    # ENS: aplica al sector público y a sus proveedores privados por contrato
+    # (art. 2 RD 311/2022). El cuestionario no captura ninguna de las dos
+    # condiciones, por eso se excluye siempre.
     Exclusion(
-        condition=lambda inp: (
-            True
-        ),  # ENS aplica solo a sector público — campo no disponible
+        condition=lambda inp: True,
         stem="Real Decreto 311-2022 ENS",
     ),
     Exclusion(
@@ -711,7 +727,9 @@ async def run_pipeline(input: QuestionnaireInput, state) -> RAGResponse:
     coverage_section = _render_coverage_section(not_retrieved)
     citation_section = _render_citation_section(citations)
     return RAGResponse(
-        respuesta_completa=answer + coverage_section + citation_section,
+        respuesta_completa=_with_disclaimer(
+            answer + coverage_section + citation_section
+        ),
         normativas_detectadas=normativas,
         chunks_utilizados=len(docs),
         disclaimer=DISCLAIMER,

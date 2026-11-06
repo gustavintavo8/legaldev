@@ -1,6 +1,6 @@
 # LegalDev
 
-**API RAG de normativa legal para developers en España. Describe tu proyecto de software y obtén las normativas europeas y españolas que te aplican, con implicaciones técnicas concretas.**
+**API RAG de normativa legal para developers en España. Describe tu proyecto de software y obtén un informe orientativo sobre las normativas europeas y españolas que pueden aplicarte, con implicaciones técnicas concretas.**
 
 > ⚠️ Esta herramienta es de orientación informativa y no constituye asesoramiento legal. Para decisiones con impacto legal, consulta con un abogado especializado en derecho digital.
 
@@ -11,13 +11,13 @@
 [![HF Spaces](https://img.shields.io/badge/🤗_Space-LegalDev-yellow)](https://huggingface.co/spaces/gustavintavo8/legaldev)
 [![Tests](https://img.shields.io/badge/Tests-288_passed-22c55e?logo=pytest)](./tests/)
 
-[Highlights](#-highlights-técnicos) · [Cómo funciona](#-cómo-funciona) · [Tech Stack](#️-tech-stack) · [Decisiones técnicas](#-decisiones-técnicas) · [Instalación](#-instalación) · [API](#-api) · [Deploy](#-deploy)
+[Highlights](#-highlights-técnicos) · [Cómo funciona](#-cómo-funciona) · [Tech Stack](#️-tech-stack) · [Decisiones técnicas](#-decisiones-técnicas) · [Instalación](#-instalación) · [API](#-api) · [Privacidad](#-privacidad-y-datos) · [Deploy](#-deploy) · [Licencia](#-licencia)
 
 ---
 
 ## ⚡ Highlights técnicos
 
-- **RAG sobre 22 documentos legales** — 10 normativas europeas (RGPD, EU AI Act, NIS2, DSA, CRA, DORA, ePrivacy, Data Act, DGA, Responsabilidad IA), 4 españolas (LOPDGDD, ENS, LSSI, LPI), Código Ético CCII y 7 guías oficiales de la AEPD, indexados en ChromaDB con embeddings locales.
+- **RAG sobre 22 documentos legales** — 10 normativas europeas (RGPD, EU AI Act, NIS2, DSA, CRA, DORA, ePrivacy, Data Act, DGA, Productos defectuosos (Directiva 2024/2853)), 4 españolas (LOPDGDD, ENS, LSSI, LPI), Código Ético CCII y 7 guías oficiales de la AEPD, indexados en ChromaDB con embeddings locales.
 - **Score threshold anti-alucinación** — Si ningún chunk supera el umbral de relevancia, devuelve 404 en vez de inventar normativas con contexto basura.
 - **Temperatura 0 + citas forzadas** — El LLM no "improvisa" en dominio legal: temperatura 0 para determinismo y prompt que exige citar textualmente el fragmento que justifica cada obligación.
 - **Cuestionario estructurado como query semántica** — 16 campos del formulario se mapean a términos legales que dirigen el retrieval exactamente hacia las normativas relevantes para ese proyecto.
@@ -37,15 +37,17 @@ POST /v1/analyze (QuestionnaireInput)
           ├─ 2. Retrieval (_retrieve — única implementación, la usan API y eval; corre en
           │      un hilo bajo un timeout global RETRIEVAL_TIMEOUT=60s)
           │      similarity_search_with_relevance_scores(query, k=100) → score ≥ 0.40
-          │      → EXCLUSIONS (5, aplicadas ANTES del recorte, no después): ENS always;
+          │      → EXCLUSIONS (5, aplicadas ANTES del recorte, no después): ENS always
+          │         (el cuestionario no recoge si es sector público o proveedor suyo);
           │         LPI if !contenido_digital; Adecuación RGPD+IA and IA Agéntica AEPD
           │         if !usa_ia / !agentes; LOPDGDD if no data and no users
           │      → recorte a RERANKER_TOP_K (25)
           │      → AUXILIARY_SEARCHES (condicionales, score ≥ 0.40, sin excluidas,
-          │         deduped by content hash):
-          │         if tipos_datos_personales: search RGPD/LOPDGDD (k=6)
-          │         if usa_cookies: search cookies AEPD (k=6)
-          │         if colegiado: search CCII (k=6)
+          │         deduped by content hash; semánticas sobre todo el corpus, SIN
+          │         filtro por fuente):
+          │         if tipos_datos_personales: consulta de protección de datos (k=6)
+          │         if usa_cookies: consulta de cookies (k=6)
+          │         if colegiado: consulta deontológica (k=6)
           │      → Cross-encoder rerank (BAAI/bge-reranker-base) sobre TODOS los candidatos
           │         (no solo el top-k final)
           │      → _select_diverse: top TOP_K_CHUNKS=12, máx. MAX_CHUNKS_PER_SOURCE=4
@@ -67,8 +69,9 @@ POST /v1/analyze (QuestionnaireInput)
           │      recuperados — determinista, no altera la respuesta del LLM
           │
           └─ 5. RAGResponse
-                 respuesta_completa  ← LLM output + "## Cobertura del análisis"
-                                        + "## Verificación de citas"
+                 respuesta_completa  ← aviso de no asesoramiento + LLM output
+                                        + "## Cobertura del análisis"
+                                        + "## Verificación de citas" + aviso
                  normativas_detectadas ← unique sources con ≥ 2 chunks recuperados
                  chunks_utilizados · citas {total, verificadas, no_verificadas}
                  disclaimer · llm_model · corpus_version
@@ -153,11 +156,11 @@ Los documentos legales tienen artículos cortos y bien delimitados. Un chunk de 
 
 ### Cuestionario estructurado como interfaz de entrada
 
-En vez de texto libre ("tengo una app de salud para menores"), el cuestionario extrae campos específicos que se mapean directamente a términos legales en `_build_query()`. `descripcion_breve` encabeza la query — el texto del developer define el contexto base, y los campos estructurados añaden términos legales específicos a continuación. `usuarios_menores=True` → añade "usuarios menores de edad" a la query semántica, que dirigirá el retrieval hacia artículos del RGPD sobre menores y la guía AEPD correspondiente. `usa_ia=True + tipo_ia="generativa"` → "inteligencia artificial generativa", que apunta al EU AI Act. Esta traducción estructurada produce queries semánticamente ricas sin depender de que el usuario sepa qué palabras clave usar.
+En vez de texto libre ("tengo una app de salud para menores"), el cuestionario extrae campos específicos que se mapean directamente a términos legales en `_build_query()`. `descripcion_breve` encabeza la query — el texto del developer define el contexto base, y los campos estructurados añaden términos legales específicos a continuación. `usuarios_menores=True` → añade "usuarios menores de edad" a la query semántica, que orienta la búsqueda hacia los artículos sobre menores. Ese campo no activa ninguna regla: cambia la consulta y llega al modelo como dato del proyecto, pero nada garantiza por él el art. 8 RGPD ni el art. 7 LOPDGDD. `usa_ia=True + tipo_ia="generativa"` → "inteligencia artificial generativa", que apunta al EU AI Act. Esta traducción estructurada produce queries semánticamente ricas sin depender de que el usuario sepa qué palabras clave usar.
 
 ### Query descriptiva + búsqueda auxiliar por dominio
 
-El retrieval usa una sola query semántica construida desde el cuestionario. El problema: las guías operativas de la AEPD (cookies, análisis de riesgos, privacidad por diseño) tienen centenares de chunks muy específicos que repiten sus términos clave en cada uno. Cuando el cuestionario incluye `usa_cookies=True`, la palabra "cookies" en la query hacía que la *Guía sobre uso de cookies* ocupara las primeras 100+ posiciones del ranking por densidad léxica — desplazando RGPD a la posición #142 y EU AI Act fuera del top 200, aunque ambos sean directamente aplicables.
+El retrieval usa una sola query semántica construida desde el cuestionario. El problema: las guías operativas de la AEPD (cookies, análisis de riesgos, privacidad por diseño) tienen centenares de chunks muy específicos que repiten sus términos clave en cada uno. Cuando el cuestionario incluye `usa_cookies=True`, la palabra "cookies" en la query hacía que la *Guía sobre uso de cookies* ocupara las primeras 100+ posiciones del ranking por densidad léxica — desplazando RGPD a la posición #142 y EU AI Act fuera del top 200, aunque ambos son reglamentos directamente aplicables y previsiblemente pertinentes para ese proyecto.
 
 Medición sobre 5 cuestionarios representativos:
 
@@ -169,11 +172,13 @@ Medición sobre 5 cuestionarios representativos:
 
 La solución: la query principal no menciona "cookies" — describe el proyecto, sus datos y sus señales regulatorias generales. El mismo problema se detectó para RGPD/LOPDGDD (posición #29 con `overfetch_k=100` en queries complejas) y para el Código Ético CCII. El patrón se generalizó a `AUXILIARY_SEARCHES`: una lista de búsquedas condicionales que se activan cuando su condición es verdadera, deduplicando por hash de contenido. Todas aplican el mismo umbral `MIN_RELEVANCE_SCORE=0.40`.
 
-| Aux search | Condición | Query |
+Son búsquedas semánticas sobre todo el corpus, sin filtro por fuente. Cada una usa el vocabulario de su materia y puede traer fragmentos de cualquier documento no excluido. Por ejemplo, la consulta de cookies puede recuperar la LSSI o la Directiva ePrivacy además de la guía de la AEPD. Solo las INJECTIONS filtran por fuente.
+
+| Búsqueda auxiliar (`name`) | Condición | Query |
 |------------|-----------|-------|
-| RGPD/LOPDGDD | `tipos_datos_personales != ["ninguno"]` | `"protección datos personales responsable tratamiento..."` |
-| Cookies AEPD | `usa_cookies=True` | `"cookies consentimiento banner rastreo..."` |
-| CCII | `colegiado=True` | `"código deontológico ingeniero informático..."` |
+| Protección de datos (`rgpd`) | `tipos_datos_personales != ["ninguno"]` | `"protección datos personales responsable tratamiento..."` |
+| Cookies (`cookies`) | `usa_cookies=True` | `"cookies consentimiento banner rastreo..."` |
+| Deontología (`colegiado`) | `colegiado=True` | `"código deontológico ingeniero informático..."` |
 
 ### Filtrado por reglas: EXCLUSIONS e INJECTIONS
 
@@ -181,11 +186,13 @@ El reranker (CrossEncoder) selecciona los fragmentos más accionables para el de
 
 Para resolverlo, dos capas de reglas deterministas —condicionadas por los campos del cuestionario— rodean al reranker: **EXCLUSIONS** actúa antes (ver "Exclusiones antes del reranker y tope por fuente" más abajo) y **INJECTIONS** después.
 
-**EXCLUSIONS** (5 reglas) eliminan documentos que no aplican al proyecto: el ENS (siempre — regula sector público, dato no capturado), la Ley de Propiedad Intelectual (salvo contenido digital), los dos documentos de IA de la AEPD (salvo que el proyecto use IA, y en el caso de IA Agéntica, salvo que sea específicamente de tipo agentes), y la LOPDGDD en proyectos sin datos personales ni usuarios registrados.
+**EXCLUSIONS** (5 reglas) retiran del contexto los documentos que, según el cuestionario, no son pertinentes para el proyecto o cuya aplicación no se puede determinar. El ENS se excluye siempre. Aplica al sector público y a sus proveedores privados por contrato (art. 2 RD 311/2022), pero el cuestionario no captura ninguna de las dos condiciones. También se excluyen la Ley de Propiedad Intelectual salvo que haya contenido digital, los dos documentos de IA de la AEPD salvo que el proyecto use IA (la guía de IA Agéntica, salvo que sea de tipo agentes) y la LOPDGDD en proyectos sin datos personales ni usuarios registrados.
 
-**INJECTIONS** (6 reglas) garantizan la normativa que sí aplica, inyectando sus mejores fragmentos (búsqueda filtrada por fuente, sin umbral) después del reranker: el RGPD cuando hay datos personales, el EU AI Act cuando se usa IA, la LSSI en webs públicas o con cookies, la guía de cookies de la AEPD cuando el proyecto usa cookies, la guía de IA Agéntica cuando el proyecto es de agentes, y el Código Ético CCII cuando el responsable es colegiado.
+**INJECTIONS** (6 reglas) garantizan que llegue al contexto la normativa que el cuestionario señala como pertinente. Inyectan sus mejores fragmentos (búsqueda filtrada por fuente, sin umbral) después del reranker: el RGPD cuando hay datos personales, el EU AI Act cuando se usa IA, la LSSI en webs públicas o con cookies, la guía de cookies de la AEPD cuando el proyecto declara cookies, la guía de IA Agéntica cuando el proyecto es de agentes y el Código Ético CCII cuando el responsable es colegiado.
 
-La distinción de fondo: **qué leyes aplican es una cuestión de reglas, no de similitud semántica.** El reranker decide qué fragmentos son útiles; las reglas de dominio deciden qué normativa es obligatoria.
+Algunas condiciones son indicios, no el criterio legal. La LSSI depende de que haya un servicio de la sociedad de la información, normalmente con actividad económica (anexo a) LSSI), y del establecimiento del prestador. La guía de cookies se refiere a las cookies no exceptuadas en un servicio de ese tipo. Sin cookies ni web pública, la LSSI no está garantizada, aunque jurídicamente pueda aplicar.
+
+Las reglas tampoco cubren todo el corpus. Diez de los 22 documentos tienen alguna regla (una exclusión, una inyección o ambas). Los otros doce (NIS2, DSA, CRA, DORA, ePrivacy, Data Act, DGA, Directiva 2024/2853 y cuatro guías de la AEPD) solo entran por similitud semántica, sin comprobar su ámbito, y el informe no distingue unos de otros. Comprobar el ámbito de cada norma antes de redactar obligaciones está pendiente (hallazgo C-01 de la revisión jurídica del 10.10.2026).
 
 ### Evaluación: gold standard con precision y fidelidad a producción
 
@@ -208,6 +215,8 @@ Groq ofrece un Developer Plan gratuito con 500.000 tokens/día y latencias de ~2
 
 El modelo por defecto es `openai/gpt-oss-120b` (131k de contexto, 65k de salida). Groq retira modelos con pocos meses de aviso —`llama-4-scout`, el modelo original de LegalDev, dejó de existir el 17/07/2026 y la API estuvo devolviendo 503 hasta detectarlo—, así que el sistema (1) comprueba al arrancar que `GROQ_MODEL` existe (`GET /openai/v1/models/{model}`) y lo registra en `/health/deep`, (2) mantiene un segundo modelo (`GROQ_FALLBACK_MODEL`, por defecto `openai/gpt-oss-20b`) al que recurre si el principal falla por cualquier causa, y (3) informa en cada respuesta qué modelo la generó (`llm_model`). En gpt-oss los tokens de razonamiento cuentan como salida: `GROQ_REASONING_EFFORT=low` y `GROQ_MAX_TOKENS=8000`.
 
+Groq recibe el cuestionario completo, incluida la descripción libre del proyecto. Según su política de datos (consultada el 10.10.2026), por defecto no conserva los datos de las peticiones, pero puede registrar entradas y salidas para resolver errores de la plataforma o investigar abusos. Esos registros se guardan hasta 30 días en EE. UU., salvo que se active la retención cero (ZDR). En este repositorio no consta que esté activada. Qué implica para el servicio y qué queda pendiente se explica en [Privacidad y datos](#-privacidad-y-datos).
+
 ### Un solo retrieval para API y eval
 
 El retrieval vivía por duplicado: `run_pipeline` (la ruta async de producción, con timeouts por búsqueda) y `retrieve_docs_sync` (la ruta síncrona que usa el evaluador) implementaban la misma secuencia —construir la query, buscar, aplicar auxiliares, rerankear, excluir, inyectar— en dos sitios distintos, sujetos solo por tres comentarios `keep in sync` y un único test de sincronía. Cualquier cambio en el retrieval, como los de este mismo sprint, había que hacerlo dos veces y confiar en que no divergieran.
@@ -216,7 +225,7 @@ Ahora `_retrieve(inp, vs, threshold) -> RetrievalResult` es la única implementa
 
 ### Exclusiones antes del reranker y tope por fuente
 
-El reranker devolvía un top-12 y las EXCLUSIONS se aplicaban después, sobre ese top-12 ya cerrado: una normativa que sabíamos que no aplicaba (el ENS sin sector público, la Ley de Propiedad Intelectual sin contenido digital, las guías de IA sin IA) ya había ocupado una plaza del recorte a 25 candidatos y del top-12 del CrossEncoder, desplazando a normativas que sí aplican. Medido sobre los 13 casos del eval con el CrossEncoder real:
+El reranker devolvía un top-12 y las EXCLUSIONS se aplicaban después, sobre ese top-12 ya cerrado: una normativa excluida por regla (el ENS, siempre; la Ley de Propiedad Intelectual sin contenido digital; las guías de IA sin IA) ya había ocupado una plaza del recorte a 25 candidatos y del top-12 del CrossEncoder, desplazando a normativas que sí aplican. Medido sobre los 13 casos del eval con el CrossEncoder real:
 
 | Caso | Excluidos tras el recorte (antes) | Contexto del reranker (antes) |
 |---|---|---|
@@ -228,7 +237,7 @@ El reranker devolvía un top-12 y las EXCLUSIONS se aplicaban después, sobre es
 
 El orden nuevo aplica las EXCLUSIONS justo después de la búsqueda principal, antes del recorte a `RERANKER_TOP_K` (25) y antes de las auxiliares: una normativa excluida ya no compite por una plaza. El CrossEncoder rankea siempre el conjunto completo de candidatos (`rerank(query, docs, top_k=len(docs))`, no solo los 12 finales) y `_select_diverse` recorre ese orden completo aceptando como máximo `MAX_CHUNKS_PER_SOURCE` (4) fragmentos de la misma normativa, rellenando las plazas sobrantes con lo que quedó fuera del tope — antes de este cambio, el top-12 solía estar compuesto por 5-6 chunks de una sola guía AEPD (p. ej. "Privacidad desde el Diseño") más 5 de LOPDGDD, como en menores-datos-personales o ia-generativa.
 
-El efecto combinado de ambos cambios (exclusiones antes del recorte + tope de 4 por fuente) sobre el eval completo, manteniendo recall 13/13 y 0 falsos positivos:
+El efecto combinado de ambos cambios (exclusiones antes del recorte + tope de 4 por fuente) sobre el eval completo, manteniendo recall 13/13 y 0 falsos positivos (el DSA ya no llega al contexto en los dos casos que lo tienen en `negative_expected`; su estado en producción, en "Limitaciones conocidas"):
 
 | Caso | Chunks antes | Fuentes antes | Chunks después | Fuentes después |
 |---|---|---|---|---|
@@ -246,7 +255,7 @@ El efecto combinado de ambos cambios (exclusiones antes del recorte + tope de 4 
 | probe-8-plantas-dominio-lejano | 16 | 7 | 19 | 7 |
 | sin-ia-sin-cookies-app-basica | 14 | 5 | 15 | 5 |
 
-"Fuentes" no baja en ningún caso y sube en la mayoría. Este mismo eval, corriendo con el nuevo orden, sacó a la luz un efecto colateral útil: al dejar de gastar plazas del reranker en normativas excluidas, la guía de cookies de la AEPD pasó a caer en las posiciones 13-14 del CrossEncoder —justo fuera del top-12— en los proyectos con `usa_cookies=True`. La solución fue tratarla como una garantía más: se añadió como INJECTION, igual que RGPD, LSSI o el Código CCII.
+"Fuentes" no baja en ningún caso y sube en la mayoría. Este mismo eval, corriendo con el nuevo orden, sacó a la luz un efecto colateral útil: al dejar de gastar plazas del reranker en normativas excluidas, la guía de cookies de la AEPD pasó a caer en las posiciones 13-14 del CrossEncoder —justo fuera del top-12— en los proyectos con `usa_cookies=True`. La solución fue tratarla como una garantía más: se añadió como INJECTION, igual que RGPD, LSSI o el Código CCII. La regla garantiza que se recupere cuando el proyecto declara cookies. No decide si su criterio es pertinente, que depende de que haya cookies no exceptuadas en un servicio de la sociedad de la información.
 
 ### Verificación de citas en código
 
@@ -292,7 +301,8 @@ legaldev/
 │   ├── test_ingest.py            # Tests del mapeo doc_type por documento
 │   ├── test_ingest_build.py      # Carga con pypdf, filtro de chunks, swap atómico del índice
 │   └── test_models.py            # Tests de validación Pydantic
-├── chroma_db/         # Vector store generado por ingest.py (commiteado)
+├── chroma_db/         # Vector store generado por ingest.py (commiteado; textos de terceros, ver NOTICE.md)
+├── NOTICE.md          # Licencias y atribución de los textos de terceros del índice
 ├── Dockerfile
 ├── docker-compose.yml
 ├── Makefile
@@ -381,8 +391,8 @@ ALLOWED_ORIGINS=*
 | `MAX_CHUNKS_PER_SOURCE` | Tope de chunks de una misma normativa en el contexto final (`0` desactiva) | `4` |
 | `TOP_K_CHUNKS` | Tamaño del contexto final (tras reranker + tope por fuente) enviado al LLM | `12` |
 | `COOKIES_K` | Chunks de la búsqueda auxiliar de cookies | `6` |
-| `RGPD_K` | Chunks de la búsqueda auxiliar de RGPD/LOPDGDD | `6` |
-| `COLEGIADO_K` | Chunks de la búsqueda auxiliar del CCII | `6` |
+| `RGPD_K` | Chunks de la búsqueda auxiliar de protección de datos (sin filtro por fuente) | `6` |
+| `COLEGIADO_K` | Chunks de la búsqueda auxiliar deontológica (sin filtro por fuente) | `6` |
 | `OVERFETCH_K` | Candidatos a recuperar antes de filtrar por score | `100` |
 | `RETRIEVAL_TIMEOUT` | Timeout global del retrieval (búsquedas ChromaDB + reranker CPU), en segundos | `60` |
 | `RATE_LIMIT` | Límite de requests por IP en `/v1/analyze` y `/v1/feedback` (cubos independientes) | `10/minute` |
@@ -423,7 +433,7 @@ curl -X POST http://localhost:8000/v1/analyze \
 
 ```json
 {
-  "respuesta_completa": "## RGPD\n\n**Consentimiento explícito** ...\n> \"El tratamiento solo será lícito si...\" — RGPD",
+  "respuesta_completa": "> ⚠️ Esta información es orientativa...\n\n## RGPD\n\n**Consentimiento explícito** ...\n> \"El tratamiento solo será lícito si...\" — RGPD ...\n\n> ⚠️ Esta información es orientativa...",
   "normativas_detectadas": ["RGPD", "LOPDGDD", "EU AI Act"],
   "chunks_utilizados": 8,
   "disclaimer": "⚠️ Esta información es orientativa...",
@@ -433,7 +443,9 @@ curl -X POST http://localhost:8000/v1/analyze \
 }
 ```
 
-`respuesta_completa` puede terminar con hasta dos secciones generadas en código, no por el LLM: `## Cobertura del análisis` (normativas indexadas sin fragmentos relevantes para este proyecto) y, si hay al menos una cita, `## Verificación de citas` (resume `citas.verificadas`/`citas.total` y lista las citas de `citas.no_verificadas`; ver "Verificación de citas en código" más abajo).
+`respuesta_completa` empieza y termina con el aviso de no asesoramiento, el mismo texto del campo `disclaimer`, en una línea de cita (`> ⚠️ …`). Así el aviso acompaña al informe aunque se copie o un cliente de la API solo muestre ese campo. Antes del aviso final puede haber hasta dos secciones generadas en código, no por el LLM: `## Cobertura del análisis` (normativas indexadas sin fragmentos relevantes para este proyecto) y, si hay al menos una cita, `## Verificación de citas` (resume `citas.verificadas`/`citas.total` y lista las citas de `citas.no_verificadas`; ver "Verificación de citas en código" más abajo).
+
+Salvo el Código CCII, una normativa con un único fragmento recuperado no abre sección en el informe (lo indica el prompt) ni figura en `## Cobertura del análisis`, porque sí se recuperó. Hoy desaparece del informe sin aviso (hallazgo C-02 de la revisión jurídica del 10.10.2026).
 
 **Errores:**
 - `404` — Ningún chunk supera el umbral de relevancia. El proyecto descrito no tiene cobertura en la base de documentos.
@@ -467,6 +479,35 @@ curl http://localhost:8000/health/deep
 ```
 
 El resultado se cachea 60 segundos, así que llamadas repetidas dentro de esa ventana no vuelven a golpear Groq ni ChromaDB.
+
+---
+
+## 🔒 Privacidad y datos
+
+Esta sección describe qué datos trata hoy (10.10.2026) el servicio público: la API en Hugging Face Spaces y la web en Vercel. Todavía no se publica toda la información que exige el art. 13 RGPD, y lo que falta se indica al final.
+
+> **No incluyas datos personales en la descripción del proyecto.** El texto se envía tal cual al proveedor del modelo de lenguaje.
+
+Qué se trata y dónde:
+
+- **Cuestionario y descripción.** Se envían a la API de Groq para generar el informe. Según la política de datos de Groq (consultada el 10.10.2026), Groq no los conserva por defecto, pero puede registrar entradas y salidas para resolver errores de la plataforma o investigar abusos. Guarda esos registros hasta 30 días en EE. UU., salvo que la ley le obligue a más o que se active la retención cero (ZDR). En este repositorio no consta que esté activada.
+- **Caché de respuestas.** La API guarda cada respuesta en memoria durante una hora como máximo (256 entradas), con una clave SHA-256 del cuestionario. Se pierde al reiniciar el proceso.
+- **Dirección IP.** La API la usa como clave del límite de peticiones (`RATE_LIMIT`). Hugging Face, que aloja la API en EE. UU., registra además la IP de cada petición según su política de privacidad.
+- **Registros de la aplicación.** No guardan la descripción, sino su longitud y un resumen SHA-256 truncado a 8 caracteres hexadecimales (32 bits). También guardan el tipo de proyecto y el identificador de petición. Ese identificador lo genera el servidor, pero hoy se acepta sin validar el que envíe el cliente en `X-Request-ID`.
+- **Valoraciones (`POST /v1/feedback`).** Se añaden a `feedback.jsonl` dentro del contenedor, con el identificador de petición, la puntuación y un comentario libre opcional de hasta 2000 caracteres. El disco de un Space no es persistente, así que hoy no se conservan de forma fiable.
+- **Web.** La sirve Vercel. Su ubicación y su mecanismo de transferencia están por comprobar. La página carga además las tipografías desde Google Fonts y la biblioteca marked desde jsDelivr, y la página `/docs` de la API carga swagger-ui desde jsDelivr y su icono desde fastapi.tiangolo.com. Esos servicios reciben la IP de quien visita la página.
+
+Groq, Hugging Face y Vercel tratan estos datos por cuenta del servicio, es decir, como encargados del tratamiento (art. 28 RGPD). Groq y Hugging Face lo hacen en EE. UU., lo que exige las garantías del capítulo V del RGPD.
+
+Pendiente de decidir y de publicar (hallazgo C-04 de la revisión jurídica del 10.10.2026):
+
+- Quién figura como responsable del tratamiento y cómo contactar con él.
+- La base jurídica de cada tratamiento.
+- Los términos de encargo de Groq, Hugging Face y Vercel y el mecanismo de transferencia de cada uno (adhesión al EU-U.S. Data Privacy Framework o cláusulas contractuales tipo, por comprobar).
+- La activación de la retención cero en Groq, con su fecha.
+- El plazo de conservación de cada tratamiento y dónde se guardan las valoraciones.
+- Cómo ejercer los derechos de protección de datos.
+- El registro de actividades de tratamiento (art. 30 RGPD).
 
 ---
 
@@ -543,7 +584,7 @@ El `README.md` de GitHub nunca se toca; `README_hf.md` no llega al Space (solo s
 | RGPD | Normativa europea |
 | EU AI Act | Normativa europea |
 | Directiva NIS2 | Normativa europea |
-| Directiva de Responsabilidad por Productos con IA | Normativa europea |
+| Directiva (UE) 2024/2853 sobre responsabilidad por los daños causados por productos defectuosos (fichero: «Directiva de Responsabilidad por Productos con IA») | Normativa europea |
 | Digital Services Act (Reglamento UE 2022/2065) | Normativa europea |
 | Cyber Resilience Act (Reglamento UE 2024/2847) | Normativa europea |
 | Directiva ePrivacy (2002/58/CE consolidada) | Normativa europea |
@@ -554,14 +595,16 @@ El `README.md` de GitHub nunca se toca; `README_hf.md` no llega al Space (solo s
 | Real Decreto 311/2022 ENS | Normativa española |
 | LSSI | Normativa española |
 | Ley de Propiedad Intelectual | Normativa española |
-| Guía para el cumplimiento del deber de informar | Guía AEPD |
-| Guía de Análisis de Riesgos para tratamientos de datos | Guía AEPD |
-| Guía de Privacidad desde el Diseño | Guía AEPD |
-| Guía sobre uso de cookies | Guía AEPD |
-| Guía de Anonimización | Guía AEPD |
-| Adecuación al RGPD de tratamientos que incorporan IA | Guía AEPD |
-| IA Agéntica desde la perspectiva de protección de datos | Guía AEPD |
-| Código Ético y Deontológico CCII | Deontología |
+| Guía para el cumplimiento del deber de informar (AEPD, APDCAT y AVPD, 26.1.2017; «EN REVISIÓN», anterior a la aplicación del RGPD y a la LOPDGDD) | Guía AEPD |
+| Gestión del riesgo y evaluación de impacto en tratamientos de datos personales (junio de 2021; fichero: «Guía de Análisis de Riesgos…») | Guía AEPD |
+| Guía de Privacidad desde el Diseño (v. octubre 2019) | Guía AEPD |
+| Guía sobre uso de cookies (actualizada en mayo de 2024) | Guía AEPD |
+| Orientaciones y garantías en los procedimientos de anonimización de datos personales (13.10.2016; «EN REVISIÓN»; fichero: «Guía de Anonimización») | Guía AEPD |
+| Adecuación al RGPD de tratamientos que incorporan Inteligencia Artificial. Una introducción (febrero de 2020; «EN REVISIÓN») | Guía AEPD |
+| Inteligencia artificial agéntica desde la perspectiva de protección de datos (V1.2, febrero de 2026) | Guía AEPD |
+| Código Ético y Deontológico CCII (2019) | Deontología |
+
+Las guías de la AEPD recogen el criterio de la autoridad, no normas. La AEPD marca hoy tres de ellas como «EN REVISIÓN» en su listado de guías. Las fuentes, versiones y advertencias de cada documento (por ejemplo, que el RGPD indexado es el texto original, sin sus correcciones de errores) están en [`docs/CORPUS_SOURCES.md`](docs/CORPUS_SOURCES.md).
 
 ---
 
@@ -573,19 +616,19 @@ El `README.md` de GitHub nunca se toca; `README_hf.md` no llega al Space (solo s
 
 - **Modelo de embeddings pesado.** `paraphrase-multilingual-MiniLM-L12-v2` ocupa ~500 MB de RAM en runtime. En entornos con menos de 700 MB disponibles el startup puede fallar o ser muy lento. Ajusta el plan de hosting o usa `all-MiniLM-L6-v2` (~80 MB) si la memoria es crítica (requiere re-indexar el `chroma_db/`).
 
-- **Corpus estático.** Las 22 normativas están indexadas a una fecha fija. LegalDev no detecta nuevas directivas, reglamentos delegados, ni modificaciones publicadas en el BOE o DOUE posteriores a la indexación. Siempre contrasta con fuentes oficiales actualizadas.
+- **Corpus estático.** Las 22 normativas están indexadas a una fecha fija. LegalDev no detecta nuevas directivas, reglamentos delegados, ni modificaciones publicadas en el BOE o DOUE posteriores a la indexación. Algunas ya publicadas tampoco están indexadas: el Reglamento de IA no incorpora el Reglamento (UE) 2026/1744 y el RGPD no incorpora sus correcciones de errores (detalle en `docs/CORPUS_SOURCES.md`). Siempre contrasta con fuentes oficiales actualizadas.
 
 - **El LLM puede alucinar pese al grounding.** El sistema obliga a citar textualmente fragmentos recuperados, pero un modelo a temperatura 0 puede interpolar o extrapolar más allá de lo que el chunk dice. Toda respuesta debe ser revisada por un profesional antes de actuar sobre ella.
 
 - **Cobertura limitada.** Solo están indexadas las 22 normativas de la base de conocimiento. Legislación autonómica específica, convenios colectivos sectoriales, circulares de la AEPD posteriores a 2024, o normativa de países fuera de la UE no están cubiertas.
 
-- **Rate limit spoofeable sin proxy de confianza.** El límite de 10 req/min se aplica por IP. Sin `TRUST_PROXY_HEADERS=true` y un proxy de confianza configurado, un atacante puede enviar headers `X-Forwarded-For` arbitrarios y bypassear el límite. Actívalo solo en entornos con proxy verificado (Railway, etc.).
+- **Rate limit spoofeable sin proxy de confianza.** El límite de 10 req/min se aplica por IP. Con `TRUST_PROXY_HEADERS=true` y sin un proxy de confianza delante, un atacante puede enviar headers `X-Forwarded-For` arbitrarios y bypassear el límite. Actívalo solo en entornos con proxy verificado. Con el valor por defecto (`false`) y detrás del proxy de Hugging Face, el límite puede aplicarse a la IP del proxy y compartir un único cubo entre todos los usuarios. El valor que usa el Space en producción no consta en este repositorio. Documentarlo, con una prueba de que el límite distingue entre clientes, está pendiente (hallazgo C-39 de la revisión jurídica del 10.10.2026).
 
-- **DSA como falso positivo residual.** En dos casos (web con cookies, y una plataforma de gestión con seguimiento de usuarios), el retrieval trae el Digital Services Act por proximidad semántica —vocabulario de "monitorización", "plataforma", "usuarios"— aunque jurídicamente no aplica: el DSA regula la intermediación entre terceros, no la recogida de datos en sistemas cerrados. No se excluye por regla porque el proxy disponible (`acceso_publico=False`) suprimiría también marketplaces B2B privados donde el DSA sí aplica. Cerrarlo correctamente requeriría un campo explícito `es_plataforma_intermediaria` en el cuestionario. Es una decisión consciente, no un descuido.
+- **DSA sin regla: dudoso en sistemas cerrados y ausente donde aplica.** El Reglamento de Servicios Digitales se aplica a los servicios intermediarios, incluido el alojamiento de datos que aportan los propios usuarios (arts. 2.1 y 3.g.iii). Las obligaciones de plataforma en línea exigen además difundir esos contenidos al público (art. 3.i). En una app cerrada con usuarios su aplicación es dudosa (posible alojamiento), y ningún campo del cuestionario lo decide. El DSA no tiene regla, así que solo entra por similitud semántica. Hoy no llega al contexto en ninguno de los dos casos de la batería que lo tienen en `negative_expected` (web con cookies y gestión de equipos con seguimiento). En una consulta real de producción del 18.9.2026 llegó con un único fragmento, y la regla de dos fragmentos lo dejó fuera del informe sin aviso. El fallo contrario es más grave. Según `tools/diagnose_retrieval.py` (P4), falta en un marketplace C2C y en una red social pública con contenidos de usuarios, donde aplica (art. 3.i). `monetizacion=marketplace` permitiría ya inyectarlo en el primer caso, y la red social exige un campo sobre contenidos publicados por los usuarios (pendiente: hallazgo C-07 de la revisión jurídica del 10.10.2026).
 
 - **Latencia del reranking.** El CrossEncoder corre sobre CPU. Medido sobre 35 pares (query de ~740 caracteres + chunk de ~460, mediana 253 tokens, máximo 393): 6,5–8,3 s con 6 hilos (portátil de desarrollo) y 17,6–20,5 s con 2 hilos (aprox. el tier gratuito de HF Spaces). La carga del modelo desde disco cuesta otros ~2 s; desde este sprint se precarga en el arranque (`warmup()` en `lifespan`), así que ya no se paga en la primera petición real. Se evaluó acelerar con cuantización dinámica int8 y se descartó con datos: con 2 hilos gana 1,6× (17,58 → 11,06 s/query), pero el top-12 resultante solo coincide con el de fp32 en 8, 8, 8, 7 y 11 de 12 fragmentos según la query, y el orden del top-5 cambia en las 5 queries probadas (correlación de puntuaciones fp32/int8 hasta 0,23). Un contexto distinto a cambio de latencia no es aceptable cuando ese contexto decide el informe. Las vías de mejora que quedan —un reranker más pequeño, o migrar a CPU dedicada— siguen pendientes.
 
-- **La guardia por umbral es débil, y el reranker no la sustituye.** Con el modelo multilingüe, el score de relevancia (`1 - d/√2`) vive en un rango muy comprimido: de los 100 candidatos de la búsqueda principal, pasan el umbral de 0,40 el 100 % en proyectos con vocabulario legal normal, el 49 % en un proyecto sin datos personales, el 17 % en una consulta off-topic (una app de recetas) y solo el 4 % en un dominio muy lejano (una consulta sobre plantas). El umbral solo filtra en dominios muy alejados; en cualquier proyecto con vocabulario legal pasan los 100 candidatos, así que el 404 por falta de cobertura solo es alcanzable si además no se activa ninguna INJECTION. Se evaluó sustituirlo por una guardia sobre la puntuación del CrossEncoder y se descartó con datos: en `off-topic-recetas` (una app de recetas sin usuarios ni datos) la guía "Privacidad desde el Diseño" puntúa 0,37 y "Deber de informar" 0,20, mientras que en `ccii-ingeniero-colegiado` los chunks correctos del Código CCII puntúan 0,05–0,07 — un umbral que eliminase ese ruido eliminaría también normativa correcta, porque el reranker ordena por género textual (guías explicativas por encima de texto legal), no por aplicabilidad. La aplicabilidad la siguen decidiendo EXCLUSIONS/INJECTIONS —reglas deterministas sobre el cuestionario—, no la similitud semántica.
+- **La guardia por umbral es débil, y el reranker no la sustituye.** Con el modelo multilingüe, el score de relevancia (`1 - d/√2`) vive en un rango muy comprimido: de los 100 candidatos de la búsqueda principal, pasan el umbral de 0,40 el 100 % en proyectos con vocabulario legal normal, el 49 % en un proyecto sin datos personales, el 17 % en una consulta off-topic (una app de recetas) y solo el 4 % en un dominio muy lejano (una consulta sobre plantas). El umbral solo filtra en dominios muy alejados; en cualquier proyecto con vocabulario legal pasan los 100 candidatos, así que el 404 por falta de cobertura solo es alcanzable si además no se activa ninguna INJECTION. Se evaluó sustituirlo por una guardia sobre la puntuación del CrossEncoder y se descartó con datos: en `off-topic-recetas` (una app de recetas sin usuarios ni datos) la guía "Privacidad desde el Diseño" puntúa 0,37 y "Deber de informar" 0,20, mientras que en `ccii-ingeniero-colegiado` los chunks correctos del Código CCII puntúan 0,05–0,07 — un umbral que eliminase ese ruido eliminaría también normativa correcta, porque el reranker ordena por género textual (guías explicativas por encima de texto legal), no por aplicabilidad. Las EXCLUSIONS e INJECTIONS, reglas deterministas sobre el cuestionario, deciden qué entra o sale de los diez documentos que tienen regla. Los otros doce dependen solo de la similitud semántica (ver "Filtrado por reglas: EXCLUSIONS e INJECTIONS").
 
 ---
 
@@ -611,4 +654,12 @@ El `README.md` de GitHub nunca se toca; `README_hf.md` no llega al Space (solo s
 
 ## 📄 Licencia
 
-MIT © 2026 gustavintavo8
+El código se publica con licencia MIT © 2026 gustavintavo8 (fichero `LICENSE`). La licencia MIT cubre solo el código.
+
+El índice `chroma_db/`, que se publica en este repositorio y en la imagen del Space, contiene fragmentos de textos de terceros que conservan sus propias condiciones:
+
+- **Guías de la AEPD:** licencia CC BY-NC-SA 4.0, que solo permite el uso no comercial, con atribución y con las mismas condiciones. Los fragmentos están troceados y algunos llevan prefijos añadidos por LegalDev.
+- **Textos del BOE y de EUR-Lex:** se reutilizan con la atribución que piden sus avisos legales. Las disposiciones legales no son objeto de propiedad intelectual (art. 13 LPI).
+- **Código Ético y Deontológico del CCII:** no lleva aviso de licencia. Queda pendiente decidir si se pide autorización al CCII o se retira del índice público (hallazgo C-31, decisión D-13 de la revisión jurídica del 10.10.2026).
+
+Atribuciones completas, enlaces y fechas en [`NOTICE.md`](NOTICE.md).

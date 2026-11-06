@@ -41,7 +41,7 @@ def test_e2e_pipeline_retrieves_from_real_chroma(tiny_pdf_dir):
     from app.ingest import _load_pages
     from app.legal_splitter import split_document
     from app.models import QuestionnaireInput
-    from app.rag import run_pipeline
+    from app.rag import DISCLAIMER, run_pipeline
 
     pdf_path = next(tiny_pdf_dir.glob("*.pdf"))
     chunks = [c for page in _load_pages(pdf_path) for c in split_document(page)]
@@ -105,5 +105,6 @@ def test_e2e_pipeline_retrieves_from_real_chroma(tiny_pdf_dir):
 
         assert result.chunks_utilizados >= 1
         assert "TestNorm" in result.normativas_detectadas
-        assert result.respuesta_completa.startswith("Respuesta E2E")
+        informe = result.respuesta_completa.removeprefix(f"> {DISCLAIMER}\n\n")
+        assert informe.startswith("Respuesta E2E")
         assert result.llm_model == "e2e-primary-model"

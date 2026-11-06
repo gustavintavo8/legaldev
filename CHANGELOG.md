@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- El aviso de no asesoramiento abre y cierra `respuesta_completa`, además de ir en el campo `disclaimer`, para que acompañe al informe cuando se copia o cuando un cliente solo muestra ese texto.
+- `NOTICE.md`: licencias y atribución de los textos de terceros del índice (guías de la AEPD con CC BY-NC-SA 4.0, BOE, EUR-Lex y CCII). Sección «Privacidad y datos» en el README con lo que trata hoy el servicio y lo que falta por publicar.
 - Modelo de respaldo (`GROQ_FALLBACK_MODEL`, por defecto `openai/gpt-oss-20b`): si el principal falla por cualquier causa se reintenta con él; evento `llm_fallback` en logs y métrica `legaldev_llm_fallback_total{reason}`.
 - Comprobación del modelo al arrancar (`GROQ_VERIFY_MODEL_ON_STARTUP`): log ERROR si Groq responde 404; resultado en `/health/deep` junto a `groq_model` y `groq_fallback_model`.
 - `RAGResponse.llm_model`: modelo que generó cada informe.
@@ -21,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `tools/eval_retrieval.py --chroma-path` y comprobación de modelo del índice; `make eval-sweep`.
 
 ### Changed
+- Documentación del corpus (`docs/CORPUS_SOURCES.md`, README): títulos y fechas oficiales de las guías de la AEPD, marca «EN REVISIÓN», versiones que no incorporan correcciones o modificaciones (RGPD, Reglamento de IA, Data Act, DGA), ámbito del ENS (sector público y proveedores por contrato), búsquedas auxiliares sin filtro por fuente y estado actual del DSA.
 - Índice ChromaDB reconstruido (2026-09-12) con el splitter v2 a partir de los 22 documentos descargados de sus fuentes oficiales (EUR-Lex, BOE, AEPD, CCII; ver `docs/CORPUS_SOURCES.md`): 13.756 chunks, `corpus_version` `7a2029a4dfd8`, `.index_meta.json` presente (la guardia de arranque ya verifica el modelo de embeddings). La «Directiva de Responsabilidad por Productos con IA» corresponde a la Directiva (UE) 2024/2853 en vigor.
 - `GROQ_MAX_TOKENS` por defecto 4000 → 8000 (en gpt-oss los tokens de razonamiento cuentan como salida).
 - Retrieval unificado en `_retrieve` (API y eval ejecutan el mismo código); timeout global `RETRIEVAL_TIMEOUT` (60 s) sustituye a `CHROMA_TIMEOUT`.
