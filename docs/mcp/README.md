@@ -1,16 +1,18 @@
 # Servidor MCP de LegalDev
 
-**Estado: propuesto.** No hay servidor MCP en ejecución: `app/mcp_server.py` es un esqueleto
-que no se monta en la aplicación y `MCP_ENABLED` vale `false` y todavía no tiene efecto.
-Requisitos RF-22 a RF-25, RNF-15, RNF-16 y RNF-18 a RNF-21; caso de uso CU-07; pruebas
-PP-01 a PP-08 y PP-13 a PP-18; criterio CA-09; paquete de trabajo PT2.
+**Estado: implementado, desactivado por defecto.** `POST /mcp` existe cuando
+`MCP_ENABLED=true` y `API_KEYS` no está vacía; sin claves no se monta aunque se active
+(RNF-15). Requisitos RF-22 a RF-25, RNF-15, RNF-16 y RNF-18 a RNF-21; caso de uso CU-07;
+pruebas PP-01 a PP-08 y PP-13 a PP-17 (PP-18 pendiente de RNF-20); criterio CA-09; paquete de
+trabajo PT2. No está desplegado en el Space de Hugging Face.
 
 ## Diseño resumido
 
-- Punto de entrada `/mcp` en la misma aplicación FastAPI, con transporte Streamable HTTP de la
-  revisión **2026-07-28** de la especificación, escrito con el SDK oficial de Python (línea
-  2.x; la versión la fija la prueba de concepto de PT2). Comparte proceso, caché y claves de
-  API con la API REST a través de la capa de servicio común (`app/service.py`).
+- Punto de entrada `/mcp` en la misma aplicación FastAPI, con transporte Streamable HTTP sin
+  estado, escrito con el SDK oficial de Python **`mcp==2.3.0`** (`MCPServer`). Comparte
+  proceso, caché, limitador y claves de API con la API REST a través de la capa de servicio
+  común (`app/service.py`): `POST /v1/analyze` y `analizar_proyecto` usan la misma entrada de
+  caché.
 - Capa fina: las herramientas validan, delegan en el motor a través de `app/service.py` y
   traducen el resultado. No añaden lógica de recuperación ni de generación; la prueba de
   equivalencia PP-05 lo fija como invariante comparando los identificadores de los
@@ -24,8 +26,9 @@ PP-01 a PP-08 y PP-13 a PP-18; criterio CA-09; paquete de trabajo PT2.
 | `consultar_obligaciones` | RF-25 | `normativa`, `contexto` (máx. 500 caracteres) | Fragmentos de esa normativa (identificador, página, artículo, texto), en el orden del reordenador, sin llamar al modelo | `readOnlyHint`, `openWorldHint: false` |
 
 Identificadores comunes: la normativa es la raíz del nombre de fichero (`RGPD`); el fragmento,
-los 12 primeros hexadecimales del MD5 de su texto (`service.fragment_id`); el artículo, el
-número como cadena; la página, en base 1.
+los 12 primeros hexadecimales del MD5 de su texto (`app/fragments.py`); el artículo, el
+número como cadena (nulo si el fragmento no lo tiene, como todos los del RGPD con el índice
+actual); la página, en base 1.
 
 ## Lo que exige la revisión 2026-07-28
 
@@ -43,30 +46,40 @@ Resumen del [registro de cambios](https://modelcontextprotocol.io/specification/
 - Sampling, Roots y Logging, obsoletos. LegalDev no los necesita: llama directamente a la API
   de Groq, que es la migración que recomienda la especificación para Sampling.
 
-Compatibilidad con la revisión 2025-11-25: decisión abierta (21-analisis). Un cliente de esa
-revisión empieza por `initialize` sin las cabeceras nuevas y recibe 400; el mensaje debe
-nombrar las versiones soportadas. Si los clientes de la demostración siguen en 2025-11-25,
-hará falta un servidor de doble era.
+Compatibilidad con la revisión 2025-11-25: **servidor de doble era** (decidido en la prueba
+de concepto). El SDK clasifica cada petición por sus cabeceras: con `MCP-Protocol-Version`
+2026-07-28 aplica la revisión nueva; sin ella (o con una versión anterior en la cabecera), la
+de `initialize`. Así funcionan también los asistentes que aún no hablan 2026-07-28, y
+ninguna de las dos eras guarda estado (no se emite `Mcp-Session-Id`).
 
 ## Seguridad
 
-`app/mcp_guard.py`, en el orden de 22-arquitectura («Flujo sin estado de una invocación»,
-paso 3), antes de despachar el JSON-RPC:
+Quién comprueba qué, en este orden (`mcp_guard.CHECK_ORDER`):
 
-1. `Origin` (RNF-18): 403 si viene y no está en una lista propia de `/mcp`, independiente de
-   CORS (PP-16).
-2. Cabeceras (RNF-16): 400 con `HeaderMismatch` (PP-14).
-3. Versión (RNF-16): 400 con `UnsupportedProtocolVersionError` y las soportadas (PP-01).
-4. Clave de API (RNF-15): siempre obligatoria; 401 sin clave, 403 con una desconocida. Sin
-   `API_KEYS` la ruta no se monta (PP-07).
-5. Límite (RNF-21): solo `tools/call` de `analizar_proyecto`, la única herramienta que consume
-   cuota del modelo; por clave de API y, si no la hay, por IP; 429 (PP-17).
+1. `Origin` (RNF-18, `McpGuard`): 403 si viene y no está en `MCP_ALLOWED_ORIGINS`, una lista
+   propia de `/mcp` independiente de CORS (que admite `*`; esta lista no) (PP-16).
+2. Clave de API (RNF-15, `McpGuard`): siempre obligatoria; 401 sin clave (con
+   `WWW-Authenticate: ApiKey header="X-API-Key"`), 403 con una desconocida (PP-07).
+3. Límite (RNF-21, `McpGuard`): solo `tools/call` de `analizar_proyecto`, la única
+   herramienta que consume cuota del modelo; mismo cupo (`RATE_LIMIT`) y mismo almacén que la
+   API, por resumen SHA-256 de la clave; 429 con `Retry-After` (PP-17). Método y herramienta
+   se leen del cuerpo, no de `Mcp-Name`, para que los clientes de la era antigua no se libren.
+4. Cabeceras (RNF-16, SDK): 400 con `HeaderMismatch` (-32020) si `Mcp-Method`, `Mcp-Name` o la
+   versión de la cabecera no coinciden con el cuerpo (PP-14).
+5. Versión y `_meta` (RNF-16, SDK): 400 con `UnsupportedProtocolVersionError` (-32022) y las
+   soportadas, o -32602 si faltan la versión o las capacidades del cliente (PP-01).
 
-Además: descripciones de herramientas y del campo `descripcion_breve` estáticas y fijadas por
+Después: herramienta desconocida, -32602 (middleware `reject_unknown_tools`); argumentos
+inválidos, resultado con `isError` y los campos que fallan, sin repetir los valores (PP-04).
+GET y DELETE responden 405 desde la propia ruta; el cuerpo admite como mucho 256 KiB (413).
+
+Además: descripciones, títulos, instrucciones y descripciones de campo estáticos, fijados por
 una prueba de instantánea (RNF-15); registros sin la descripción libre ni el `contexto`
-(PP-08); salida saneada, sin reproducir la descripción ni órdenes al asistente (RNF-20,
-PP-18); progreso por etapas y cancelación al cerrar el flujo SSE (RNF-19); etiqueta `via`
-(`rest`, `mcp` o `ci`) en métricas y registros.
+(PP-08, comprobado a nivel DEBUG en todos los registradores); `structuredContent.cuestionario`
+sin `descripcion_breve`; progreso cada 5 s mientras se genera el informe si el cliente envía
+`progressToken`, y cancelación de la tarea si cierra el flujo (RNF-19); etiqueta `via` en el
+registro del pipeline y en `legaldev_analyze_requests_total`. Pendiente: saneado de la salida
+del modelo (RNF-20) y la medición de PP-18 con el modelo real.
 
 ## Configuración de clientes
 
@@ -87,50 +100,74 @@ memoria. Ninguno lleva la clave escrita: cada cliente la toma de un sitio que no
   `claude mcp add --transport http legaldev <URL>/mcp --header "X-API-Key: $LEGALDEV_API_KEY"`,
   que guarda la configuración en `~/.claude.json`, fuera del repositorio.
 
-En local, la URL es `http://localhost:8000/mcp`. La comprobación se hace con el modo de línea
-de órdenes de MCP Inspector (`npx @modelcontextprotocol/inspector --cli --method tools/list
---transport http --server-url <URL>/mcp --header "X-API-Key: $LEGALDEV_API_KEY"`), que debe
-listar las tres herramientas.
+En local, la URL es `http://localhost:8000/mcp`, con `MCP_ENABLED=true` y una clave en
+`API_KEYS`. La comprobación se puede hacer con el modo de línea de órdenes de MCP Inspector
+(`npx @modelcontextprotocol/inspector --cli --method tools/list --transport http --server-url
+<URL>/mcp --header "X-API-Key: $LEGALDEV_API_KEY"`), que debe listar las tres herramientas.
 
-TODO(PT2/CU-07): comprobar el registro de `/mcp` en VS Code, Cursor, Claude Code y MCP
-Inspector con la versión vigente de cada cliente y, sobre todo, qué revisión de MCP hablan;
-completar con el puente `stdio` para los clientes que solo lo admiten.
+Comprobado el 06/11/2026 con el cliente del propio SDK por HTTP contra el índice real (22
+documentos), en las dos eras (`mode="auto"` negocia 2026-07-28; `mode="legacy"`, 2025-11-25):
+las tres herramientas, los errores de normativa desconocida y de cuestionario inválido, la
+herramienta desconocida (-32602) y las notificaciones de progreso. `consultar_obligaciones`
+tarda unos 4 s en CPU (búsqueda y reordenador); `analizar_proyecto` no se probó con Groq real.
 
-## Diferencias con la memoria
+TODO(PT2/CU-07): registrar `/mcp` en VS Code, Cursor y Claude Code con la versión vigente de
+cada cliente y anotar qué revisión negocia cada uno; puente o modo `stdio` para los clientes
+que solo lo admiten.
 
-Comprobado contra la memoria recortada del 25/09/2026. Ya no queda ninguna diferencia por la
-inicialización: RF-22, RNF-16, PP-01, PI6, CA-09, CU-07 y 22-arquitectura describen el flujo
-sin `initialize`, y PP-01 es ahora «Versión y capacidades en cada petición» (PP-13 cubre
-`server/discover`).
+## Decisiones de la prueba de concepto (06/11/2026)
 
-Quedan decisiones que la memoria deja abiertas o describe de forma incoherente entre
-capítulos; el esqueleto sigue la opción indicada y deja el TODO correspondiente:
+- **SDK `mcp==2.3.0`.** Atiende la revisión 2026-07-28 y las anteriores, y valida él mismo
+  cabeceras, versión, `_meta` y métodos eliminados; no se reimplementa nada de eso.
+- **Doble era.** Ver arriba. Cambia RNF-16 y la prueba que esperaba un 400 para el
+  `initialize` de 2025-11-25: ahora se atiende.
+- **Orden de las comprobaciones.** El de 23-detalle: `Origin`, clave y límite en una guarda
+  delante del SDK; cabeceras y versión, en el SDK. Poner las cabeceras antes que la clave
+  (22-arquitectura y CU-07) obligaría a duplicar la validación del SDK.
+- **Herramienta desconocida.** El SDK la devuelve como resultado con `isError`; un middleware
+  la convierte en el error -32602 que piden `tab:ana-errores-mcp` y PP-04.
+- **`Host`.** La comprobación de `Host`/`Origin` del SDK está desactivada: la de `Origin` la
+  hace la guarda con su propia lista, y la de `Host` exigiría enumerar los dominios del
+  despliegue. Con la clave siempre obligatoria y `Origin` comprobado, el DNS rebinding no
+  alcanza a las herramientas.
+- **Ruta exacta.** `/mcp` es una ruta, no un `Mount`, que respondería 307 a `/mcp` (el cliente
+  del SDK no sigue esa redirección).
+- **Validación estricta.** Los argumentos se validan con los modelos Pydantic en modo estricto
+  sobre JSON, como el esquema publicado: `"true"` no es un booleano. La API REST sigue en modo
+  flexible. PP-02 comprueba que esquema y herramienta dan el mismo veredicto en 11 casos.
+- **Esquema publicado.** El de `QuestionnaireInput` con las referencias en línea, una
+  descripción por campo (las preguntas del formulario de la web) y `if`/`then` para
+  `usa_ia` -> `tipo_ia`. Un cuestionario inválido recibe todos los fallos a la vez, también
+  el de `tipo_ia` cuando falla otro campo.
+- **Sin cobertura.** Resultado normal con `sin_cobertura: true`, sin normativas y con la lista
+  de las indexadas en el texto.
+- **`consultar_obligaciones`.** Sin LLM y sin umbral (quien pregunta ya eligió la normativa):
+  30 candidatos filtrados por documento, reordenados, 6 devueltos. Identificador exacto,
+  sensible a mayúsculas; uno desconocido devuelve la lista de válidos.
+- **Clave del límite.** Por clave de API (resumen SHA-256), y por IP solo si no la hubiera
+  (inalcanzable con RNF-15). El «tope diario por clave» del modelo de amenazas sigue sin
+  concretar.
+- **stdio.** Aplazado: `run_stdio` sigue sin implementar.
 
-- **Orden de las comprobaciones de `/mcp`.** 22-arquitectura y CU-07 comprueban origen,
-  cabeceras, versión, clave y límite; 23-detalle pone un middleware anterior al SDK con
-  `Origin`, clave y límite, y las cabeceras después. Se sigue 22-arquitectura.
-- **Clave del límite.** RNF-21, 22-arquitectura y 23-detalle dicen «por clave e IP»;
-  `tab:ana-errores-mcp`, «por clave o, si no la hay, por IP». Se sigue esta última (con la
-  clave obligatoria, equivale a por clave). El «tope diario por clave» del modelo de
-  amenazas está sin concretar.
-- **`consultar_obligaciones`.** RF-25, 22-arquitectura y 23-detalle la definen sin LLM
-  (fragmentos con su localización); la tabla de herramientas de 31-manual-usuario («con citas
-  verificadas»), el objetivo y el flujo 3a de CU-07 («obligaciones de una normativa») y el
-  orden de recorte de 05-metodologia («en una versión determinista sin LLM») describen aún
-  la variante que redacta obligaciones. Se sigue RF-25.
-- **Esquema de `analizar_proyecto`.** 22-arquitectura y 23-detalle publican la dependencia
-  `usa_ia` -> `tipo_ia` con `if`/`then`; la tercera precisión de 20-requisitos dice que el
-  esquema publicado no la expresa. Se sigue 22/23; el servidor revalida siempre con Pydantic.
-- **stdio.** 22-arquitectura y 30-manual-instalacion prevén un puente local hacia el servidor
-  remoto; RF-22, la precondición de CU-07 y el riesgo de latencia de 05-metodologia suponen
-  el servidor ejecutándose en local. Sin decidir (`run_stdio`).
-- **Guías de la AEPD sin articulado.** La memoria propone tipificarlas por sección o por un
-  vocabulario controlado; el andamiaje proponía páginas. Sin decidir: hasta entonces quedan
-  «sin tipificar».
-- **Forma de `sin_mapeo` en la evidencia.** `lst:det-evidencia` solo la muestra vacía; el
-  esquema toma normativa, artículo y cita de `lst:det-alg-tipificacion`.
+## Cambios que necesita la memoria
 
-TODO(PT2/RNF-16): trasladar a la memoria lo que decida la prueba de concepto de PT2.
+- RNF-16, 21-analisis y la prueba RNF-16 de 24-pruebas: doble era en lugar de rechazar el
+  `initialize`; PP-14 solo puede exigir coherencia de cabeceras, no su presencia.
+- 22-arquitectura («Flujo sin estado de una invocación») y CU-07 (paso 5): orden de las
+  comprobaciones de 23-detalle.
+- 04-alternativas y 23-detalle: versión fijada del SDK (2.3.0) y lo que valida por sí mismo.
+- 31-manual-usuario (tabla de herramientas), objetivo y flujo 3a de CU-07 y orden de recorte
+  de 05-metodologia: `consultar_obligaciones` no redacta obligaciones; devuelve fragmentos.
+- 20-requisitos (tercera precisión de la tabla de RF): el esquema publicado sí expresa
+  `usa_ia` -> `tipo_ia`.
+- RNF-21, 22-arquitectura y 23-detalle: el límite es por clave («o, si no la hay, por IP»),
+  como `tab:ana-errores-mcp`.
+- 30-manual-instalacion: variables `MCP_ENABLED` y `MCP_ALLOWED_ORIGINS`.
+- tab:det-mcp-herramientas: el cuestionario devuelto excluye `descripcion_breve`; campo
+  `sin_cobertura`.
+
+Siguen abiertas, como estaban: tipificación de las guías de la AEPD sin articulado y forma de
+`sin_mapeo` en la evidencia (OE2).
 
 ## Acción de integración continua
 
