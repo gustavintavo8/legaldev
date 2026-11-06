@@ -11,9 +11,10 @@ de entregar la petición al SDK; las dos últimas, el SDK:
 1. ``Origin`` (RNF-18, DNS rebinding): si la cabecera está presente y no está en
    ``MCP_ALLOWED_ORIGINS``, 403, con independencia de CORS. Los clientes MCP de escritorio
    no envían ``Origin``; los navegadores sí.
-2. Clave de API (RNF-15, PP-07): sin cabecera, 401; clave desconocida, 403. A diferencia de
-   ``app.main._verify_api_key``, que deja la API abierta si no hay claves configuradas,
-   ``/mcp`` nunca queda abierto: sin ``API_KEYS`` la ruta no se monta.
+2. Clave de API (RNF-15, PP-07): sin cabecera, 401; clave desconocida, 403. Las claves son
+   las de ``MCP_API_KEYS`` o, si no hay, las de ``API_KEYS`` (``settings.mcp_key_set``). A
+   diferencia de ``app.main._verify_api_key``, que deja la API abierta si no hay claves,
+   ``/mcp`` nunca queda abierto: sin claves la ruta no se monta.
 3. Límite (RNF-21, PP-17): solo ``tools/call`` de las herramientas que consumen cuota del
    modelo (``RATE_LIMITED_TOOLS``); al superarlo, 429. Método y herramienta se leen **del
    cuerpo**, no de ``Mcp-Name``: un cliente de la era del ``initialize`` no envía esa
@@ -281,7 +282,7 @@ class McpGuard:
                 request.headers.get("origin"), config.settings.mcp_origin_set
             )
             api_key = request.headers.get("x-api-key")
-            check_api_key(api_key, config.settings.api_key_set)
+            check_api_key(api_key, config.settings.mcp_key_set)
             if invalido is not None:
                 raise invalido
             if is_rate_limited(*_invocation(payload)):

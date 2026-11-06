@@ -37,9 +37,12 @@ class Settings(BaseSettings):
     retrieval_timeout: float = 60.0
     log_level: str = "INFO"
     api_keys: str = ""
-    # Servidor MCP en POST /mcp (app/mcp_server.py). Solo se monta si además API_KEYS no está
-    # vacía (RNF-15: /mcp exige siempre clave; 22-arquitectura, «Despliegue»).
+    # Servidor MCP en POST /mcp (app/mcp_server.py). Solo se monta si hay claves para él
+    # (RNF-15: /mcp exige siempre clave; 22-arquitectura, «Despliegue»).
     mcp_enabled: bool = False
+    # Claves propias de /mcp. Si está vacía, /mcp usa API_KEYS. Sirve para desplegar con la web
+    # pública, que llama a /v1/analyze sin clave: API_KEYS vacía y /mcp con sus claves.
+    mcp_api_keys: str = ""
     # Orígenes de navegador admitidos en /mcp (RNF-18, protección frente a DNS rebinding),
     # separados por comas. Independiente de ALLOWED_ORIGINS (CORS de la web): los clientes MCP
     # de escritorio no envían Origin, así que la lista vacía solo rechaza a los navegadores.
@@ -69,6 +72,14 @@ class Settings(BaseSettings):
                 "MCP_ALLOWED_ORIGINS no admite '*': la validación de Origin no protegería de nada"
             )
         return v
+
+    @property
+    def mcp_key_set(self) -> frozenset[str]:
+        """Claves que abren /mcp: MCP_API_KEYS si existe; si no, las de API_KEYS."""
+        propias = frozenset(
+            k.strip() for k in self.mcp_api_keys.split(",") if k.strip()
+        )
+        return propias or self.api_key_set
 
     @property
     def mcp_origin_set(self) -> frozenset[str]:

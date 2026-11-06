@@ -184,8 +184,20 @@ AVISO: Final = (
 
 
 class AnalisisProyecto(BaseModel):
-    """``structuredContent`` de ``analizar_proyecto`` (tab:det-mcp-herramientas)."""
+    """``structuredContent`` de ``analizar_proyecto`` (tab:det-mcp-herramientas).
 
+    Incluye el informe completo: hay clientes (Claude Code, por ejemplo) que, si la
+    herramienta declara ``outputSchema``, solo pasan al modelo el contenido estructurado y no
+    el texto, así que sin este campo el asistente vería las normativas y los fragmentos pero
+    no las obligaciones ni las citas (prueba con Claude Code del 06/11/2026).
+    """
+
+    informe: str = Field(
+        description=(
+            "Informe en Markdown: por normativa, cita literal con su localización, "
+            "interpretación y acciones de implementación; abre y cierra con el aviso."
+        )
+    )
     # El cuestionario validado, con los valores por defecto aplicados y sin descripcion_breve:
     # el resultado no refleja el texto libre del usuario (RNF-20, PP-18).
     cuestionario: dict[str, Any]
@@ -298,8 +310,12 @@ def tool_error_result(codigo: str, mensaje: str) -> CallToolResult:
 
 
 def _structured_result(texto: str, estructurado: BaseModel) -> CallToolResult:
+    """Texto legible seguido del JSON del contenido estructurado (sin repetir ``informe``,
+    que ya es el texto), y el contenido estructurado completo."""
     data = estructurado.model_dump(mode="json")
-    serializado = json.dumps(data, ensure_ascii=False, indent=2)
+    serializado = json.dumps(
+        {k: v for k, v in data.items() if k != "informe"}, ensure_ascii=False, indent=2
+    )
     return CallToolResult(
         content=[
             TextContent(type="text", text=f"{texto}\n\n```json\n{serializado}\n```")
@@ -444,16 +460,17 @@ def build_mcp_server(state, *, version: str = "0.0.0") -> MCPServer:
             )
         except service.NoCoverageError:
             indexadas = ", ".join(sorted(state.indexed_normativas))
+            texto = (
+                "Ninguna normativa del índice supera el umbral de relevancia para este "
+                f"proyecto. Normativas indexadas: {indexadas}. {AVISO}"
+            )
             resultado = AnalisisProyecto(
+                informe=texto,
                 cuestionario=eco,
                 normativas_detectadas=[],
                 fragmentos=[],
                 corpus_version=state.corpus_version,
                 sin_cobertura=True,
-            )
-            texto = (
-                "Ninguna normativa del índice supera el umbral de relevancia para este "
-                f"proyecto. Normativas indexadas: {indexadas}. {AVISO}"
             )
             return _structured_result(texto, resultado)
         except service.RetrievalTimeoutError:
@@ -468,6 +485,7 @@ def build_mcp_server(state, *, version: str = "0.0.0") -> MCPServer:
             )
         response = analysis.result.response
         resultado = AnalisisProyecto(
+            informe=response.respuesta_completa,
             cuestionario=eco,
             normativas_detectadas=response.normativas_detectadas,
             fragmentos=analysis.result.fragmentos,
@@ -596,14 +614,17 @@ def mount(app) -> None:
 
 
 def mount_if_enabled(app) -> bool:
-    """Monta ``/mcp`` si ``MCP_ENABLED`` y hay ``API_KEYS``; sin claves, avisa y no lo monta.
+    """Monta ``/mcp`` si ``MCP_ENABLED`` y hay claves (``MCP_API_KEYS`` o ``API_KEYS``); sin
+    claves, avisa y no lo monta.
 
     RNF-15: ``/mcp`` exige siempre clave de API, así que nunca queda abierto.
     """
     if not config.settings.mcp_enabled:
         return False
-    if not config.settings.api_key_set:
-        logger.warning("MCP_ENABLED=true sin API_KEYS: /mcp no se monta (RNF-15)")
+    if not config.settings.mcp_key_set:
+        logger.warning(
+            "MCP_ENABLED=true sin MCP_API_KEYS ni API_KEYS: /mcp no se monta (RNF-15)"
+        )
         return False
     mount(app)
     return True

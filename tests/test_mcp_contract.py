@@ -297,12 +297,17 @@ def test_pp03_analizar_proyecto_returns_report_and_structured_content(
     assert data["corpus_version"] == "abc123def456"
     assert data["llm_model"]
     assert data["sin_cobertura"] is False
+    # El informe va también en structuredContent: hay clientes (Claude Code) que solo pasan
+    # al modelo el contenido estructurado cuando la herramienta declara outputSchema.
+    assert "Respuesta de prueba sobre RGPD" in data["informe"]
+    assert data["informe"].startswith("> ⚠️")
+    assert data["informe"].count("no constituye asesoramiento legal") == 2
     assert "descripcion_breve" not in data["cuestionario"]
     assert data["cuestionario"]["tipo_proyecto"] == sample_input_dict["tipo_proyecto"]
     texto = text_of(result)
-    assert "Respuesta de prueba sobre RGPD" in texto
-    assert "no constituye asesoramiento legal" in texto
+    assert texto.startswith(data["informe"])
     assert '"corpus_version": "abc123def456"' in texto
+    assert '"informe"' not in texto  # el JSON del texto no repite el informe
 
 
 def test_pp04_invalid_questionnaire_is_tool_error_not_protocol_error(
@@ -409,6 +414,7 @@ def test_rf23_no_coverage_is_tool_result_not_http_404(
     assert result.is_error is False
     data = result.structured_content
     assert data["sin_cobertura"] is True
+    assert "LOPDGDD, RGPD" in data["informe"]
     assert data["normativas_detectadas"] == []
     assert data["fragmentos"] == []
     assert "LOPDGDD, RGPD" in text_of(result)

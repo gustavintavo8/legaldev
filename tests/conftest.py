@@ -1,6 +1,12 @@
 import os
 
 os.environ.setdefault("GROQ_API_KEY", "test-key-not-real")
+# Las pruebas no deben depender del .env local del desarrollador (con claves o con MCP activado):
+# las variables de entorno tienen prioridad sobre el .env en pydantic-settings.
+os.environ["API_KEYS"] = ""
+os.environ["MCP_ENABLED"] = "false"
+os.environ["MCP_API_KEYS"] = ""
+os.environ["MCP_ALLOWED_ORIGINS"] = ""
 
 from contextlib import contextmanager
 from unittest.mock import MagicMock, patch

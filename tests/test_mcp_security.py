@@ -94,11 +94,12 @@ def test_pp07_without_api_keys_mcp_is_never_mounted(caplog):
     with (
         patch.object(config.settings, "mcp_enabled", True),
         patch.object(config.settings, "api_keys", ""),
+        patch.object(config.settings, "mcp_api_keys", ""),
         caplog.at_level(logging.WARNING),
     ):
         assert mcp_server.mount_if_enabled(app) is False
     assert not mcp_server.is_mounted(app)
-    assert "sin API_KEYS" in caplog.text
+    assert "sin MCP_API_KEYS ni API_KEYS" in caplog.text
 
 
 def test_pp07_mcp_requires_api_key(mcp_http):
@@ -445,3 +446,54 @@ def test_composite_rate_limit_counts_every_window(mcp_http, sample_input_dict):
         assert (
             rpc(mcp_http, "tools/call", _analizar(sample_input_dict)).status_code == 429
         )
+
+
+# --------------------------------------------- claves propias de /mcp (despliegue con la web)
+
+
+def test_mcp_api_keys_take_precedence_over_api_keys():
+    """MCP_API_KEYS, si existe, es el único conjunto que abre /mcp; si no, API_KEYS."""
+    solo_api = Settings(groq_api_key="x", api_keys="a,b")
+    assert solo_api.mcp_key_set == frozenset({"a", "b"})
+    propias = Settings(groq_api_key="x", api_keys="a", mcp_api_keys=" m1 , m2 ")
+    assert propias.mcp_key_set == frozenset({"m1", "m2"})
+    assert Settings(groq_api_key="x").mcp_key_set == frozenset()
+
+
+def test_mcp_with_its_own_keys_leaves_the_rest_api_open(
+    mock_doc, mock_reranker, sample_input_dict
+):
+    """Despliegue con la web pública: API_KEYS vacía (la web llama sin clave a /v1/analyze)
+    y MCP_API_KEYS con las claves de los asistentes. /mcp exige una de ellas; la API REST
+    sigue abierta."""
+    from fastapi.testclient import TestClient
+
+    from tests.conftest import _patched_app
+
+    with (
+        patch.object(config.settings, "mcp_enabled", True),
+        patch.object(config.settings, "api_keys", ""),
+        patch.object(config.settings, "mcp_api_keys", "clave-mcp"),
+        _patched_app(mock_doc) as app,
+    ):
+        assert mcp_server.mount_if_enabled(app)
+        try:
+            with TestClient(app) as http:
+                assert (
+                    http.post("/v1/analyze", json=sample_input_dict).status_code == 200
+                )
+                assert rpc(http, "tools/call", LISTAR, key=None).status_code == 401
+                assert rpc(http, "tools/call", LISTAR, key="otra").status_code == 403
+                assert (
+                    rpc(http, "tools/call", LISTAR, key="clave-mcp").status_code == 200
+                )
+        finally:
+            mcp_server.unmount(app)
+
+
+def test_api_keys_do_not_open_mcp_when_it_has_its_own(mcp_http):
+    with patch.object(config.settings, "mcp_api_keys", "solo-mcp"):
+        assert (
+            rpc(mcp_http, "tools/call", LISTAR, key=MCP_TEST_KEYS[0]).status_code == 403
+        )
+        assert rpc(mcp_http, "tools/call", LISTAR, key="solo-mcp").status_code == 200
