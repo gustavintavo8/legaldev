@@ -12,15 +12,16 @@ mismo. El prompt no cambia (decisión D-1).
 
 Qué hace, en este orden:
 
-1. **Caracteres.** Quita las secuencias de escape ANSI y los caracteres de control (salvo el
-   tabulador y los saltos de línea), los de formato invisibles (ancho cero, dirección bidi,
+1. **Caracteres.** Normaliza los saltos de línea (CRLF y CR sueltos pasan a LF, como hace
+   marked al pintar). Quita las secuencias de escape ANSI y los caracteres de control (salvo
+   el tabulador y el salto de línea), los de formato invisibles (ancho cero, dirección bidi,
    etiquetas Unicode; se respeta el guion blando, que está en los textos oficiales) y los
    selectores de variación, salvo uno suelto detrás de un carácter visible (el de los emojis).
 2. **Bloques que imitan llamadas a herramientas**: etiquetas de llamada al estilo XML, los
    tokens especiales ``<|…|>``, el formato de gpt-oss (``to=functions.…``), las marcas
    ``[TOOL_CALLS]`` y los objetos JSON con forma de llamada (nombre y argumentos, o
    ``tools/call``), estén o no en un bloque de código; y los bloques de código que se anuncian
-   como llamada a herramienta.
+   como llamada a herramienta. El cierre de un objeto JSON se busca dentro de su párrafo.
 3. **HTML en bruto**: comentarios, declaraciones, bloques ``script``/``style``/``iframe``/
    ``svg``… con su contenido y las etiquetas de elementos HTML o con atributos ``=``. Una
    etiqueta sin atributos que ocupa sola un código en línea (`` `<script>` ``) se queda en su
@@ -30,16 +31,28 @@ Qué hace, en este orden:
    no sea ``http(s)`` a un dominio oficial del corpus (``DOMINIOS_OFICIALES``), de los que
    queda el texto, y los autoenlaces no oficiales, que pasan a código. ``[4](en adelante,
    RGPD)``, que está en el corpus, no es un enlace (el destino tiene espacios) y no se toca.
-5. **URL sueltas** (las que un visor convierte en enlace): se quedan las de un dominio oficial
-   y las que aparecen en los fragmentos que recibió el modelo, que se escribieron antes de la
-   petición y no pueden llevar datos del usuario; las demás se muestran como código, sin
-   enlace. El corpus tiene URL de más de 50 dominios no oficiales, así que quitarlas todas
-   rompería citas literales.
+   Las expresiones regulares reconocen un nivel de corchetes y de paréntesis anidados.
+   Detrás van tres reglas que no dependen de reconocer la construcción entera: todo «![»
+   que quede pierde el «!»; de toda «](» se lee el destino, con paréntesis a cualquier
+   profundidad, y se quita si no es oficial; y de todo «]:» seguido de algo que puede llevar
+   a otro sitio (``_parece_url``) se quita ese destino si no es oficial. Así caen también los
+   corchetes anidados a más niveles y las definiciones dentro de listas, con sangría o con
+   la etiqueta escapada o partida en dos líneas.
+5. **URL sueltas** (las que un visor convierte en enlace, vaya detrás de lo que vaya): se
+   quedan las de un dominio oficial y las que aparecen en los fragmentos que recibió el
+   modelo con el mismo host, que se escribieron antes de la petición y no pueden llevar
+   datos del usuario; las demás se muestran como código, sin enlace. El corpus tiene URL de
+   más de 50 dominios no oficiales, así que quitarlas todas rompería citas literales.
 6. **Bloques de código sin cerrar**: se cierran, para que no se traguen las secciones que
    añade el código ni, por MCP, el JSON del resultado.
 
 Los pasos 2 a 4 se repiten hasta que el texto no cambia, porque quitar algo puede formar otra
 construcción (``<scr<b>ipt>``).
+
+Coste: ningún bucle de Python vuelve a recorrer el texto por cada construcción (con 27
+entradas adversarias de 32.000 caracteres, la peor tardó 0,59 s el 12/11/2026).
+``rag.run_pipeline_detailed`` lo llama en un hilo, para no parar el bucle de eventos del
+proceso mientras tanto.
 
 Citas: ``sanear`` deja igual (comparando con ``citations.normalize``) los 13.756 fragmentos
 del índice real, medido el 12/11/2026, así que una cita literal de un fragmento real no deja
@@ -49,8 +62,10 @@ de verificarse, y es lo correcto.
 
 from __future__ import annotations
 
+import html
 import re
 import unicodedata
+from bisect import bisect_right
 from collections import Counter
 from collections.abc import Iterable
 from typing import Final
@@ -85,7 +100,7 @@ _ANSI_RE = re.compile(
 )
 _CONTROL: Final = frozenset(
     chr(c) for c in (*range(0x00, 0x20), *range(0x7F, 0xA0))
-) - {"\t", "\n", "\r"}
+) - {"\t", "\n"}
 _GUION_BLANDO: Final = "\u00ad"
 _SELECTORES_EMOJI: Final = frozenset("\ufe0e\ufe0f")
 
@@ -104,6 +119,10 @@ def _caracteres(texto: str, c: Counter) -> str:
         c["caracteres_control"] += 1
         return ""
 
+    # marked normaliza igual antes de pintar. Sin esto, «```\r» no cerraba un bloque para el
+    # saneado y sí para el visor: la URL de detrás quedaba como enlace y la valla que se
+    # añadía al final metía en un bloque de código las secciones del informe.
+    texto = texto.replace("\r\n", "\n").replace("\r", "\n")
     texto = _ANSI_RE.sub(_ansi, texto)
     salida: list[str] = []
     n = len(texto)
@@ -178,18 +197,14 @@ _MARCA_HERRAMIENTA_RE = re.compile(
 )
 # Un objeto JSON que empieza por una clave.
 _INICIO_OBJETO_RE = re.compile(r'\{\s*"')
-# Forma de llamada a herramienta dentro de un objeto JSON.
+# Forma de llamada a herramienta dentro de un objeto JSON: un nombre y unos argumentos, en
+# cualquier orden (dos búsquedas independientes, lineales; una con «(?=.*…)» recorría el
+# resto del texto por cada clave), o una de las claves o tipos propios de una llamada.
+_CLAVE_NOMBRE_RE = re.compile(
+    r'"(?:name|tool|tool_name|function|recipient_name)"\s*:\s*"[^"]*"'
+)
+_CLAVE_ARGUMENTOS_RE = re.compile(r'"(?:arguments|parameters|input|args|params)"\s*:')
 _LLAMADA_JSON_RES: Final = (
-    re.compile(
-        r'"(?:name|tool|tool_name|function|recipient_name)"\s*:\s*"[^"]*"'
-        r'(?=.*"(?:arguments|parameters|input|args|params)"\s*:)',
-        re.S,
-    ),
-    re.compile(
-        r'"(?:arguments|parameters|input|args|params)"\s*:'
-        r'(?=.*"(?:name|tool|tool_name|function|recipient_name)"\s*:\s*")',
-        re.S,
-    ),
     re.compile(r'"method"\s*:\s*"tools/call"'),
     re.compile(r'"(?:tool_calls|function_call|tool_use)"\s*:'),
     re.compile(r'"type"\s*:\s*"(?:tool_use|function|function_call|tool_call)"'),
@@ -209,12 +224,12 @@ _INFO_HERRAMIENTA: Final = frozenset(
 )
 
 
-def _fin_json(texto: str, i: int) -> int:
+def _fin_json(texto: str, i: int, tope: int) -> int:
     """Índice siguiente al objeto o lista JSON que empieza en ``texto[i]``, o -1 si no se
-    cierra. Tiene en cuenta las cadenas y sus escapes."""
+    cierra antes de ``tope``. Tiene en cuenta las cadenas y sus escapes."""
     pila = 0
     en_cadena = escape = False
-    for j in range(i, len(texto)):
+    for j in range(i, tope):
         ch = texto[j]
         if en_cadena:
             if escape:
@@ -235,6 +250,7 @@ def _fin_json(texto: str, i: int) -> int:
 
 
 _FIN_PARRAFO_RE = re.compile(r"\n[ \t]*\n")
+_ESPACIOS_RE = re.compile(r"\s*")
 
 
 def _fin_parrafo(texto: str, i: int) -> int:
@@ -243,25 +259,33 @@ def _fin_parrafo(texto: str, i: int) -> int:
 
 
 def _es_llamada(fragmento: str) -> bool:
+    if _CLAVE_NOMBRE_RE.search(fragmento) and _CLAVE_ARGUMENTOS_RE.search(fragmento):
+        return True
     return any(r.search(fragmento) for r in _LLAMADA_JSON_RES)
 
 
 def _objetos_llamada(texto: str, c: Counter) -> str:
     """Quita los objetos JSON de primer nivel con forma de llamada a herramienta.
 
-    Solo mira los de primer nivel (el objeto exterior entero, con los anidados dentro), así
-    que el coste es lineal; un objeto sin cerrar llega hasta el final del párrafo.
+    Solo mira los de primer nivel (el objeto exterior entero, con los anidados dentro). El
+    cierre se busca dentro del párrafo en que empieza el objeto: si no se cierra ahí (sin
+    cerrar, o con una línea en blanco dentro), el objeto llega hasta el final del párrafo.
+    Así cada carácter se recorre una vez. Buscando el cierre en todo el texto, cada «{"» sin
+    cerrar recorría el resto: 16.000 caracteres de «{"» y líneas en blanco tardaban 2,4 s.
     """
     salida: list[str] = []
     pos = 0
+    tope = -1
     while True:
         m = _INICIO_OBJETO_RE.search(texto, pos)
         if not m:
             break
         inicio = m.start()
-        fin = _fin_json(texto, inicio)
+        if inicio >= tope:  # el final del párrafo se calcula una vez por párrafo
+            tope = _fin_parrafo(texto, inicio)
+        fin = _fin_json(texto, inicio, tope)
         if fin == -1:
-            fin = _fin_parrafo(texto, inicio)
+            fin = tope
         if _es_llamada(texto[inicio:fin]):
             salida.append(texto[pos:inicio])
             salida.append(BLOQUE_RETIRADO)
@@ -281,9 +305,9 @@ def _marcas(texto: str, c: Counter) -> str:
             continue
         salida.append(texto[pos : m.start()])
         fin = m.end()
-        resto = len(texto[fin:]) - len(texto[fin:].lstrip())
-        if fin + resto < len(texto) and texto[fin + resto] in "[{":
-            cierre = _fin_json(texto, fin + resto)
+        k = _ESPACIOS_RE.match(texto, fin).end()
+        if k < len(texto) and texto[k] in "[{":
+            cierre = _fin_json(texto, k, _fin_parrafo(texto, k))
             fin = cierre if cierre != -1 else _fin_parrafo(texto, fin)
         salida.append(BLOQUE_RETIRADO)
         c["bloques_herramienta"] += 1
@@ -316,6 +340,23 @@ _VALLA_RE = re.compile(r"^( {0,3})(`{3,}|~{3,})(.*)$")
 _CIERRE_VALLA_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})[ \t]*$")
 
 
+def _apertura_valla(linea: str) -> re.Match | None:
+    """Línea que abre un bloque de código con valla, con la regla de CommonMark: una valla
+    de acentos graves no puede llevar un acento grave en la información (```` ```x` ```` es
+    texto). La usan ``_vallas`` y ``_tramos_de_codigo``, para que el saneado no tome por
+    código lo que el visor pinta como texto."""
+    m = _VALLA_RE.match(linea)
+    if m and m.group(2)[0] == "`" and "`" in m.group(3):
+        return None
+    return m
+
+
+def _cierra_valla(linea: str, valla: str) -> bool:
+    """¿Cierra ``linea`` el bloque abierto con ``valla``? Mismo carácter y al menos tantos."""
+    mc = _CIERRE_VALLA_RE.match(linea)
+    return bool(mc and mc.group(1)[0] == valla[0] and len(mc.group(1)) >= len(valla))
+
+
 def _vallas(texto: str, c: Counter, *, cerrar: bool) -> str:
     """Bloques de código delimitados por vallas (``` o ~~~).
 
@@ -327,17 +368,14 @@ def _vallas(texto: str, c: Counter, *, cerrar: bool) -> str:
     salida: list[str] = []
     i = 0
     while i < len(lineas):
-        m = _VALLA_RE.match(lineas[i])
-        if not m or (m.group(2)[0] == "`" and "`" in m.group(3)):
+        m = _apertura_valla(lineas[i])
+        if not m:
             salida.append(lineas[i])
             i += 1
             continue
         valla = m.group(2)
         j = i + 1
-        while j < len(lineas):
-            mc = _CIERRE_VALLA_RE.match(lineas[j])
-            if mc and mc.group(1)[0] == valla[0] and len(mc.group(1)) >= len(valla):
-                break
+        while j < len(lineas) and not _cierra_valla(lineas[j], valla):
             j += 1
         cerrada = j < len(lineas)
         contenido = lineas[i + 1 : j]
@@ -436,13 +474,53 @@ _IMAGEN_RE = re.compile(
 _IMAGEN_REF_RE = re.compile(r"!" + _TEXTO_MD + r"(?:\[[^\[\]\n]*\])?")
 _ENLACE_RE = re.compile(_TEXTO_MD + r"\(\s*" + _DESTINO_MD + _TITULO_MD + r"\s*\)")
 _AUTOENLACE_RE = re.compile(r"<([A-Za-z][A-Za-z0-9+.-]{1,31}:[^<>\s]*)>")
+# Definición de referencia al principio de una línea, detrás de cualquier combinación de
+# sangría, marcas de cita («>») y marcas de lista («-», «*», «+», «1.», «1)»), con escapes y
+# saltos de línea en la etiqueta. Se quita la línea entera; lo que no reconozca lo recoge
+# _RESTO_DEFINICION_RE.
 _DEFINICION_RE = re.compile(
-    r"^(?:[ ]{0,3}>[ ]?)*[ ]{0,3}\[[^\]\n]+\]:[ \t]*(?:\n[ \t]*)?(<[^<>\n]*>|\S+)"
-    r"[^\n]*(?:\n|$)",
+    r"^(?:[ \t]*(?:>|(?:[-+*]|\d{1,9}[.)])(?=[ \t])))*[ \t]*"
+    r"\[(?:[^\[\]\\]|\\.)+\]:[ \t]*(?:\n[ \t]*)?(<[^<>\n]*>|\S+)[^\n]*(?:\n|$)",
     re.M,
 )
-_PARECE_URL_RE = re.compile(r"^(?:[A-Za-z][A-Za-z0-9+.-]*:|//|www\.)", re.I)
 _HOST_VALIDO_RE = re.compile(r"[a-z0-9.-]+")
+
+# Últimos recursos (ver el paso 4 de la cabecera).
+# Los «!» delante de un «[»: sin ellos, ninguna construcción es una imagen.
+_RESTO_IMAGEN_RE = re.compile(r"!+(?=\[)")
+# Cola de un enlace en línea a partir de su «(»: destino entre <…> o sin espacios, con
+# paréntesis equilibrados hasta 32 niveles (CommonMark no pone límite; commonmark.js admite
+# 32), título opcional y «)». Los cuantificadores posesivos evitan la vuelta atrás: cada
+# intento cuesta lo que recorre.
+_PROFUNDIDAD_PARENTESIS: Final = 32
+
+
+def _destino_anidado(niveles: int) -> str:
+    patron = r"(?:[^\s()\\]|\\.)"
+    for _ in range(niveles):
+        patron = r"(?:[^\s()\\]|\\.|\(" + patron + r"*+\))"
+    return patron + "*+"
+
+
+_TITULO_COLA = r"""(?:"(?:[^"\\]|\\[\s\S])*+"|'(?:[^'\\]|\\[\s\S])*+'|\((?:[^()\\]|\\[\s\S])*+\))"""
+_COLA_RE = re.compile(
+    r"\(\s*+(<(?:[^<>\n\\]|\\.)*+>|"
+    + _destino_anidado(_PROFUNDIDAD_PARENTESIS)
+    + r")(?:\s++"
+    + _TITULO_COLA
+    + r")?+\s*+\)"
+)
+# Si la cola no se reconoce (más de 32 niveles, un paréntesis sin cerrar, un título roto),
+# se quita igualmente lo que va hasta el primer espacio cuando parece una URL no oficial.
+# Para decidir si lo parece basta el principio; el resto solo se lee si hay que quitarlo.
+_PRINCIPIO_COLA_RE = re.compile(r"\(\s*+(\S{1,64})")
+_TOKEN_COLA_RE = re.compile(r"\(\s*+(\S{1,2048})")
+# «]:» seguido de un destino: definición de referencia que _DEFINICION_RE no ha reconocido.
+_RESTO_DEFINICION_RE = re.compile(r"\]:[ \t]*(?:\n[ \t]*)?(<[^<>\n]*>|\S+)")
+# Para _parece_url: escapes de Markdown, lo que el navegador ignora y el principio de una URL.
+_ESCAPE_MD_RE = re.compile(r"\\([!-/:-@\[-`{-~])")
+_IGNORADOS_RE = re.compile(r"[\x00-\x20\x7f]+")
+_PRINCIPIO_URL_RE = re.compile(r"(?:[A-Za-z][A-Za-z0-9+.-]*:|[/\\]{2}|www\.)", re.I)
 
 
 def destino_oficial(destino: str) -> bool:
@@ -472,6 +550,90 @@ def destino_oficial(destino: str) -> bool:
     return any(host == dom or host.endswith("." + dom) for dom in DOMINIOS_OFICIALES)
 
 
+def _parece_url(destino: str) -> bool:
+    """¿Puede ``destino`` llevar a otro sitio? Sí si empieza por un esquema (``https:``,
+    ``javascript:``), por «www.» o por dos barras (relativa al protocolo), también escritas
+    con escapes de Markdown (``\\/\\/``), con entidades HTML (``&#47;&#47;``) o con barras
+    invertidas (``/\\``, que el navegador lee como ``//``). Antes se quitan los espacios y
+    caracteres de control, que el navegador ignora. Un destino relativo (``#rgpd``,
+    ``x.png``) se queda en el sitio que pinta el informe."""
+    d = html.unescape(_ESCAPE_MD_RE.sub(r"\1", destino))
+    d = _IGNORADOS_RE.sub("", d).removeprefix("<")
+    return bool(_PRINCIPIO_URL_RE.match(d))
+
+
+def _escapado(texto: str, i: int) -> bool:
+    """¿Va ``texto[i]`` escapado (detrás de un número impar de barras invertidas)?"""
+    j = i
+    while j > 0 and texto[j - 1] == "\\":
+        j -= 1
+    return (i - j) % 2 == 1
+
+
+def _colas(texto: str, c: Counter) -> str:
+    """Quita el destino no oficial de cada «](», sin buscar el «[» que le corresponde.
+
+    Así no importa cuántos corchetes anidados lleve el texto del enlace o de la imagen
+    («[a [b [c]]](//otro)»), que _ENLACE_RE solo reconoce con un nivel. Queda el texto con
+    sus corchetes. Si después del destino quitado viene otra cola («](x)(y)»), se quita
+    también, porque se uniría al mismo «]». Cada «](» se mira una vez, y la expresión de la
+    cola no vuelve atrás.
+    """
+    if "](" not in texto:
+        return texto
+    salida: list[str] = []
+    pos = 0
+    i = texto.find("](")
+    while i != -1:
+        p = siguiente = i + 1
+        if not _escapado(texto, i):
+            while True:
+                m = _COLA_RE.match(texto, p)
+                if m:
+                    if destino_oficial(m.group(1)):
+                        siguiente = m.end()  # enlace oficial: se deja entero
+                        break
+                else:
+                    principio = _PRINCIPIO_COLA_RE.match(texto, p)
+                    if not principio or not _parece_url(principio.group(1)):
+                        break
+                    m = _TOKEN_COLA_RE.match(texto, p)
+                    if destino_oficial(m.group(1)):
+                        break
+                c["enlaces"] += 1
+                p = m.end()
+        if p > i + 1:
+            salida.append(texto[pos : i + 1])
+            pos = p
+        i = texto.find("](", max(siguiente, p))
+    salida.append(texto[pos:])
+    return "".join(salida)
+
+
+_ACENTOS_RE = re.compile(r"`+")
+
+
+def _delimitador(texto: str) -> str:
+    """Acentos graves para encerrar algo en código: tantos como el primer número que no
+    tiene ninguna tira de acentos del texto. Con uno solo, un acento suelto de antes («Ver
+    `x https://…») se emparejaría con el de apertura y la URL quedaría fuera del código."""
+    usadas = {len(t) for t in _ACENTOS_RE.findall(texto)}
+    n = 1
+    while n in usadas:
+        n += 1
+    return "`" * n
+
+
+def _en_codigo(
+    texto: str, inicio: int, fin: int, contenido: str, delimitador: str
+) -> str:
+    """``contenido`` encerrado en código para ponerlo en lugar de ``texto[inicio:fin]``, con
+    un espacio de separación si al lado hay un acento grave (si no, se sumaría a la tira)."""
+    antes = " " if texto[inicio - 1 : inicio] == "`" else ""
+    despues = " " if texto[fin : fin + 1] == "`" else ""
+    return f"{antes}{delimitador}{contenido}{delimitador}{despues}"
+
+
 def _markdown(texto: str, c: Counter) -> str:
     def _imagen(_m: re.Match) -> str:
         c["imagenes"] += 1
@@ -483,34 +645,56 @@ def _markdown(texto: str, c: Counter) -> str:
         c["enlaces"] += 1
         return m.group(1)
 
+    delimitador = ""
+
     def _autoenlace(m: re.Match) -> str:
         # El corpus sale de PDF y no tiene autoenlaces: si hay uno, lo ha escrito el modelo,
         # así que no se le aplica la excepción de las URL de los fragmentos (paso 5).
         if destino_oficial(m.group(1)):
             return m.group(0)
         c["enlaces"] += 1
-        return "`" + m.group(1).replace("`", "") + "`"
+        url = m.group(1).replace("`", "")
+        return _en_codigo(m.string, m.start(), m.end(), url, delimitador)
 
     def _definicion(m: re.Match) -> str:
-        destino = m.group(1).strip("<>")
-        if not _PARECE_URL_RE.match(destino) or destino_oficial(destino):
+        if not _parece_url(m.group(1)) or destino_oficial(m.group(1).strip("<>")):
             return m.group(0)
         c["enlaces"] += 1
+        return ""
+
+    def _resto_definicion(m: re.Match) -> str:
+        if not _parece_url(m.group(1)) or destino_oficial(m.group(1).strip("<>")):
+            return m.group(0)
+        c["enlaces"] += 1
+        return "]:"
+
+    def _resto_imagen(_m: re.Match) -> str:
+        c["imagenes"] += 1
         return ""
 
     texto = _IMAGEN_RE.sub(_imagen, texto)
     texto = _IMAGEN_REF_RE.sub(_imagen, texto)
     texto = _DEFINICION_RE.sub(_definicion, texto)
     texto = _ENLACE_RE.sub(_enlace, texto)
-    return _AUTOENLACE_RE.sub(_autoenlace, texto)
+    if "<" in texto:
+        delimitador = _delimitador(texto)
+        texto = _AUTOENLACE_RE.sub(_autoenlace, texto)
+    texto = _RESTO_IMAGEN_RE.sub(_resto_imagen, texto)
+    texto = _colas(texto, c)
+    return _RESTO_DEFINICION_RE.sub(_resto_definicion, texto)
 
 
 # ---------------------------------------------------------------------- 5. URL sueltas
 
-# Las que un visor GFM convierte en enlace: http(s):// o www.
-_URL_SUELTA_RE = re.compile(r"(?<![\w@`/])(?:https?://|www\.)[^\s<>`\"']+", re.I)
+# Las que un visor convierte en enlace: http(s):// o www. Sin mirar lo que va delante: marked
+# (el visor de la web) enlaza también detrás de una letra, un dígito, «_», «/» o «@», aunque
+# la especificación de GFM solo lo haga tras un espacio o «*_~(». Las que ya están en código
+# las aparta _tramos_de_codigo.
+_URL_SUELTA_RE = re.compile(r"(?:https?://|www\.)[^\s<>`\"']+", re.I)
 _PUNTUACION_FINAL = "?!.,:;*_~'\""
 _CODIGO_EN_LINEA_RE = re.compile(r"(?<![\\`])(`+)(?!`)(.+?)(?<!`)\1(?!`)")
+# Corte de línea de la extracción de los PDF («https://prism-\nbreak.org»).
+_SALTO_RE = re.compile(r"[ \t]*\n[ \t]*")
 
 
 def _recortar_url(url: str) -> str:
@@ -526,45 +710,88 @@ def _recortar_url(url: str) -> str:
 
 
 def _tramos_de_codigo(texto: str) -> list[tuple[int, int]]:
-    """Intervalos que un visor muestra como código: bloques con valla y código en línea."""
+    """Intervalos que un visor muestra como código, ordenados y sin solapes: bloques con
+    valla (con la misma regla de apertura que _vallas) y código en línea."""
     tramos: list[tuple[int, int]] = []
     pos = 0
     abierta: str | None = None
     inicio = 0
     for linea in texto.split("\n"):
         fin = pos + len(linea)
-        m = _VALLA_RE.match(linea)
-        if abierta is None and m:
-            abierta, inicio = m.group(2), pos
-        elif abierta is not None:
-            mc = _CIERRE_VALLA_RE.match(linea)
-            if mc and mc.group(1)[0] == abierta[0] and len(mc.group(1)) >= len(abierta):
-                tramos.append((inicio, fin))
-                abierta = None
+        if abierta is None:
+            m = _apertura_valla(linea)
+            if m:
+                abierta, inicio = m.group(2), pos
+        elif _cierra_valla(linea, abierta):
+            tramos.append((inicio, fin))
+            abierta = None
         pos = fin + 1
     if abierta is not None:
         tramos.append((inicio, len(texto)))
     for m in _CODIGO_EN_LINEA_RE.finditer(texto):
         if "\n\n" not in m.group(0):
             tramos.append((m.start(), m.end()))
-    return tramos
+    fusionados: list[tuple[int, int]] = []
+    for a, b in sorted(tramos):
+        if fusionados and a <= fusionados[-1][1]:
+            fusionados[-1] = (fusionados[-1][0], max(b, fusionados[-1][1]))
+        else:
+            fusionados.append((a, b))
+    return fusionados
 
 
-def _urls_sueltas(texto: str, fuentes_norm: str, c: Counter) -> str:
+def _host(url: str) -> str:
+    try:
+        return urlsplit(url if "://" in url else "https://" + url).hostname or ""
+    except ValueError:
+        return ""
+
+
+def _fuentes(fuentes: Iterable[str]) -> tuple[str, frozenset[str]]:
+    """Texto normalizado de los fragmentos y hosts exactos de sus URL.
+
+    Una URL suelta se respeta si está en los fragmentos (comparando con
+    ``citations.normalize``, que tolera los cortes y espacios de la extracción de los PDF) y
+    además su host es el de una URL de los fragmentos. Sin lo segundo pasaba una URL de otro
+    dominio que solo se diferenciara en guiones (``ar-xiv.org`` por ``arxiv.org``), porque
+    ``normalize`` los quita. Los hosts se sacan también del fragmento con los cortes de línea
+    unidos: 14 de las 674 URL del índice tienen el host partido en dos líneas.
+    """
+    lista = list(fuentes)
+    hosts: set[str] = set()
+    for f in lista:
+        for variante in (f, _SALTO_RE.sub("", f)):
+            for m in _URL_SUELTA_RE.finditer(variante):
+                host = _host(_recortar_url(m.group(0)))
+                if host:
+                    hosts.add(host)
+    return "|".join(normalize(f) for f in lista), frozenset(hosts)
+
+
+def _urls_sueltas(texto: str, fuentes: tuple[str, frozenset[str]], c: Counter) -> str:
+    fuentes_norm, hosts = fuentes
     tramos = _tramos_de_codigo(texto)
+    inicios = [a for a, _b in tramos]
+    delimitador = ""
     salida: list[str] = []
     pos = 0
     for m in _URL_SUELTA_RE.finditer(texto):
         url = _recortar_url(m.group(0))
-        if not url or any(a <= m.start() < b for a, b in tramos):
+        k = bisect_right(inicios, m.start()) - 1
+        if not url or (k >= 0 and m.start() < tramos[k][1]):
             continue
         clave = normalize(url)
-        if destino_oficial(url) or (clave and clave in fuentes_norm):
+        if destino_oficial(url) or (
+            clave and clave in fuentes_norm and _host(url) in hosts
+        ):
             continue
+        if not delimitador:
+            delimitador = _delimitador(texto)
+        fin = m.start() + len(url)
         salida.append(texto[pos : m.start()])
-        salida.append(f"`{url}`")
+        salida.append(_en_codigo(texto, m.start(), fin, url, delimitador))
         c["urls"] += 1
-        pos = m.start() + len(url)
+        pos = fin
     salida.append(texto[pos:])
     return "".join(salida)
 
@@ -598,7 +825,6 @@ def sanear(texto: str, fuentes: Iterable[str] = ()) -> tuple[str, SaneadoStats]:
             break
     else:
         t = _neutralizar_resto(t, c)
-    fuentes_norm = "|".join(normalize(f) for f in fuentes)
-    t = _urls_sueltas(t, fuentes_norm, c)
+    t = _urls_sueltas(t, _fuentes(fuentes), c)
     t = _vallas(t, c, cerrar=True)
     return t, SaneadoStats(**c)

@@ -3,15 +3,20 @@
 El oráculo está escrito aparte de ``app/sanitize.py`` y sin importar nada de ``app`` (así lo
 puede usar ``docs/mcp/pp18/medir.py`` sin cargar la configuración ni el ``.env``): si
 compartiera las expresiones del saneado, la prueba solo comprobaría que el saneado coincide
-consigo mismo. Es más amplio que el saneado donde puede serlo. Una forma ejecutable es algo
-que un visor de Markdown o un asistente ejecutaría al recibir el texto, no una frase con una
-orden: una imagen, un enlace cuyo destino no se ve, HTML activo, un bloque que imita una
-llamada a una herramienta, caracteres invisibles o de control, un bloque de código sin
-cerrar o una URL clicable a un dominio canario.
+consigo mismo. Es más amplio que el saneado donde puede serlo: no reconoce construcciones
+enteras, sino sus piezas, vaya lo que vaya delante. Cualquier «![» es una imagen; el destino
+de cualquier «](» se lee con paréntesis a cualquier profundidad; y cualquier «]:» seguido de
+algo que lleva a otro sitio es una definición de referencia, esté en una lista, en una cita
+o con sangría. Una forma ejecutable es algo que un visor de Markdown o un asistente
+ejecutaría al recibir el texto, no una frase con una orden: una imagen, un enlace cuyo
+destino no se ve, HTML activo, un bloque que imita una llamada a una herramienta,
+caracteres invisibles o de control, un bloque de código sin cerrar o una URL clicable a un
+dominio canario.
 """
 
 from __future__ import annotations
 
+import html
 import json
 import re
 import unicodedata
@@ -54,14 +59,50 @@ def _oficial(url: str) -> bool:
     return any(host == d or host.endswith("." + d) for d in DOMINIOS_OFICIALES)
 
 
-_IMAGEN = re.compile(r"!\[[^\]]*\]\s*[\[(]")
-_ENLACE = re.compile(
-    r"\]\(\s*(<[^>\n]*>|(?:[^\s()]|\([^\s()]*\))+)\s*(?:\"[^\"]*\"|'[^']*')?\s*\)"
-)
+_IMAGEN = re.compile(r"!\[")
+_COLA = re.compile(r"\]\(\s*")
 _AUTOENLACE = re.compile(r"<([a-z][a-z0-9+.-]{1,31}:[^\s<>]*)>", re.I)
-_DEFINICION = re.compile(
-    r"^[ >]*\[[^\]\n]+\]:\s*<?([a-z][a-z0-9+.-]*:\S+|//\S+|www\.\S+)", re.I | re.M
-)
+_DEFINICION = re.compile(r"\]:[ \t]*(?:\n[ \t]*)?(\S+)")
+_FUERA = re.compile(r"[a-z][a-z0-9+.-]*:|//|www\.", re.I)
+
+
+def _lleva_fuera(destino: str) -> bool:
+    """¿Puede el destino llevar a otro sitio? Si empieza por un esquema, por «www.» o por dos
+    barras, contando las invertidas como barras (como el navegador) y después de resolver
+    entidades y escapes y de quitar espacios y caracteres de control."""
+    d = html.unescape(destino).replace("\\", "/")
+    d = "".join(ch for ch in d if ch > " ").lstrip("<")
+    return bool(_FUERA.match(d))
+
+
+def _destinos(texto: str) -> Iterator[tuple[str, bool]]:
+    """Destino de cada «](» (entre <…>, o hasta el espacio o el «)» que no abre nadie, con
+    paréntesis a cualquier profundidad) y si después, con un título opcional, viene «)»."""
+    for m in _COLA.finditer(texto):
+        i = j = m.end()
+        if texto.startswith("<", i):
+            j = texto.find(">", i)
+            j = len(texto) if j == -1 else j + 1
+        else:
+            profundidad = 0
+            while j < len(texto) and not texto[j].isspace():
+                if texto[j] == "\\":
+                    j += 2
+                    continue
+                if texto[j] == "(":
+                    profundidad += 1
+                elif texto[j] == ")":
+                    if profundidad == 0:
+                        break
+                    profundidad -= 1
+                j += 1
+        destino, resto = texto[i:j], texto[j:].lstrip()
+        if resto[:1] in ('"', "'", "("):
+            cierre = resto.find(")" if resto[0] == "(" else resto[0], 1)
+            resto = resto[cierre + 1 :].lstrip() if cierre != -1 else ""
+        yield destino, resto.startswith(")")
+
+
 _HTML = re.compile(
     r"<\s*/?\s*(?:script|img|iframe|svg|math|object|embed|link|meta|base|style|form|input|"
     r"button|a|video|audio|source|body|html|frame|frameset|details|marquee|template|"
@@ -131,11 +172,17 @@ def formas_ejecutables(texto: str) -> list[str]:
     hallazgos: list[str] = []
     if _IMAGEN.search(texto):
         hallazgos.append("imagen Markdown")
-    if any(not _oficial(m.group(1)) for m in _ENLACE.finditer(texto)):
+    if any(
+        not _oficial(destino) and (cerrada or _lleva_fuera(destino))
+        for destino, cerrada in _destinos(texto)
+    ):
         hallazgos.append("enlace a un destino no oficial")
     if any(not _oficial(m.group(1)) for m in _AUTOENLACE.finditer(texto)):
         hallazgos.append("autoenlace a un destino no oficial")
-    if any(not _oficial(m.group(1)) for m in _DEFINICION.finditer(texto)):
+    if any(
+        _lleva_fuera(m.group(1)) and not _oficial(m.group(1))
+        for m in _DEFINICION.finditer(texto)
+    ):
         hallazgos.append("definición de referencia a un destino no oficial")
     if _HTML.search(texto):
         hallazgos.append("HTML")
