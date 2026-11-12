@@ -1,10 +1,12 @@
-"""¿Deja el saneado (app/sanitize.py) igual el texto de los fragmentos del índice real?
+"""¿Se siguen verificando las citas literales del índice real después del saneado?
 
-Comprobación de RNF-20: si ``sanear`` no cambia ningún fragmento (comparando con
-``citations.normalize``, como la verificación de citas), una cita literal de un fragmento real
-no puede dejar de verificarse por culpa del saneado. Cada fragmento se sanea con él mismo como
-fuente, que es lo que pasa en el análisis: sus URL vienen de los fragmentos que recibe el
-modelo.
+Comprobación de RNF-20: si el texto saneado de cada fragmento (app/sanitize.py) es igual al
+original comparando con ``citations.normalize``, como la verificación de citas, una cita
+literal de un fragmento real no puede dejar de verificarse por culpa del saneado. Desde la
+codificación de la salida (12/11/2026) el saneado cambia muchos fragmentos (pone una barra
+invertida delante de «<», «[», «@», «://», «//» y «www.»), y ``normalize`` quita esas
+barras. Cuenta los cambiados por el saneado, cuántos lo hacen solo por la codificación y los
+que quedan distintos tras ``normalize``, que tienen que ser 0.
 
 Solo lee: abre ``chroma.sqlite3`` en modo de solo lectura y no carga la configuración (ni el
 ``.env``) ni los modelos. Uso, desde la raíz del repositorio:
@@ -23,7 +25,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from app.citations import normalize  # noqa: E402
-from app.sanitize import sanear  # noqa: E402
+from app.sanitize import codificar, sanear  # noqa: E402
 
 
 def main() -> None:
@@ -39,24 +41,27 @@ def main() -> None:
     finally:
         con.close()
     t0 = time.perf_counter()
-    cambiados = distintos_normalizados = 0
+    cambiados = solo_codificacion = distintos_normalizados = 0
     por_tipo: Counter = Counter()
     fuentes: Counter = Counter()
     for _id, texto, fuente in filas:
-        saneado, stats = sanear(texto, [texto])
+        saneado, stats = sanear(texto)
         if saneado != texto:
             cambiados += 1
             fuentes[fuente] += 1
             por_tipo.update({k: v for k, v in stats.model_dump().items() if v})
+            if saneado == codificar(texto):
+                solo_codificacion += 1
         if normalize(saneado) != normalize(texto):
             distintos_normalizados += 1
     print(f"Índice: {ruta} (corpus {version})")
     print(f"Fragmentos: {len(filas)}")
     print(f"Cambiados por el saneado: {cambiados}")
+    print(f"  de ellos, solo por la codificación: {solo_codificacion}")
     print(f"Distintos tras normalize: {distintos_normalizados}")
     if por_tipo:
-        print(f"Por tipo: {dict(por_tipo)}")
-        print(f"Por fuente: {dict(fuentes)}")
+        print(f"Recuentos del saneado: {dict(por_tipo)}")
+    print(f"Fuentes con fragmentos cambiados: {len(fuentes)}")
     print(f"Tiempo: {time.perf_counter() - t0:.1f} s")
 
 

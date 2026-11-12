@@ -102,29 +102,28 @@ class CitationStats(BaseModel):
     no_verificadas: list[str]
 
 
+_SIN_USO = (
+    "Sin uso, siempre 0: las imágenes, los enlaces, el HTML y las URL del modelo se "
+    "codifican y se ven como texto, sin retirarlos ni contarlos."
+)
+
+
 class SaneadoStats(BaseModel):
-    """Lo que el saneado de la salida (``app/sanitize.py``, RNF-20) ha retirado o neutralizado
-    en el texto del modelo, por tipo. Solo recuentos: nunca el contenido retirado."""
+    """Lo que el saneado de la salida (``app/sanitize.py``, RNF-20) ha retirado del texto del
+    modelo, por tipo. Solo recuentos: nunca el contenido retirado.
+
+    Las imágenes, los enlaces, el HTML y las URL del modelo ya no se retiran ni se buscan:
+    desde el 12/11/2026 se codifican y se ven como texto. ``imagenes``, ``enlaces``, ``html``
+    y ``urls`` siguen en el contrato, siempre a 0, para no quitar campos que un cliente pueda
+    leer."""
 
     bloques_herramienta: int = Field(
         default=0, description="Bloques que imitan llamadas a herramientas."
     )
-    imagenes: int = Field(default=0, description="Imágenes Markdown (todas).")
-    enlaces: int = Field(
-        default=0,
-        description=(
-            "Enlaces Markdown, autoenlaces y definiciones de referencia a destinos que no "
-            "son los dominios oficiales del corpus (queda el texto del enlace)."
-        ),
-    )
-    html: int = Field(default=0, description="Etiquetas, bloques y comentarios HTML.")
-    urls: int = Field(
-        default=0,
-        description=(
-            "URL sueltas que no son de un dominio oficial ni aparecen en los fragmentos: "
-            "se muestran como código, sin enlace."
-        ),
-    )
+    imagenes: int = Field(default=0, description=_SIN_USO)
+    enlaces: int = Field(default=0, description=_SIN_USO)
+    html: int = Field(default=0, description=_SIN_USO)
+    urls: int = Field(default=0, description=_SIN_USO)
     caracteres_control: int = Field(
         default=0, description="Caracteres de control y secuencias de escape ANSI."
     )

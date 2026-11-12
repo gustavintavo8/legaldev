@@ -352,7 +352,9 @@ def _plural(n: int, singular: str, plural: str) -> str:
 
 
 def _render_saneado_section(stats: SaneadoStats) -> str:
-    """Sección «Saneado de la salida» (RNF-20): solo recuentos, nunca lo retirado."""
+    """Sección «Saneado de la salida» (RNF-20): solo recuentos, nunca lo retirado. Las
+    imágenes, los enlaces, el HTML y las URL del modelo no salen aquí: no se retiran ni se
+    buscan, se codifican y se ven como texto (app/sanitize.py)."""
     if not stats.total():
         return ""
     partes = [
@@ -360,18 +362,6 @@ def _render_saneado_section(stats: SaneadoStats) -> str:
             stats.bloques_herramienta,
             "bloque que imita una llamada a una herramienta",
             "bloques que imitan llamadas a herramientas",
-        ),
-        (stats.imagenes, "imagen", "imágenes"),
-        (
-            stats.enlaces,
-            "enlace a un destino que no es fuente oficial del corpus",
-            "enlaces a destinos que no son fuentes oficiales del corpus",
-        ),
-        (stats.html, "elemento HTML", "elementos HTML"),
-        (
-            stats.urls,
-            "URL que no sale de los fragmentos (se muestra como código)",
-            "URL que no salen de los fragmentos (se muestran como código)",
         ),
         (stats.caracteres_control, "carácter de control", "caracteres de control"),
         (
@@ -794,17 +784,17 @@ async def run_pipeline_detailed(
     generado = GeneradoPorIA(
         modelo=llm_model, proveedor=PROVEEDOR_MODELO, fecha=datetime.now(UTC)
     )
-    # RNF-20: se sanea antes de verificar las citas, así que las citas, la lista de no
-    # verificadas y lo que guarda la caché describen el texto que se entrega. Las URL de los
-    # fragmentos se respetan; las de la descripción del usuario, no (app/sanitize.py). En un
-    # hilo, como la recuperación y el modelo, para que el proceso atienda a la vez la API,
-    # /mcp y la salud. El hilo no basta: una llamada a una expresión regular no suelta el GIL
-    # y el bucle de eventos espera lo que dure. Por eso cada expresión del saneado tiene coste
-    # lineal (tests/test_sanitize.py mide el bucle con las entradas adversarias). Cancelar la
-    # tarea no detiene el hilo; el resultado no llega a la caché, que se escribe después.
-    answer, saneado = await asyncio.to_thread(
-        sanear, answer, [doc.page_content for doc in docs]
-    )
+    # RNF-20: se sanea (se codifica) solo el texto del modelo, antes de verificar las citas,
+    # así que las citas, la lista de no verificadas y lo que guarda la caché describen el
+    # texto que se entrega; citations.normalize quita las barras invertidas de los escapes,
+    # y una cita literal se verifica igual. Las secciones de abajo las añade el código
+    # después. En un hilo, como la recuperación y el modelo, para que el proceso atienda a la
+    # vez la API, /mcp y la salud. El hilo no basta: una llamada a una expresión regular no
+    # suelta el GIL y el bucle de eventos espera lo que dure. Por eso cada expresión del
+    # saneado tiene coste lineal (tests/test_sanitize.py mide el bucle con las entradas
+    # adversarias). Cancelar la tarea no detiene el hilo; el resultado no llega a la caché,
+    # que se escribe después.
+    answer, saneado = await asyncio.to_thread(sanear, answer)
 
     t_llm = time.perf_counter()
     _metrics.llm_duration.observe(t_llm - t_retrieval)

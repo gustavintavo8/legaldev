@@ -376,6 +376,22 @@ def test_pp08_mcp_logs_do_not_contain_descripcion_breve(
 # Literal del fragmento simulado de conftest.make_mock_doc: una cita que se tiene que seguir
 # verificando después del saneado.
 CITA_LIMPIA = "los datos personales deben tratarse de forma lícita"
+# Cargas que el saneado retira (y cuenta): llamadas a herramientas y caracteres invisibles o
+# de control. Las demás (imágenes, enlaces, HTML) se codifican y se ven como texto.
+TIPOS_QUE_SE_RETIRAN = frozenset(
+    {
+        "bloque_herramienta_xml",
+        "json_llamada",
+        "harmony_gpt_oss",
+        "etiquetas_unicode",
+        "bidi_ancho_cero",
+        "escape_ansi",
+        "bloque_herramienta_hermes",
+        "marca_mistral",
+        "json_rpc_mcp",
+        "selectores_variacion",
+    }
+)
 
 
 def _informe_que_repite(carga: str, *, tambien_citada: bool = False) -> str:
@@ -421,33 +437,46 @@ def test_pp18_oracle_flags_every_raw_payload(carga):
         ("Informe [a [b [c]]](//p.exfil.example/?d=datos) fin.", "enlace"),
         ("[art. 5](//p.exfil.example/(a(b))?d=datos)", "enlace"),
         ("[a](\\/\\/p.exfil.example/x)", "enlace"),
-        ("- [r]: //p.exfil.example/?d=datos\n\nPulsa [aqui][r].", "definición"),
-        ("1.  uno\n\n    [r]: //p.exfil.example/?d=datos\n\n[a][r]", "definición"),
-        ("[a\\]b]: &#47;&#47;p.exfil.example/x\n\n[a][a\\]b]", "definición"),
-        ("Ver _https://p.exfil.example/?d=datos_ ya.", "URL clicable"),
-        ("Ver `x `https://p.exfil.example/?d=datos` ya.", "URL clicable"),
+        ("- [r]: //p.exfil.example/?d=datos\n\nPulsa [aqui][r].", "enlace"),
+        ("1.  uno\n\n    [r]: //p.exfil.example/?d=datos\n\n[a][r]", "enlace"),
+        ("[a\\]b]: &#47;&#47;p.exfil.example/x\n\n[a][a\\]b]", "enlace"),
+        ("Ver _https://p.exfil.example/?d=datos_ ya.", "enlace"),
+        ("Ver `x `https://p.exfil.example/?d=datos` ya.", "enlace"),
+        ("Escribe a datos@p.exfil.com ya.", "enlace"),
+        ('<spacer title="<" style="background:url(//p.exfil.example/i)">x', "HTML"),
     ],
 )
 def test_pp18_oracle_flags_shapes_the_previous_sanitizer_let_through(texto, forma):
-    """Salidas que el saneado anterior devolvía sin cambios (revisión del 12/11/2026) y que
-    la web pintaba como imagen o enlace a otro dominio. El oráculo de entonces tenía los
-    mismos huecos (un nivel de anidamiento, definiciones solo detrás de «>»), así que PP-18
-    no los habría visto aunque una carga los usara; ahora los marca."""
+    """Salidas que el saneado que detectaba patrones devolvía sin cambios (revisiones del
+    12/11/2026) y que la web pintaba como imagen o enlace a otro dominio. El oráculo de
+    entonces era otra aproximación con expresiones regulares y tenía los mismos huecos; el de
+    ahora pinta con markdown-it y los marca."""
     assert any(h.startswith(forma) for h in _pp18.formas_ejecutables(texto)), texto
 
 
-def test_pp18_oracle_leaves_corpus_shapes_alone():
-    """Lo más amplio del oráculo no marca formas del índice real que no son enlaces."""
+def test_pp18_oracle_leaves_corpus_shapes_and_official_links_alone():
+    """El oráculo no marca formas del índice real que no son enlaces, los enlaces a los
+    dominios oficiales, los relativos ni los dominios sin esquema (el residual documentado,
+    que lista aparte)."""
     for texto in (
         "Datos [4](en adelante, RGPD), en su art. 4",
         "[4]: Reglamento (UE) 2016/679",
         "[BOE](https://www.boe.es/a_(b)) y [b [c [d]]](https://www.boe.es/x)",
+        "[ancla](#rgpd) y [relativo](x.png)",
+        "Ver app.py y p.exfil.com/?d=x",
     ):
         assert _pp18.formas_ejecutables(texto) == [], texto
+    assert _pp18.enlaces_difusos("Ver app.py y p.exfil.com/?d=x") == [
+        "http://app.py",
+        "http://p.exfil.com/?d=x",
+    ]
 
 
-def test_pp18_oracle_uses_the_same_official_domains_as_the_sanitizer():
-    assert _pp18.DOMINIOS_OFICIALES == sanitize.DOMINIOS_OFICIALES
+def test_sanitizer_leaves_no_link_of_the_model_at_all():
+    """Desde la codificación, el saneado no distingue dominios oficiales: ningún enlace del
+    texto del modelo se pinta, tampoco los oficiales (docs/mcp/README.md)."""
+    salida, _ = sanitize.sanear("[BOE](https://www.boe.es/) y https://www.boe.es/x")
+    assert _pp18.pintar(salida)["enlaces"] == []
 
 
 @pytest.mark.parametrize("via_carga", ["descripcion", "fragmento"])
@@ -457,10 +486,11 @@ def test_pp18_indirect_injection_payloads_do_not_reach_the_assistant_executable(
 ):
     """PP-18 con el modelo simulado que repite la carga, en la descripción libre o en un
     fragmento envenenado del índice: ninguna cadena que reciben la API REST y el asistente
-    (texto y structuredContent) contiene una forma ejecutable; el saneado deja constancia;
-    la cita literal limpia se sigue verificando; y el cuestionario devuelto no repite la
-    descripción. La proporción de cargas que obedece el modelo real se mide aparte
-    (docs/mcp/pp18/medir.py)."""
+    (texto y structuredContent) contiene una forma ejecutable; el saneado deja constancia de
+    lo que retira (llamadas a herramientas y caracteres; las imágenes, los enlaces y el HTML
+    no se retiran, se codifican); la cita literal limpia se sigue verificando; y el
+    cuestionario devuelto no repite la descripción. La proporción de cargas que obedece el
+    modelo real se mide aparte (docs/mcp/pp18/medir.py)."""
     state = mcp_http.app.state
     cuestionario = dict(sample_input_dict)
     if via_carga == "descripcion":
@@ -493,9 +523,13 @@ def test_pp18_indirect_injection_payloads_do_not_reach_the_assistant_executable(
     assert _pp18.formas_en(resultado["content"]) == []
     assert _pp18.formas_en(estructurado) == []
 
-    assert sum(datos["saneado"].values()) > 0
     assert estructurado["saneado"] == datos["saneado"]
-    assert "## Saneado de la salida" in estructurado["informe"]
+    if carga["tipo"] in TIPOS_QUE_SE_RETIRAN:
+        assert sum(datos["saneado"].values()) > 0
+        assert "## Saneado de la salida" in estructurado["informe"]
+    else:
+        assert sum(datos["saneado"].values()) == 0
+        assert _pp18.formas_codificadas(estructurado["informe"]), carga["id"]
     assert datos["citas"]["verificadas"] >= 1
     assert not any(
         q.startswith(CITA_LIMPIA[:30]) for q in datos["citas"]["no_verificadas"]

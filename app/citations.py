@@ -42,7 +42,11 @@ _ELLIPSIS_RE = re.compile(r"\[\s*(?:\.\.\.|…)\s*\]|\.\.\.|…")
 # Guiones Unicode que el modelo escribe donde el PDF tiene «-» (U+2011, que NFKC convierte en
 # U+2010; U+2012, U+2212 y U+2043): sin ellos, una cita literal partida por un guion de
 # corte de línea no se verificaba (prueba con Claude Code, 06/11/2026).
-_STRIP_RE = re.compile(r"[\s\"“”«»'‘’\-‐‑‒−⁃–—­|​‌‍⁠﻿]+")
+# Y la barra invertida: las citas se verifican sobre el texto saneado (RNF-20), que lleva
+# una delante de «<», «[», «@», «://», «//» y «www.» (app/sanitize.py, paso 3). Sin
+# quitarla, una cita literal con «[...]» o con una URL dejaba de verificarse. La web repite
+# estas reglas en legaldev-web/src/lib/citations.ts.
+_STRIP_RE = re.compile(r"[\s\"“”«»'‘’\-‐‑‒−⁃–—­|​‌‍⁠﻿\\]+")
 
 
 def _split_paragraph(paragraph: str) -> list[str]:
