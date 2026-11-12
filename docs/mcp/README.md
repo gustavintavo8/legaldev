@@ -6,11 +6,13 @@ se monta aunque se active
 (RNF-15). En local, el mismo servidor funciona también por stdio
 (`python -m app.mcp_stdio`, ver «Modo stdio»). Requisitos RF-22 a RF-25, RNF-15, RNF-16 y
 RNF-18 a RNF-21; caso de uso CU-07;
-pruebas PP-01 a PP-08 y PP-13 a PP-18; criterio CA-09; paquete de trabajo PT2. El informe sale
-saneado (RNF-20) y marcado como generado por IA (C-05) desde el 12/11/2026, todavía no en el
-Space. Desplegado en el Space de Hugging Face desde el 06/11/2026
-(`https://gustavintavo8-legaldev.hf.space/mcp`, con `MCP_API_KEYS` propias; la API REST sigue
-abierta para la web).
+pruebas PP-01 a PP-08 y PP-13 a PP-18; criterio CA-09; paquete de trabajo PT2. Desplegado en
+el Space de Hugging Face desde el 06/11/2026 (`https://gustavintavo8-legaldev.hf.space/mcp`,
+con `MCP_API_KEYS` propias; la API REST sigue abierta para la web). Lo añadido el 12/11/2026
+está en la rama `feat/mcp-server` y todavía no en el Space: el modo stdio, el tope diario por
+clave, el saneado de la salida (RNF-20), el marcado del contenido generado por IA (C-05), el
+script de latencia (RNF-19) y la comprobación con MCP Inspector. Lo que falta está en
+«Pendiente».
 
 ## Diseño resumido
 
@@ -287,26 +289,102 @@ web el aviso de que el informe lo genera una IA (art. 50.1).
 ## Configuración de clientes
 
 Ejemplos en `clients/`, como en el listado `lst:man-mcp` del manual de instalación de la
-memoria. Ninguno lleva la clave escrita: cada cliente la toma de un sitio que no se versiona
-(formatos comprobados en la documentación de cada cliente el 25/09/2026).
+memoria: uno por cliente para el servidor remoto (`clients/*.mcp.json`) y otro para el modo
+stdio (`clients/stdio/*.mcp.json`). Ninguno lleva la clave ni una ruta escrita: cada cliente
+las toma de un sitio que no se versiona. Una prueba (`tests/test_mcp_security.py`) lo
+comprueba en los seis. Formatos comprobados en la documentación de cada cliente el
+12/11/2026 (antes, el 25/09/2026).
 
-- VS Code: `clients/vscode.mcp.json` -> `.vscode/mcp.json`. La clave es una variable de
-  entrada (`inputs`, `promptString` con `password: true`) que VS Code pide al usuario y
-  guarda de forma segura; se referencia como `${input:clave}`.
-- Cursor: `clients/cursor.mcp.json` -> `.cursor/mcp.json`. Cursor interpola
-  `${env:NOMBRE}` en `url` y `headers`: la clave sale de la variable de entorno
-  `LEGALDEV_API_KEY`.
-- Claude Code: `clients/claude-code.mcp.json` -> `.mcp.json` (ámbito de proyecto). Claude
-  Code expande `${VAR}` y `${VAR:-valor}` en `url` y `headers`: la clave sale de
-  `LEGALDEV_API_KEY` y la URL, de `LEGALDEV_URL` si existe. En el ámbito local, el de la
-  memoria, basta
+- **VS Code**: `clients/vscode.mcp.json` -> `.vscode/mcp.json`. La clave es una variable de
+  entrada (`inputs`, `promptString` con `password: true`) que VS Code pide al arrancar el
+  servidor la primera vez y guarda de forma segura; se referencia como `${input:clave}`.
+  Variante stdio: `clients/stdio/vscode.mcp.json`, con la ruta en `${env:LEGALDEV_DIR}`.
+  **Cambio en VS Code:** su documentación (11/11/2026) dice que `.vscode/mcp.json` es el
+  formato «gestionado por el editor» del arnés *Local*, que está obsoleto y se retira en
+  febrero de 2027. El formato portable que recomienda es un `.mcp.json` en la raíz del
+  proyecto con `mcpServers` y `${NOMBRE}` o `${NOMBRE:-valor}`, sin `inputs` ni `envFile`:
+  el mismo que el de Claude Code, así que sirven `clients/claude-code.mcp.json` y
+  `clients/stdio/claude-code.mcp.json` tal cual, con la clave en `LEGALDEV_API_KEY`. Para que
+  *MCP: Add Server* lo ofrezca hay que activar el ajuste experimental
+  `chat.mcp.workspaceRootConfig.enabled`. El ejemplo de `.vscode/mcp.json` se mantiene
+  porque es el del listado `lst:man-mcp` y sigue funcionando hasta esa fecha.
+- **Cursor**: `clients/cursor.mcp.json` -> `.cursor/mcp.json`. Cursor interpola
+  `${env:NOMBRE}` en `command`, `args`, `env`, `url` y `headers`: la clave sale de la variable
+  de entorno `LEGALDEV_API_KEY`. Sin cambios en su documentación: `type` es opcional en un
+  servidor remoto, y en stdio admite `envFile` pero no documenta `cwd` (por eso la ruta va en
+  `--directory`). Variante stdio: `clients/stdio/cursor.mcp.json`, con `${env:LEGALDEV_DIR}`.
+- **Claude Code**: `clients/claude-code.mcp.json` -> `.mcp.json` (ámbito de proyecto). Claude
+  Code expande `${VAR}` y `${VAR:-valor}` en `command`, `args`, `env`, `url` y `headers`: la
+  clave sale de `LEGALDEV_API_KEY` y la URL, de `LEGALDEV_URL` si existe. Una entrada con
+  `url` y sin `type` la lee como stdio y es un error, así que `"type": "http"` es obligatorio.
+  En el ámbito local, el de la memoria, basta
   `claude mcp add --transport http legaldev <URL>/mcp --header "X-API-Key: $LEGALDEV_API_KEY"`,
-  que guarda la configuración en `~/.claude.json`, fuera del repositorio.
+  que guarda la configuración en `~/.claude.json`, fuera del repositorio. Variante stdio:
+  `clients/stdio/claude-code.mcp.json`, con `${LEGALDEV_DIR}`, o la orden de «Modo stdio».
+
+En los tres ejemplos stdio, `LEGALDEV_DIR` es la ruta absoluta del repositorio de LegalDev
+(con el índice construido y su `.env`), y el servidor se lanza con
+`uv run --directory <LEGALDEV_DIR> python -m app.mcp_stdio`. No llevan `env`: la clave de
+Groq la lee el servidor del `.env` del repositorio.
 
 En local, la URL es `http://localhost:8000/mcp`, con `MCP_ENABLED=true` y una clave en
-`API_KEYS`. La comprobación se puede hacer con el modo de línea de órdenes de MCP Inspector
-(`npx @modelcontextprotocol/inspector --cli --method tools/list --transport http --server-url
-<URL>/mcp --header "X-API-Key: $LEGALDEV_API_KEY"`), que debe listar las tres herramientas.
+`MCP_API_KEYS` (o en `API_KEYS`). La comprobación con MCP Inspector está en «MCP Inspector»
+(`make mcp-inspect`).
+
+### Pasos para probarlo a mano en VS Code, Cursor y Claude Code
+
+No se han podido hacer desde el agente, porque hay que abrir cada editor. En Windows, las
+variables se fijan para el usuario y el editor se reinicia del todo, para que las herede:
+
+```
+setx LEGALDEV_API_KEY "<clave de /mcp>"
+setx LEGALDEV_DIR "C:\ruta\al\repositorio\legaldev"
+setx MCP_TIMEOUT 120000
+```
+
+`MCP_TIMEOUT` solo lo usa Claude Code. Con una terminal nueva, `where uv` tiene que
+encontrar `uv`. Si un editor abierto desde el menú de inicio no lo encuentra, en
+`"command"` se pone la ruta absoluta que da `where uv`.
+
+Para saber qué revisión negocia cada cliente, en lugar del Space se usa una API local que lo
+registra: `tools/servidor_mcp_prueba.py` (con `--modelo-simulado`, `analizar_proyecto` no llama
+a Groq). Se arranca con `LEGALDEV_API_KEY` fijada a una clave de prueba y se cambia la URL del
+ejemplo por `http://127.0.0.1:8766/mcp`. Cada petición deja en el registro su método, la
+revisión que pide y el `clientInfo` del cliente, nunca la clave ni los argumentos.
+
+1. **VS Code** (anotar la versión, en *Help → About*):
+   - Remoto: copiar `clients/vscode.mcp.json` en `.vscode/mcp.json` de un proyecto de prueba
+     y arrancar el servidor desde el propio fichero (*Start*). VS Code pide la clave y, la
+     primera vez, que se confíe en el servidor.
+   - stdio: lo mismo con `clients/stdio/vscode.mcp.json`.
+   - Formato portable: con `chat.mcp.workspaceRootConfig.enabled` activado, copiar
+     `clients/claude-code.mcp.json` en `.mcp.json` en la raíz del proyecto.
+   - En el chat (modo agente), pedir «lista las normativas de LegalDev». El estado y la salida
+     de cada servidor están en *Chat: Open Customizations → MCP Servers*.
+2. **Cursor** (anotar la versión):
+   - Remoto: copiar `clients/cursor.mcp.json` en `.cursor/mcp.json`; para stdio,
+     `clients/stdio/cursor.mcp.json`.
+   - Comprobar en *Customize* que el servidor está activado y hacer la misma pregunta en el
+     chat. Los errores salen en el panel *Output* (Ctrl+Mayús+U), canal «MCP Logs».
+3. **Claude Code** (`claude --version`):
+   - Remoto: `claude mcp add --transport http legaldev https://gustavintavo8-legaldev.hf.space/mcp --header "X-API-Key: %LEGALDEV_API_KEY%"`
+     (en cmd; en PowerShell, `$env:LEGALDEV_API_KEY`).
+   - stdio: `claude mcp add legaldev-local -- uv run --directory "%LEGALDEV_DIR%" python -m app.mcp_stdio`.
+     O copiar el fichero de `clients/stdio/` como `.mcp.json`; Claude Code pide aprobarlo la
+     primera vez.
+   - `/mcp` dentro de Claude Code da el estado de cada servidor; `claude mcp list`, desde la
+     terminal.
+
+Qué anotar en cada uno (es lo que pide el marcador de CU-07, abajo):
+
+- Si conecta.
+- Qué revisión negocia. Los clientes no lo enseñan: sale en el registro de
+  `tools/servidor_mcp_prueba.py`, en la primera petición (`server/discover` o `initialize`).
+- Si el modo stdio aguanta el arranque (de 20 a 75 s en el portátil de desarrollo). VS Code y
+  Cursor no documentan cuánto esperan a que arranque.
+- Cómo presentan el 401 de una clave que falta y el 403 de una clave falsa.
+- Si el asistente llega a ver el informe de `analizar_proyecto`. Esta llamada gasta cuota de
+  Groq: una o dos por cliente.
 
 Comprobado el 06/11/2026 con el cliente del propio SDK por HTTP contra el índice real (22
 documentos), en las dos eras (`mode="auto"` negocia 2026-07-28; `mode="legacy"`, 2025-11-25):
@@ -320,6 +398,74 @@ verificadas. La misma llamada desde el cliente de la era antigua salió de la ca
 
 TODO(PT2/CU-07): registrar `/mcp` en VS Code, Cursor y Claude Code con la versión vigente de
 cada cliente y anotar qué revisión negocia cada uno.
+
+## MCP Inspector (12/11/2026)
+
+Comprobado con el modo de línea de órdenes de MCP Inspector, fijado en la versión **2.13.0**
+(del 28/10/2026; la 2.15.0 salió el mismo 12/11 y no se usó). El servidor fue la API local
+con el índice real (22 documentos, corpus `7a2029a4dfd8`), el modelo simulado y una clave de
+prueba aleatoria, por HTTP. Se lanzó con un prototipo de `tools/servidor_mcp_prueba.py
+--modelo-simulado`; la versión final se probó después igual, con el Inspector y con el script
+de latencia. Por stdio, la orden documentada
+(`uv run --directory <repositorio> python -m app.mcp_stdio`) con una clave de Groq falsa en
+`-e`. No hubo ninguna llamada a Groq. `MCP_CATALOG_PATH` y `MCP_CLIENT_CONFIG_PATH` apuntaban a
+un directorio temporal, para que el Inspector no escribiera en `~/.mcp-inspector`.
+
+`make mcp-inspect` repite la parte HTTP contra `LEGALDEV_URL` (por defecto
+`http://localhost:8000`) con la clave de `LEGALDEV_API_KEY`: `tools/list --strict` y
+`listar_normativas` en las dos eras, y que sin clave y con una clave falsa el Inspector sale
+con 3. Una llamada suelta tiene esta forma:
+
+```
+npx -y @modelcontextprotocol/inspector@2.13.0 --cli <URL>/mcp --transport http \
+  --header "X-API-Key: $LEGALDEV_API_KEY" --protocol-era modern --stored-auth-only \
+  --method tools/call --tool-name listar_normativas
+```
+
+Por stdio:
+
+```
+npx -y @modelcontextprotocol/inspector@2.13.0 --cli --connect-timeout 0 --protocol-era modern \
+  --method tools/list -- uv run --directory <repositorio> python -m app.mcp_stdio
+```
+
+Lo que negoció, según el registro del servidor (por HTTP) y un relevo que anotaba el método y
+la versión de cada mensaje (por stdio):
+
+| Era (`--protocol-era`) | HTTP | stdio |
+|---|---|---|
+| `legacy` (el valor por defecto) | `initialize` con 2025-11-25; después `notifications/initialized` (202), un GET que recibe 405 y `tools/list` | `initialize` con 2025-11-25 |
+| `modern` | `server/discover` con 2026-07-28; después `tools/list` (dos veces) y `subscriptions/listen` | igual; el servidor confirma la suscripción |
+| `auto` | 2026-07-28, como `modern` | no probado |
+
+Resultados:
+
+| Prueba | Resultado |
+|---|---|
+| `tools/list` | Las tres herramientas, en orden, en las dos eras y por los dos transportes; la misma lista en las tres eras. |
+| `tools/list --strict` | Sin problemas de portabilidad de los esquemas (salida 0), también con el `allOf`/`if`/`then` de `usa_ia` -> `tipo_ia`. |
+| `listar_normativas` | 22 normativas y el corpus `7a2029a4dfd8`, por HTTP en las dos eras y por stdio en la nueva. |
+| `consultar_obligaciones` (RGPD, «registro de usuarios con email») | 6 fragmentos (páginas 52, 40, 41, 64, 11 y 63) por HTTP en las dos eras y por stdio en la antigua; 2,7-3,2 s por HTTP. |
+| `analizar_proyecto` (modelo simulado, `--tool-args-json`) | Informe con 5 normativas y 18 fragmentos en 8,7 s (la recuperación real en CPU). Con un cuestionario incompleto, `[CUESTIONARIO_INVALIDO]` con los campos que faltan, y el Inspector sale con 5 (`tool_is_error`). |
+| Sin clave | 401. El Inspector sale con 3 (`auth_required`): «Version negotiation failed: the server requires authorization (HTTP 401)» en la era nueva y el mensaje del servidor («Falta la cabecera X-API-Key») en la antigua. |
+| Clave falsa | 403. Sale con 3 (`auth_required`): «the server denied access (HTTP 403)» en la era nueva y «Clave de API no válida» en la antigua. |
+| stdio, espera por defecto | Sale con 4 (`unreachable`): «Connection timed out after 15000 ms». El servidor tardó en responder de 18 a 20 s con los modelos ya en la caché del disco; M1 midió de 71 a 73 s en frío. Con `--connect-timeout 0` (sin límite) funciona. |
+| stdio, salida estándar | Todo lo que escribió el servidor por stdout eran mensajes JSON-RPC; los registros y las barras de progreso salieron por stderr. |
+
+Observaciones para quien lo repita:
+
+- Una llamada suelta negocia la era antigua si no se pasa `--protocol-era`. Para probar la
+  2026-07-28 hay que pedir `modern` (o `auto`).
+- El Inspector no dice qué revisión ha negociado: se ve en el registro de
+  `tools/servidor_mcp_prueba.py`.
+- `--stored-auth-only` evita que, ante el 401, intente un inicio de sesión OAuth interactivo.
+  Con él no hizo ninguna petición más a `/mcp` después del rechazo.
+- `-e` no admite valores vacíos (`-e GROQ_FALLBACK_MODEL=` falla con «Use key=value
+  format»).
+- En la era nueva abre también `subscriptions/listen`, el flujo de notificaciones de la
+  2026-07-28. El SDK lo atiende y LegalDev no envía ninguna.
+- Contra el Space no se ha ejecutado (no está desplegado lo de esta rama). Después de
+  desplegar: `LEGALDEV_URL=https://gustavintavo8-legaldev.hf.space make mcp-inspect`.
 
 ## Modo stdio (servidor local)
 
@@ -346,8 +492,10 @@ En Claude Code (ámbito local, fuera del repositorio):
 stdio, y el ámbito por defecto es el local). En un fichero de configuración, el servidor es
 `"command": "uv"` con
 `"args": ["run", "--directory", "<ruta del repositorio>", "python", "-m", "app.mcp_stdio"]`
-y sin `url` ni cabeceras. No se ha registrado todavía en ningún asistente real; la prueba de
-abajo usa el cliente del SDK.
+y sin `url` ni cabeceras; hay uno por cliente en `clients/stdio/`, con la ruta en
+`LEGALDEV_DIR`. Se ha probado con el cliente del SDK (abajo) y con MCP Inspector (ver «MCP
+Inspector»); falta registrarlo en VS Code, Cursor y Claude Code (pasos en «Configuración de
+clientes»).
 
 Qué cambia respecto a `/mcp`:
 
@@ -396,12 +544,17 @@ fragmentos) 6,6-11,4 s, y una normativa desconocida devolvió `NORMATIVA_DESCONO
 que escribieron las bibliotecas (peticiones a Hugging Face, barras de progreso) salió por
 stderr. No se llamó a `analizar_proyecto`, para no gastar cuota de Groq: su camino es el
 mismo que por HTTP (`service.analyze`) y la prueba automática lo cubre con el modelo simulado.
-Son llamadas sueltas en una sola máquina, no una medición de latencia (RNF-19 sigue
-pendiente), y no se comparan con los tiempos por HTTP de arriba: el motor es el mismo.
-Ese arranque supera la espera por defecto de Claude Code: en la versión 2.1.268, la variable
-de entorno `MCP_TIMEOUT` (en milisegundos) vale 30 000 si no se fija, así que para el modo
-stdio hay que subirla, por ejemplo `MCP_TIMEOUT=120000` al lanzar `claude` (no probado
-todavía con el asistente).
+Son llamadas sueltas en una sola máquina, no una medición de latencia (para eso está
+`tools/medir_latencia_mcp.py`, ver «Latencia»), y no se comparan con los tiempos por HTTP de
+arriba: el motor es el mismo. Con MCP Inspector, el mismo día y con los modelos ya en la caché
+del disco, el servidor respondió a los 18-20 s. El arranque, en frío o no, supera la espera
+por defecto de dos clientes:
+
+- **Claude Code.** En la versión 2.1.268, la variable de entorno `MCP_TIMEOUT` (en
+  milisegundos) vale 30 000 si no se fija; para el modo stdio hay que subirla, por ejemplo
+  `MCP_TIMEOUT=120000` al lanzar `claude` (no probado todavía con el asistente).
+- **MCP Inspector.** `--connect-timeout` vale 15 000 ms; con él, la conexión por stdio falla
+  (ver «MCP Inspector»). Hay que pasar `--connect-timeout 0`.
 
 Pruebas en `tests/test_mcp_stdio.py`: lanzan el servidor como proceso hijo
 (`tests/_mcp_stdio_launcher.py`, con el motor simulado, sin red y en un directorio sin
@@ -426,6 +579,98 @@ Space (22 documentos). `analizar_proyecto` con Groq tardó 20,4 s en la primera 
 normativas, 18 fragmentos, 12 de 13 citas verificadas, informe en `structuredContent`) y 0,29 s
 desde la caché al repetirla desde la otra era; `consultar_obligaciones`, unos 3,8 s. La API REST
 sigue sin pedir clave (`/v1/analyze` con un cuerpo inválido responde 422, no 401).
+
+Después de desplegar esta rama: fijar `MCP_DAILY_LIMIT`, ejecutar
+`LEGALDEV_URL=https://gustavintavo8-legaldev.hf.space make mcp-inspect` y medir la latencia
+(«Latencia»).
+
+## Latencia (RNF-19)
+
+`tools/medir_latencia_mcp.py` mide por MCP (revisión 2026-07-28, un POST por llamada) tres
+series y escribe un JSON con `n`, `p50`, `p95`, mínimo y máximo de cada una, la fecha, el
+servidor, la versión del corpus y cada llamada:
+
+- **`analizar_frio`**: `analizar_proyecto` con cuestionarios distintos que no están en la
+  caché. Son cinco proyectos (clínica dental, tienda en línea, asistente con IA generativa,
+  aplicación móvil con ubicación y menores, API de facturación) que se repiten si se piden
+  más. Cada descripción lleva además una marca de la ejecución («Medición de latencia
+  `<marca>`-`<n>`.»), así que una segunda medición dentro de la hora que dura la caché
+  tampoco la encuentra. Cada llamada es una llamada a Groq.
+- **`analizar_caliente`**: los mismos cuestionarios otra vez, que salen de la caché común. Se
+  comprueba que vienen de ella: `generado_por_ia.fecha` tiene que ser la de la llamada en
+  frío. Si no coincide, la llamada no cuenta y se anota como `fuera_de_cache`.
+- **`consultar_obligaciones`**: ocho pares de normativa y contexto (RGPD, LSSI, EU AI Act,
+  LOPDGDD, guía de cookies de la AEPD, NIS2), solo los de normativas que estén en el índice.
+  Sin modelo y sin caché.
+
+Antes de medir espera a que `/health` responda: el Space se duerme y tarda en arrancar. Hace
+también `server/discover`, `tools/list` y `listar_normativas`. Ese tiempo va aparte, en
+`despertar`, y no entra en ninguna serie.
+
+Decisiones:
+
+- **Percentiles por el rango más cercano.** El p de n tiempos ordenados es el de la posición
+  ⌈p·n/100⌉. Siempre es un tiempo observado; con menos de 20 muestras, el p95 es el máximo.
+- **El tiempo** va del envío del POST a la llegada de la respuesta completa (el flujo SSE
+  entero).
+- **Fuera de los percentiles**, contados en `excluidas` por motivo: los 429 del limitador, los
+  resultados con `isError` (por ejemplo, `MODELO_NO_DISPONIBLE`), los errores JSON-RPC, los
+  fallos de red y los resultados sin cobertura, que no llaman al modelo.
+- **Sin reintentos y con esperas.** De 90 s entre las llamadas en frío, como PP-18, para no
+  agotar la cuota gratuita de Groq. De 8 s entre las de caliente: `RATE_LIMIT` (10 por
+  minuto) cuenta también los aciertos de caché. De 2 s entre consultas.
+- **Topes:** 20 llamadas en frío, 50 en caliente y 50 consultas por ejecución.
+- **No importa `app` ni lee `.env`.** La URL y la clave llegan en `LEGALDEV_URL` y
+  `LEGALDEV_API_KEY`, las mismas variables que `clients/claude-code.mcp.json`. La clave no
+  sale en la salida ni en el fichero.
+
+Una ejecución con los valores por defecto (`--frio 10 --caliente 10 --consultas 10`) hace 10
+llamadas a Groq y gasta 20 del tope diario de la clave (`MCP_DAILY_LIMIT` también cuenta los
+aciertos de caché). Tarda unos 17 minutos. Tras el despliegue, desde la raíz del repositorio:
+
+```
+LEGALDEV_URL=https://gustavintavo8-legaldev.hf.space LEGALDEV_API_KEY=<clave> \
+  uv run python tools/medir_latencia_mcp.py --salida docs/mcp/latencia/resultado-AAAA-MM-DD.json
+```
+
+Para medir el arranque del Space dormido, se espera a que se duerma (unas horas sin uso) y
+se mira `despertar.health_s`. Contra un servidor anterior a esta rama, sin `generado_por_ia`,
+las llamadas en caliente no se pueden verificar y se anotan como `cache_no_verificable`.
+
+**Comprobado el 12/11/2026, sin Groq:**
+
+- Pruebas en `tests/test_medir_latencia_mcp.py`: el cálculo y la medición entera contra `/mcp`
+  en proceso (motor y modelo simulados). Cubren los 429, el fallo de caché, el modelo caído, la
+  clave falsa, las esperas y que la clave no sale.
+- Una ejecución contra la API local con el índice real y el modelo simulado (el prototipo de
+  `tools/servidor_mcp_prueba.py --modelo-simulado`), en el portátil de desarrollo con CPU, con
+  `--frio 5 --caliente 5 --consultas 5 --espera-frio 0`. Con la versión final, una ejecución
+  de una llamada por serie dio 7,1 s, 0,004 s y 2,3 s.
+
+| Serie | n | p50 | p95 | mín. | máx. |
+|---|---|---|---|---|---|
+| `analizar_frio` (recuperación real, modelo simulado) | 5 | 7,49 s | 10,36 s | 7,22 s | 10,36 s |
+| `analizar_caliente` (caché) | 5 | 0,014 s | 0,029 s | 0,004 s | 0,029 s |
+| `consultar_obligaciones` | 5 | 2,83 s | 5,31 s | 2,24 s | 5,31 s |
+
+Las cinco llamadas en caliente salieron de la caché (misma `fecha`) y no hubo exclusiones.
+No son cifras de RNF-19: el modelo no se llamó, el Space tiene otra CPU y n = 5.
+
+**Qué responde a RNF-19.** RNF-19 pide que «la latencia p95 por MCP en caliente» sea menor que
+la espera por defecto de los clientes. Con «en caliente» como acierto de caché, se cumple
+siempre (unos 0,03 s en local y 0,29 s en el Space el 06/11/2026). La cifra que dice algo es el
+p95 de `analizar_frio` con el Space ya despierto, y aparte el arranque del Space dormido. Las
+esperas de los clientes, según su documentación del 12/11/2026:
+
+- Claude Code espera a una herramienta unas 28 horas por defecto (`MCP_TOOL_TIMEOUT`, o
+  `timeout` por servidor en `.mcp.json`). Solo el arranque de un servidor stdio tiene una
+  espera corta (`MCP_TIMEOUT`, 30 s).
+- VS Code y Cursor no documentan sus esperas.
+
+Para Claude Code el criterio se cumple de sobra con cualquier cifra razonable. Para VS Code y
+Cursor no hay una espera documentada con la que comparar. La memoria tiene que fijar con qué
+espera se compara (ver «Cambios que necesita la memoria»), o medirla con los pasos de
+«Configuración de clientes».
 
 ## Primera prueba con un asistente real (Claude Code, 06/11/2026)
 
@@ -596,9 +841,67 @@ salía de él, separándolo de lo que aportaba por su cuenta. Lo que señaló:
   máquina del art. 50.2 está en la API y en MCP (`generado_por_ia`); faltan el formato
   definitivo (D-4, código de buenas prácticas del art. 50.7) y el aviso en la web (art.
   50.1).
+- 30-manual-instalacion (`lst:man-mcp`) y 31-manual-usuario: en VS Code, `.vscode/mcp.json`
+  es el formato del arnés *Local*, obsoleto, que se retira en febrero de 2027. El formato
+  portable es un `.mcp.json` en la raíz del proyecto, con `mcpServers` y `${NOMBRE}`: el mismo
+  que el de Claude Code. Hay ejemplos stdio para los tres clientes en `clients/stdio/`, con la
+  ruta en `LEGALDEV_DIR`, y en Windows las variables se fijan con `setx` y reiniciando el
+  editor.
+- RNF-16 («En producción se ha probado con…») y 24-pruebas: MCP Inspector 2.13.0 en local, por
+  HTTP y por stdio, en las dos eras. Con `--protocol-era legacy` (el valor por defecto) negocia
+  2025-11-25 por `initialize`; con `modern` o `auto`, 2026-07-28 por `server/discover`.
+  `tools/list --strict` no encuentra problemas de portabilidad en los esquemas. Sin clave y
+  con una clave falsa, el Inspector sale con `auth_required`. `make mcp-inspect` lo repite.
+  La parte de MCP Inspector de PT2-clientes queda hecha; siguen VS Code y Cursor.
+- RNF-19, 24-pruebas y capítulo de resultados: el método de `tools/medir_latencia_mcp.py`:
+  - qué son frío y caliente;
+  - el rango más cercano;
+  - las exclusiones;
+  - las esperas y lo que gasta del tope diario.
+
+  Hay que corregir el criterio de RNF-19. Con «en caliente» como acierto de caché se cumple
+  siempre, y Claude Code espera unas 28 horas a una herramienta. La cifra útil es el p95 de
+  `analizar_frio` con el Space despierto, comparado con una espera que la memoria tiene que
+  fijar. La medición en el Space queda para después del despliegue (PT2-latencia).
+- 23-detalle o el anexo de herramientas: `tools/medir_latencia_mcp.py` (latencia) y
+  `tools/servidor_mcp_prueba.py`. Este último es la API local con registro de la revisión que
+  negocia cada cliente y, si se pide, el modelo simulado.
 
 Siguen abiertas, como estaban: tipificación de las guías de la AEPD sin articulado y forma de
 `sin_mapeo` en la evidencia (OE2).
+
+## Pendiente (12/11/2026)
+
+Lo que falta del servidor MCP después de M1 (stdio y tope diario), M2 (saneado, PP-18 y
+marcado de IA) y M3 (latencia, MCP Inspector y clientes):
+
+- **Subir y fusionar** la rama `feat/mcp-server` en `main`, y **desplegar** en el Space.
+  Hasta entonces, el Space no tiene el tope diario, el saneado ni el marcado de IA.
+- **Fijar `MCP_DAILY_LIMIT`** en el Space, por debajo de la cuota diaria de Groq repartida
+  entre las claves y la web.
+- **Comprobar el Space desplegado:** `LEGALDEV_URL=https://gustavintavo8-legaldev.hf.space
+  make mcp-inspect`. Después, la **latencia** (RNF-19, PT2-latencia) con
+  `tools/medir_latencia_mcp.py`: 10 llamadas a Groq, 20 del tope diario de la clave y unos
+  17 minutos. Guardar el JSON en `docs/mcp/latencia/`.
+- **Clientes reales** (el marcador de CU-07 de «Configuración de clientes»): VS Code, Cursor y Claude Code, por HTTP y por stdio,
+  con los pasos de «Configuración de clientes». Anotar en cada uno la versión, la revisión que
+  negocia, si aguanta el arranque de stdio y cómo presenta el 401 y el 403.
+- **Criterio de RNF-19** en la memoria: con qué espera de cliente se compara el p95 (ver
+  «Latencia»).
+- **C-05:** el formato definitivo del marcado (D-4, art. 50.7), si hace falta una cabecera
+  HTTP y el aviso de IA en la web (art. 50.1).
+- **PP-18:** revisar a mano si los informes de P05 y P12 obedecen, sin copiarlas, las órdenes
+  en lenguaje natural.
+- **CI en Linux:** las pruebas de stdio (proceso hijo), la de rendimiento del saneado y las
+  de `tools/` solo se han ejecutado en Windows. Su primera ejecución en CI será la
+  comprobación real.
+- **Memoria residente** del proceso con los dos modelos cargados (RNF-12, PT2-memoria).
+- **Documentos del TFG en este repositorio:**
+  - `docs/tfg/modulos.md` no recoge `app/mcp_stdio.py`, `app/sanitize.py` ni los dos scripts
+    nuevos de `tools/`;
+  - `docs/tfg/casos-de-prueba.md` tiene las cifras de `832ac33`;
+  - lo de «Cambios que necesita la memoria» está por llevar a la memoria.
+- **Fuera de PT2:** las dos cuestiones de OE2 de arriba y la acción de CI (PT6, abajo).
 
 ## Acción de integración continua
 

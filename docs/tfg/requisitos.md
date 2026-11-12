@@ -120,7 +120,7 @@ Llevan las mismas claves de prioridad, verificación y estado que los funcionale
 
 > **Pendiente (PT2-memoria).** Medir la memoria residente del proceso con los dos modelos cargados (RNF-12).
 >
-> **Pendiente (PT2-latencia).** Medir la latencia p50 y p95 por MCP en el Space, en caliente y en frío, con una muestra (RNF-19).
+> **Pendiente (PT2-latencia).** Medir la latencia p50 y p95 por MCP en el Space, en caliente y en frío, con una muestra (RNF-19). El script, `tools/medir_latencia_mcp.py`, está listo y probado el 12 de noviembre de 2026 contra una API local con el modelo simulado; la medición espera al despliegue. Antes hay que precisar el criterio: un acierto de caché lo cumple siempre, y Claude Code espera unas 28 horas a una herramienta (`docs/mcp/README.md`, «Latencia»).
 
 ### Fiabilidad
 
@@ -149,9 +149,9 @@ Llevan las mismas claves de prioridad, verificación y estado que los funcionale
 
 | Id | Requisito y métrica | Pr. | Ver. | Estado |
 |---|---|---|---|---|
-| RNF-16 | **Conformidad con MCP.** El servidor cumple el protocolo de la revisión 2026-07-28. Lee la versión y las capacidades del cliente del `_meta` de cada petición, rechaza una versión no soportada con `UnsupportedProtocolVersionError` y comprueba que las cabeceras `MCP-Protocol-Version`, `Mcp-Method` y `Mcp-Name` coinciden con el cuerpo. Incluye `resultType` en todos los resultados de esa revisión, `ttlMs` y `cacheScope` en los de `server/discover` y `tools/list`, y orden determinista en `tools/list`. Es un servidor de doble era: una petición sin `MCP-Protocol-Version`, o con una revisión anterior en ella, se atiende con la negociación inicial (`initialize`) de la 2025-11-25 y anteriores, también sin sesiones. En producción se ha probado con Claude Code y, en las dos eras, con el cliente del SDK. | M | P, D | Impl. |
+| RNF-16 | **Conformidad con MCP.** El servidor cumple el protocolo de la revisión 2026-07-28. Lee la versión y las capacidades del cliente del `_meta` de cada petición, rechaza una versión no soportada con `UnsupportedProtocolVersionError` y comprueba que las cabeceras `MCP-Protocol-Version`, `Mcp-Method` y `Mcp-Name` coinciden con el cuerpo. Incluye `resultType` en todos los resultados de esa revisión, `ttlMs` y `cacheScope` en los de `server/discover` y `tools/list`, y orden determinista en `tools/list`. Es un servidor de doble era: una petición sin `MCP-Protocol-Version`, o con una revisión anterior en ella, se atiende con la negociación inicial (`initialize`) de la 2025-11-25 y anteriores, también sin sesiones. En producción se ha probado con Claude Code y, en las dos eras, con el cliente del SDK; en local, también con MCP Inspector, por HTTP y por stdio. | M | P, D | Impl. |
 
-> **Pendiente (PT2-clientes).** Registrar `/mcp` en VS Code y Cursor (y en MCP Inspector) y anotar qué revisión negocia cada uno y cómo presenta el 401 de la clave.
+> **Pendiente (PT2-clientes).** Registrar `/mcp` en VS Code y Cursor y anotar qué revisión negocia cada uno y cómo presenta el 401 de la clave. MCP Inspector 2.13.0 ya está comprobado (12 de noviembre de 2026, en local, por HTTP y por stdio): negocia 2025-11-25 por `initialize` con `--protocol-era legacy`, que es su valor por defecto, y 2026-07-28 por `server/discover` con `modern` o `auto`. Ante el 401 y el 403 termina con `auth_required`.
 
 ### Mantenibilidad
 

@@ -65,6 +65,31 @@ def test_client_examples_never_contain_a_literal_api_key():
         assert url.endswith("/mcp"), path.name  # ruta exacta: sin barra final ni 307
 
 
+# Ruta del repositorio en los ejemplos stdio: variable de entorno de Claude Code (${NOMBRE})
+# o de Cursor y VS Code (${env:NOMBRE}), nunca una ruta escrita.
+_PATH_REF = re.compile(r"^\$\{(?:env:)?LEGALDEV_DIR\}$")
+
+
+def test_stdio_client_examples_launch_the_local_server_without_keys():
+    """Un ejemplo stdio por cliente HTTP: lanza app.mcp_stdio con uv desde el repositorio,
+    sin URL, cabeceras ni variables de entorno (la clave de Groq sale del .env del
+    repositorio)."""
+    files = sorted((CLIENTS_DIR / "stdio").glob("*.json"))
+    assert [p.name for p in files] == [
+        p.name for p in sorted(CLIENTS_DIR.glob("*.json"))
+    ]
+    for path in files:
+        config_json = json.loads(path.read_text(encoding="utf-8"))
+        servers = config_json.get("servers") or config_json["mcpServers"]
+        server = servers["legaldev"]
+        assert server["type"] == "stdio", path.name
+        assert server["command"] == "uv", path.name
+        args = server["args"]
+        assert args[0] == "run" and args[-3:] == ["python", "-m", "app.mcp_stdio"]
+        assert _PATH_REF.match(args[args.index("--directory") + 1]), path.name
+        assert not {"url", "headers", "env", "envFile"} & set(server), path.name
+
+
 def test_guard_checks_follow_the_order_of_the_implementation():
     # Las tres primeras en McpGuard, las dos últimas en el SDK (23-detalle, «Capa de servicio
     # y traducción de errores»). 22-arquitectura y CU-07 deben unificarse con este orden.

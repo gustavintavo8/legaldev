@@ -30,8 +30,30 @@ mcp-dev:
 mcp-stdio:
 	uv run python -m app.mcp_stdio
 
+# Comprobación de /mcp con el modo CLI de MCP Inspector (docs/mcp/README.md, «MCP Inspector»):
+# tools/list (con --strict, portabilidad de los esquemas) y listar_normativas en las dos eras,
+# y que sin clave y con una clave falsa el Inspector sale con 3 (auth_required). No llama a
+# analizar_proyecto, así que no gasta cuota de Groq. Necesita LEGALDEV_API_KEY; LEGALDEV_URL
+# es la base del servidor (por defecto, la API local de make mcp-dev).
+INSPECTOR = npx -y @modelcontextprotocol/inspector@2.13.0 --cli
+MCP_URL = $${LEGALDEV_URL:-http://localhost:8000}/mcp
+
 mcp-inspect:
-	@echo "TODO(PT2/RNF-16): inspección pendiente con el modo CLI de MCP Inspector (npx @modelcontextprotocol/inspector --cli --method tools/list --transport http --server-url <URL>/mcp --header X-API-Key:...); comprobar antes que habla la revisión 2026-07-28" >&2; exit 1
+	@test -n "$$LEGALDEV_API_KEY" || { echo "Falta LEGALDEV_API_KEY (la clave de /mcp)" >&2; exit 1; }
+	@set -e; for era in modern legacy; do \
+		echo "-> $$era: tools/list --strict y listar_normativas"; \
+		$(INSPECTOR) "$(MCP_URL)" --transport http --header "X-API-Key: $$LEGALDEV_API_KEY" \
+			--protocol-era $$era --stored-auth-only --method tools/list --strict -q > /dev/null; \
+		$(INSPECTOR) "$(MCP_URL)" --transport http --header "X-API-Key: $$LEGALDEV_API_KEY" \
+			--protocol-era $$era --stored-auth-only --method tools/call \
+			--tool-name listar_normativas -q > /dev/null; \
+	done
+	@echo "-> sin clave y con una clave falsa"
+	@$(INSPECTOR) "$(MCP_URL)" --transport http --protocol-era modern --stored-auth-only \
+		--method tools/list -q 2> /dev/null; test $$? -eq 3
+	@$(INSPECTOR) "$(MCP_URL)" --transport http --header "X-API-Key: clave-falsa" \
+		--protocol-era modern --stored-auth-only --method tools/list -q 2> /dev/null; test $$? -eq 3
+	@echo "OK: las dos eras responden y /mcp rechaza sin clave y con una clave falsa"
 
 validate-mapping:
 	@echo "TODO(PT3/PP-09): validación de data/mapeo_controles.yaml contra data/catalogo_controles.yaml sin implementar (app/controls.py)" >&2; exit 1

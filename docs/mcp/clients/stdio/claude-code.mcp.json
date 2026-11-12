@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "legaldev": {
+      "type": "stdio",
+      "command": "uv",
+      "args": ["run", "--directory", "${LEGALDEV_DIR}", "python", "-m", "app.mcp_stdio"]
+    }
+  }
+}
