@@ -155,25 +155,30 @@ modelo, antes de verificar las citas y de guardar el resultado en la caché com�
 **Qué retira** (el detalle está en la cabecera del módulo):
 
 - Caracteres de control y secuencias de escape ANSI. Caracteres invisibles: ancho cero,
-  dirección bidi, etiquetas Unicode y selectores de variación. Se respetan el guion blando,
-  que está en 243 fragmentos de la Directiva ePrivacy, y el selector de un emoji. Antes, los
-  saltos de línea CRLF y los CR sueltos pasan a LF, como hace marked al pintar.
+  dirección bidi, etiquetas Unicode y selectores de variación. Se respeta el selector de un
+  emoji. Antes, los saltos de línea CRLF y los CR sueltos pasan a LF, como hace marked al
+  pintar, y se quita el guion blando, sin contarlo (ver «Segunda revisión»).
 - Bloques que imitan llamadas a herramientas, que pasan a «(bloque retirado)»: etiquetas de
-  llamada al estilo XML, tokens especiales `<|…|>`, el formato harmony de gpt-oss
-  (`to=functions.…`), `[TOOL_CALLS]`, objetos JSON con nombre y argumentos o con
-  `tools/call`, y bloques de código que se anuncian como llamada.
+  llamada al estilo XML, el formato `<function=…>` de Llama 3.1/3.2, tokens especiales
+  `<|…|>`, el formato harmony de gpt-oss (`to=functions.…`), las marcas `[TOOL_CALLS]`,
+  `[ARGS]` y `[CALL_ID]` (Mistral, también con el nombre entre las marcas), objetos JSON con
+  nombre y argumentos o con `tools/call` (también con las claves escritas con escapes
+  `\u…` o `\/`), y bloques de código que se anuncian como llamada.
 - HTML en bruto: comentarios, bloques `script`, `style`, `iframe`, `svg` y similares con su
-  contenido, etiquetas de elementos HTML y cualquier etiqueta con atributos. `` `<script>` ``
-  en un código en línea se queda en `` `script` ``, para no estropear un consejo sobre
-  cookies. Una etiqueta desconocida sin atributos (`<nombre de la empresa>`) es inerte y se
-  deja.
+  contenido, etiquetas de elementos HTML (todas las que deja DOMPurify 3.4.17, la versión de
+  la web) y cualquier etiqueta con atributos, leídos como los lee un navegador: con `<` o `>`
+  entre comillas y con `/` como separador. `` `<script>` `` en un código en línea se queda en
+  `` `script` ``, para no estropear un consejo sobre cookies. Una etiqueta desconocida sin
+  atributos (`<nombre de la empresa>`) es inerte y se deja.
 - Todas las imágenes Markdown, que pasan a «(imagen retirada)»: se descargan solas al pintar
   el informe y pueden llevar datos en la URL. Los enlaces y las definiciones de referencia
   cuyo destino no sea `http(s)` a un dominio oficial del corpus (`boe.es`, `aepd.es`,
   `sedeaepd.gob.es`, `ccii.es`, `eur-lex.europa.eu` y `data.europa.eu`, con sus subdominios)
   se quedan en su texto. Los autoenlaces (`<https://…>`) no oficiales pasan a código. El
-  destino se analiza como URL, así que no pasan `javascript:`, `//otro`, `boe.es.otro.com` ni
-  `https://boe.es@otro`.
+  destino se analiza como URL, así que no pasan `javascript:`, `//otro`, `boe.es.otro.com`,
+  `https://boe.es@otro` ni una URL con espacios de cualquier tipo, caracteres no imprimibles
+  o acentos graves dentro. Las expresiones siguen la gramática de marked: entre el destino y
+  el título solo separan el espacio, el tabulador y el salto de línea.
 - Lo anterior no depende de reconocer la construcción entera. Las expresiones regulares
   reconocen un nivel de corchetes y de paréntesis anidados, y CommonMark y marked admiten
   cualquier profundidad. Detrás van tres reglas que miran piezas sueltas:
@@ -181,18 +186,25 @@ modelo, antes de verificar las citas y de guardar el resultado en la caché com�
   - de toda «](» se lee el destino, con paréntesis a cualquier profundidad, y se quita si no
     es oficial (queda el texto con sus corchetes);
   - de todo «]:» seguido de algo que puede llevar a otro sitio se quita ese destino si no es
-    oficial. Así caen las definiciones de referencia dentro de listas, con sangría y con la
-    etiqueta escapada o partida en dos líneas.
+    oficial, cuando la etiqueta empieza una línea (detrás de marcas de lista o de cita, sin
+    cruzar una línea en blanco), que es cuando CommonMark y marked leen una definición. Así
+    caen las definiciones de referencia dentro de listas, con sangría y con la etiqueta
+    escapada o partida en dos líneas.
 
   «Puede llevar a otro sitio» es empezar por un esquema, por `www.` o por dos barras, también
-  escritas `\/\/`, `&#47;&#47;` o `/\` (el navegador lee la barra invertida como barra).
-- URL sueltas, que un visor convierte en enlace: se quedan las de un dominio oficial y las
-  que aparecen en los fragmentos que recibió el modelo con el mismo host; las demás pasan a
-  código, donde se leen pero no son enlace. Se buscan vaya lo que vaya delante, porque marked
-  enlaza `https://` y `www.` también detrás de una letra, un dígito, `_`, `/` o `@`. El código
-  se abre y se cierra con una tira de acentos graves de una longitud que no tenga ninguna otra
-  del texto: con un acento simple, un acento suelto de antes se emparejaría con el de apertura
-  y la URL quedaría fuera.
+  escritas `\/\/`, `&#47;&#47;` o `/\` (el navegador lee la barra invertida como barra). Un
+  esquema sin nada detrás («Plazo:», «try:») no lleva a ningún sitio.
+- URL sueltas, que un visor convierte en enlace (`http(s)://`, `ftp://` y `www.`): se quedan
+  las de un dominio oficial y las que aparecen en los fragmentos que recibió el modelo con el
+  mismo host; las demás pasan a código, donde se leen pero no son enlace. Se buscan vaya lo
+  que vaya delante, porque marked enlaza también detrás de una letra, un dígito, `_`, `/` o
+  `@`, y se juzgan hasta donde las lee marked (hasta un espacio o `<`, con comillas, `>`, `|`
+  y acentos graves dentro). El código se abre y se cierra con una tira de acentos graves de
+  una longitud que no tenga ninguna otra del texto: con un acento simple, un acento suelto de
+  antes se emparejaría con el de apertura y la URL quedaría fuera. No se tocan las URL que
+  son código para cualquier lectura: los bloques con valla que cierran igual para marked y
+  para CommonMark, y el código en línea cuyos acentos solo se pueden emparejar de una manera
+  (ver «Segunda revisión»).
 - Bloques de código sin cerrar, que se cierran: si no, se tragarían el resto del informe y,
   por MCP, el JSON del resultado.
 
@@ -213,12 +225,14 @@ Decisiones:
   texto que se entrega. Si se verificara antes, las citas crudas volverían a entrar en el
   informe por esa lista.
 - **Las citas literales siguen verificándose.** El saneado deja igual los 13.756 fragmentos
-  del índice real: `docs/mcp/pp18/corpus_identidad.py` (solo lectura) dio el 12/11/2026 0
-  fragmentos cambiados y 0 distintos tras `citations.normalize`, con el corpus
-  `7a2029a4dfd8`, antes y después de los arreglos de la revisión (abajo). Una cita literal
-  de un fragmento real no puede dejar de verificarse por el saneado. Una cita de un fragmento
-  envenenado que traiga marcado neutralizado sí deja de verificarse, y es lo correcto.
-  `citations.normalize` no cambia (la web repite sus reglas).
+  del índice real, comparando con `citations.normalize`: `docs/mcp/pp18/corpus_identidad.py`
+  (solo lectura) dio el 12/11/2026 0 distintos tras `normalize`, con el corpus
+  `7a2029a4dfd8`, antes y después de las dos revisiones (abajo). Desde la segunda, 243
+  fragmentos cambian en el texto, todos solo porque pierden el guion blando, que `normalize`
+  ya quitaba; antes no cambiaba ninguno. Una cita literal de un fragmento real no puede dejar
+  de verificarse por el saneado. Una cita de un fragmento envenenado que traiga marcado
+  neutralizado sí deja de verificarse, y es lo correcto. `citations.normalize` no cambia (la
+  web repite sus reglas).
 - **URL sueltas de los fragmentos.** El corpus tiene 674 URL de 85 hosts, la mayoría de
   dominios que no son fuentes oficiales (arxiv.org, enisa.europa.eu, edpb.europa.eu…).
   Neutralizarlas todas rompería citas literales. Una URL copiada tal cual de un fragmento se
@@ -237,16 +251,19 @@ Decisiones:
   pueden tocar algo que no era un enlace, pero no dejan pasar uno. Se descartó usar
   `markdown-it-py` (ya está en el entorno): sus tokens en línea no dicen en qué posición del
   texto están, así que no sirven para reescribirlo.
-- **Coste y bucle de eventos.** `sanear` es Python puro. La búsqueda del cierre de un objeto
-  JSON se limita a su párrafo y las colas de los enlaces se quitan en una sola pasada, así
-  que ningún bucle de Python vuelve a recorrer el texto por cada construcción. Con 27 entradas
-  adversarias de 32.000 caracteres (una por regla), la peor tardó unos 0,6 s. Son miles de
-  `<script>` sin cerrar, que se resuelven dentro de las expresiones regulares, igual que
-  antes de la revisión. `rag.run_pipeline_detailed` lo llama con `asyncio.to_thread`, como
-  la recuperación y el modelo. El bucle de eventos sigue atendiendo la API, `/mcp` y la salud
-  entre una llamada y otra a las expresiones regulares. Una sola llamada no suelta el
-  intérprete (GIL), así que el bucle espera como mucho lo que dure la más larga: en el peor
-  caso medido, menos de esos 0,6 s.
+- **Coste y bucle de eventos.** `sanear` es Python puro. `rag.run_pipeline_detailed` lo
+  llama con `asyncio.to_thread`, como la recuperación y el modelo, pero el hilo no basta: una
+  llamada a una expresión regular no suelta el intérprete (GIL), así que el bucle de eventos
+  (la API, `/mcp`, la salud) espera lo que dure la más larga. Por eso cada búsqueda tiene
+  coste lineal: el cierre de un objeto JSON se busca en su párrafo; los cierres de
+  comentarios, bloques `script` y etiquetas de llamada se buscan una vez y, si no hay, no se
+  vuelven a buscar; las expresiones de los enlaces usan cuantificadores posesivos; y las
+  reglas de piezas sueltas no se repiten en cada pasada. La primera revisión daba por buena
+  una cota de 0,6 s que no lo era (ver «Segunda revisión»). Con las entradas adversarias de
+  las dos revisiones, de 32.000 caracteres, la peor tarda 0,27 s y el bucle no se para más
+  de 0,04 s; con 200.000, 1,7 s (crece en línea recta). Las pruebas comparan 4.000 con 32.000
+  caracteres y miden el bucle. Cancelar la tarea MCP no detiene el hilo, pero el resultado
+  no llega a la caché, que se escribe después.
 - **`consultar_obligaciones` no se sanea.** Devuelve texto del corpus sin pasar por el modelo,
   y el saneado no lo cambiaría (medido arriba). El índice se construye en local desde los PDF
   oficiales. Si algún día pudiera envenenarse, bastaría con aplicar `sanear` al texto de los
@@ -257,8 +274,17 @@ Decisiones:
     (abajo).
   - No se impide que el modelo imite las secciones que añade el código, como una
     «Verificación de citas» falsa.
-  - Los correos sueltos (`datos@otro.example`), que marked convierte en enlaces `mailto:`. Para
-    sacar datos así hace falta que la persona pulse y envíe el correo.
+  - Los correos (`datos@otro.example`, `mailto:datos@otro.example` y
+    `xmpp:datos@otro.example/r`), que marked convierte en enlaces `mailto:` o `xmpp:`. Para
+    sacar datos así hace falta que la persona pulse y envíe el mensaje. Se tratan igual las
+    tres formas: pasar a código solo las que llevan `mailto:` o `xmpp:` no serviría, porque
+    el correo suelto da el mismo enlace.
+  - Una URL no oficial dentro de un código en línea que marked podría emparejar de otra
+    manera (más acentos de la misma longitud, un «]», «)», «>» o «|» dentro, una barra
+    invertida delante) se encierra otra vez en código, y se ve con acentos de más. Lo mismo
+    pasa dentro de un bloque con valla que solo cierra igual para una de las dos lecturas, o
+    sangrado en una lista con líneas sin sangrar. Y una URL no oficial con `>` o `)` queda
+    en código solo hasta ahí (el resto se ve como texto, sin enlace).
   - Un objeto JSON con forma de llamada que tenga una línea en blanco dentro: el cierre se
     busca en su párrafo, así que cada párrafo se mira por separado.
   - Una definición de referencia con destino relativo (`[r]: x.png`). Se deja porque el
@@ -306,7 +332,87 @@ no servía (ver «Qué retira»).
 de `sanear` las 20 cargas de PP-18 y 19 casos de la revisión, y cuenta imágenes y enlaces no
 oficiales. Necesita Node y las dependencias de `legaldev-web` instaladas, y solo lee. El
 12/11/2026, sin sanear pintaban alguno 32 de los 39 casos; con el saneado anterior a la
-revisión, 21; con el actual, 0.
+revisión, 21; con el de después de la revisión, 0.
+
+**Segunda revisión del saneado (12/11/2026).** Una segunda revisión, de los arreglos de la
+primera (`e362902` y `6e17f00`), hizo 19 hallazgos con tres enfoques: eludir el saneado,
+sobresanear texto legítimo y coste. Todos se reprodujeron con `sanear` y con el visor de la
+web, y se arreglaron con su prueba en `tests/test_sanitize.py` (que falla con el saneado
+anterior):
+
+| Problema | Gravedad | Arreglo |
+|---|---|---|
+| `<spacer title="<" style="background-image:url(//otro…)">` y `content`, `decorator`, `element` y `shadow`: DOMPurify las deja con su `style` y no estaban en la lista; con «<» entre comillas o atributos tras «/», la regla del «=» no las veía. En un navegador, la imagen se descargaba sola | alta | La lista de elementos cubre la de DOMPurify 3.4.17 (lo comprueba una prueba) y los atributos se leen como los lee un navegador |
+| `[BOE](https://www.boe.es<NBSP>"@otro/…")`: `\s` de Python casa los espacios Unicode y el saneado leía un destino oficial y un título; marked pinta un enlace a `otro` | alta | La gramática de marked (`[ \t\n]`); `destino_oficial` rechaza espacios, no imprimibles y acentos graves |
+| `[a](` y 32.000 espacios: 9,5 s, con el bucle de eventos parado; ya pasaba antes de la primera revisión | alta | Cuantificadores posesivos en las expresiones de los enlaces |
+| `https://www.boe.es'@otro/…` (también con `"`, `>`, `` ` ``): la URL suelta se cortaba antes que en marked | media | Se juzga hasta donde la lee marked |
+| Una valla cerrada con ```` ```~ ```` (marked) o con un tabulador detrás (CommonMark): lo que es texto en una lectura se tomaba por código | media | Solo se aparta lo que es código en las dos lecturas |
+| Dos acentos dentro de un autoenlace, un enlace o una URL (o en un título, una referencia, una celda o un escape) se tomaban por código en línea, y la URL de en medio se quedaba como enlace | media | El código en línea solo se respeta si sus acentos se emparejan de una sola manera |
+| Objetos JSON de llamada con las claves escritas con `\u…` o `\/` | media | Se resuelven los escapes antes de buscar las claves |
+| `asyncio.to_thread` no evita parar el bucle de eventos si una sola expresión tarda; la cabecera y `rag.py` decían que sí | media | Expresiones lineales, comentarios corregidos y una prueba que mide el bucle |
+| Las reglas de piezas sueltas se repetían en las 20 pasadas (2,3 s con 32.000 caracteres) | media | Se aplican en la primera pasada y al converger |
+| La regla de «]:» borraba texto legítimo: código Python (`-> list[dict]:` seguido de `resultado:`), selectores CSS, viñetas «- [Art. 33 RGPD]: Plazo: …», prosa y tablas, y una URL de los fragmentos detrás de «]:» | media | Solo si la etiqueta empieza una línea; un esquema sin nada detrás no lleva a ningún sitio; `_DEFINICION_RE` exige la forma de una definición |
+| El guion blando (invisible) partía las palabras clave de las llamadas a herramientas | baja | Se quita sin contarlo |
+| `ftp://otro` sin `www.`, y `xmpp:` sin documentar | baja | `ftp://` pasa a código; los correos se documentan juntos («Lo que no cubre») |
+| `<function=nombre>{…}</function>` (Llama) y `[TOOL_CALLS]nombre[ARGS]{…}` (Mistral v11) | baja | Reglas nuevas |
+| `(Nota: …)` detrás de «[...]» perdía «(Nota:» | baja | Un esquema sin nada detrás no se quita |
+| `<?`, `<!--`, `<invoke ` o `<script>` repetidos sin cerrar: coste cuadrático (ya pasaba antes) | baja | Cierre buscado una vez |
+| `[TOOL_CALLS]{}` repetido: el final del párrafo se calculaba por marca | baja | Una vez por párrafo |
+
+Al arreglarlos salieron más, que también se arreglaron con su prueba. De coste: `\[`
+repetido (8,0 s con 32.000 caracteres) y una tira de `!` sin `[` detrás (2,3 s), que ya
+pasaban antes, y la búsqueda de las URL del primer arreglo, que recorría el resto del trozo
+sin espacios por cada URL. De elusión, buscados también con textos aleatorios hechos de
+piezas de Markdown, saneados y pintados con el visor real:
+
+- una barra invertida justo delante de una URL escapaba el primer acento del código y la
+  dejaba como enlace (``\`https://…` ``): ahora se separa con un espacio;
+- `` \`` `` es para marked un escape y un acento suelto, que se emparejaba con el
+  delimitador; las tiras escapadas cuentan ahora también con un acento menos;
+- una URL pegada detrás de un enlace oficial (`[BOE](https://www.boe.es/)https://otro`) o
+  detrás de un `(` sin cerrar (`https://www.boe.es/(ftp://otro`) se leía junto con la
+  oficial; marked cierra el enlace en su `)` y su retroceso para la URL en ese `(`, y enlaza
+  la segunda. Pasaba también detrás de un autoenlace oficial al incluir `>` en la URL (arreglo
+  de esta misma revisión). Ahora la URL se corta donde marked la cierra y se sigue buscando;
+- un énfasis, un tachado o una referencia abiertos antes de una URL pueden cerrarse dentro de
+  ella (en `*`, `_`, `~` o `]`), y una URL pegada detrás es otra
+  (`*a https://www.boe.es/x*https://otro`). Ahora se corta en cada principio de URL que
+  tenga uno de esos caracteres delante, y si el corte cae antes de que se cierre el host,
+  tampoco se respeta la primera (sin el corte, lo de detrás haría de usuario de la URL);
+- para el énfasis, marked aparta `<…>` y `[…](…)` con una búsqueda propia que podía acabar
+  dentro del código que pone el saneado, en un `>` o un `)` de la URL, y un `~` de dentro
+  cerraba un tachado. Ese código ya no lleva `>` ni `)`: se corta ahí.
+
+Con todo arreglado, ninguno de 60.000 textos aleatorios pinta un enlace no oficial.
+
+Dos propuestas no se aplicaron. Quitar en `_recortar_url` la entidad final («&amp;»), como
+marked, no hace falta: sin quitarla, la URL que se juzga y se encierra es igual o más larga
+que el enlace de marked. Y pasar a código `mailto:` y `xmpp:` sin los correos sueltos no
+cambiaría nada (ver «Lo que no cubre»).
+
+Tiempos de `sanear` en el portátil de desarrollo (Windows, Python 3.12) el 12/11/2026, y la
+mayor parada del bucle de eventos con el saneado actual (latido de 10 ms mientras otro hilo
+sanea, como en `rag.py`):
+
+| Entrada | Antes | Después | Parada del bucle |
+|---|---|---|---|
+| `[a](` y 31.996 espacios | 9,38 s | 0,01 s | 0,020 s |
+| 20 pasadas forzadas, `[a](` y 8.000 espacios | 11,72 s | 0,01 s | 0,015 s |
+| 20 pasadas forzadas y `](` hasta 32.000 | 2,28 s | 0,27 s | 0,032 s |
+| `<?` hasta 32.000 | 2,17 s | 0,05 s | 0,030 s |
+| `<!--` hasta 32.000 | 1,12 s | 0,03 s | 0,020 s |
+| `\[` hasta 32.000 | 7,97 s | 0,01 s | 0,016 s |
+| `!<` hasta 32.000 | 2,33 s | 0,05 s | 0,032 s |
+| `[TOOL_CALLS]{}` hasta 224.000 | 0,58 s | 0,14 s | 0,033 s |
+
+Los revisores midieron en su máquina 10,22 s de parada del bucle con la primera entrada.
+
+`docs/mcp/pp18/visor_web.py` cuenta ahora también los elementos que cargan algo solos (con
+`style`, `background`, `src`, `srcset` o `poster`) y juzga los enlaces por el host que
+resuelve el navegador. Con los 40 casos de esta revisión, son 79: sin sanear pintaban algo
+72; con el saneado anterior, 36; con el actual, 0. `corpus_identidad.py` sigue dando 0
+fragmentos distintos tras `normalize`, y el índice tiene las mismas 674 URL de 85 hosts con la
+expresión nueva de las URL sueltas.
 
 **PP-18 automática** (`tests/test_mcp_security.py`). Usa 20 cargas reales
 (`docs/mcp/pp18/cargas.json`, con su técnica y su fuente):
@@ -1015,8 +1121,9 @@ marcado de IA) y M3 (latencia, MCP Inspector y clientes):
 - **C-05:** el formato definitivo del marcado (D-4, art. 50.7), si hace falta una cabecera
   HTTP y el aviso de IA en la web (art. 50.1).
 - **PP-18:** revisar a mano si los informes de P05 y P12 obedecen, sin copiarlas, las órdenes
-  en lenguaje natural. Decidir si los correos sueltos que no salen de los fragmentos pasan
-  también a código (ver «Lo que no cubre»).
+  en lenguaje natural. Decidir si los correos (sueltos, con `mailto:` o con `xmpp:`) que no
+  son de un dominio oficial ni salen de los fragmentos pasan también a código (ver «Lo que no
+  cubre»).
 - **CI en Linux:** las pruebas de stdio (proceso hijo), las de rendimiento del saneado y las
   de `tools/` solo se han ejecutado en Windows. Su primera ejecución en CI será la
   comprobación real.
