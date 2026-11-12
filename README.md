@@ -402,6 +402,7 @@ ALLOWED_ORIGINS=*
 | `MCP_ENABLED` | Monta el servidor MCP en `POST /mcp` (solo si hay claves para él) | `false` |
 | `MCP_API_KEYS` | Claves propias de `/mcp`; vacía, usa las de `API_KEYS`. `/mcp` nunca queda abierto | — |
 | `MCP_ALLOWED_ORIGINS` | Orígenes de navegador admitidos en `/mcp` (sin `*`); los clientes de escritorio no envían `Origin` | — |
+| `MCP_DAILY_LIMIT` | Tope diario de `analizar_proyecto` por clave en `/mcp` (`200/day` o `200`), además de `RATE_LIMIT`; vacío o `0`, sin tope | — |
 
 Cualquier clave de `.env` que no coincida con un setting conocido se ignora (`extra="ignore"` en `Settings`) — un `.env` con una variable renombrada o retirada no rompe el arranque.
 
@@ -496,7 +497,13 @@ claude mcp add --transport http legaldev https://<username>-legaldev.hf.space/mc
   --header "X-API-Key: <clave>"
 ```
 
-Diseño, seguridad, decisiones y configuración de VS Code y Cursor: [`docs/mcp/README.md`](docs/mcp/README.md).
+En local también funciona por stdio, sin clave y con la clave de Groq propia:
+
+```bash
+claude mcp add legaldev -- uv run --directory <ruta del repositorio> python -m app.mcp_stdio
+```
+
+Diseño, seguridad, decisiones, modo stdio y configuración de VS Code y Cursor: [`docs/mcp/README.md`](docs/mcp/README.md).
 
 ## 🔒 Privacidad y datos
 
@@ -588,6 +595,7 @@ En *Settings → Variables and secrets* del Space:
 - `MCP_ENABLED` = `true` (variable).
 - `MCP_API_KEYS` = una o varias claves separadas por comas (secreto). Son las que se reparten a quien vaya a usar el MCP.
 - `API_KEYS` se deja vacía mientras la web llame a `/v1/analyze` sin clave.
+- `MCP_DAILY_LIMIT` = tope diario de `analizar_proyecto` por clave, por ejemplo `200/day` (variable, opcional).
 
 El Space se reinicia solo al guardar. La URL del servidor es `https://<username>-legaldev.hf.space/mcp`; `GET /health` sigue respondiendo como siempre y `POST /mcp` sin clave responde 401.
 

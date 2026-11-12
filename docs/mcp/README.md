@@ -192,11 +192,13 @@ en el directorio de trabajo. Requisitos: el índice construido (`make ingest`) y
 `analizar_proyecto` devuelve `MODELO_NO_DISPONIBLE`.
 
 En Claude Code (ámbito local, fuera del repositorio):
-`claude mcp add legaldev -- uv run --directory <ruta del repositorio> python -m app.mcp_stdio`.
-En un fichero de configuración, el servidor es `"command": "uv"` con
+`claude mcp add legaldev -- uv run --directory <ruta del repositorio> python -m app.mcp_stdio`
+(sintaxis comprobada con `claude mcp add --help` de la versión 2.1.268: sin `--transport` es
+stdio, y el ámbito por defecto es el local). En un fichero de configuración, el servidor es
+`"command": "uv"` con
 `"args": ["run", "--directory", "<ruta del repositorio>", "python", "-m", "app.mcp_stdio"]`
-y sin `url` ni cabeceras. Estas configuraciones no se han probado todavía con cada cliente;
-la prueba de abajo usa el cliente del SDK.
+y sin `url` ni cabeceras. No se ha registrado todavía en ningún asistente real; la prueba de
+abajo usa el cliente del SDK.
 
 Qué cambia respecto a `/mcp`:
 
@@ -245,8 +247,12 @@ fragmentos) 6,6-11,4 s, y una normativa desconocida devolvió `NORMATIVA_DESCONO
 que escribieron las bibliotecas (peticiones a Hugging Face, barras de progreso) salió por
 stderr. No se llamó a `analizar_proyecto`, para no gastar cuota de Groq: su camino es el
 mismo que por HTTP (`service.analyze`) y la prueba automática lo cubre con el modelo simulado.
-Ese arranque es más de lo que algunos clientes esperan por defecto al conectar: en Claude Code
-se amplía con la variable de entorno `MCP_TIMEOUT` (en milisegundos).
+Son llamadas sueltas en una sola máquina, no una medición de latencia (RNF-19 sigue
+pendiente), y no se comparan con los tiempos por HTTP de arriba: el motor es el mismo.
+Ese arranque supera la espera por defecto de Claude Code: en la versión 2.1.268, la variable
+de entorno `MCP_TIMEOUT` (en milisegundos) vale 30 000 si no se fija, así que para el modo
+stdio hay que subirla, por ejemplo `MCP_TIMEOUT=120000` al lanzar `claude` (no probado
+todavía con el asistente).
 
 Pruebas en `tests/test_mcp_stdio.py`: lanzan el servidor como proceso hijo
 (`tests/_mcp_stdio_launcher.py`, con el motor simulado, sin red y en un directorio sin
@@ -419,7 +425,8 @@ salía de él, separándolo de lo que aportaba por su cuenta. Lo que señaló:
   de pendientes del capítulo de resultados (`docs/tfg/requisitos.md` y
   `docs/tfg/trazabilidad.md` ya lo recogen).
 - 23-detalle: `app.main.load_engine` carga el motor para el `lifespan` y para stdio;
-  módulo nuevo `app/mcp_stdio.py`.
+  módulo nuevo `app/mcp_stdio.py`, que aún no figura en la tabla de módulos de
+  `docs/tfg/modulos.md` (es la de `832ac33`).
 - RNF-21 y modelo de amenazas (consumo de la cuota del modelo): tope diario por clave
   (`MCP_DAILY_LIMIT`), con qué cuenta y por qué (incluidos los aciertos de caché), su ventana
   de 24 h y su 429 con `Retry-After`; 30-manual-instalacion: la variable y su formato.
