@@ -66,8 +66,9 @@ POST /v1/analyze (QuestionnaireInput)
           │      → fallback: openai/gpt-oss-20b si el principal falla (modelo retirado, 429, 5xx)
           │
           ├─ 4. Saneado de la salida (app/sanitize.py, RNF-20)
-          │      retira imágenes, enlaces no oficiales, HTML, bloques que imitan llamadas a
-          │      herramientas y caracteres invisibles o de control; respeta las URL de los chunks
+          │      codifica «<», «[», «@», «://», «//» y «www.» (las imágenes, enlaces y HTML
+          │      del modelo se ven como texto) y retira bloques que imitan llamadas a
+          │      herramientas y caracteres invisibles o de control
           │
           ├─ 5. Verificación de citas (app/citations.py)
           │      cada cita del informe saneado se busca literalmente (normalizada, ±10 % en los
@@ -304,7 +305,9 @@ legaldev/
 │   ├── test_rag.py               # Tests del pipeline RAG y construcción de queries
 │   ├── test_retrieval_selection.py # Exclusiones pre-reranker y tope por fuente
 │   ├── test_citations.py         # Extracción y verificación de citas
-│   ├── test_sanitize.py          # Saneado de la salida, regla a regla
+│   ├── test_sanitize.py          # Saneado de la salida: codificación, llamadas y ataques
+│   ├── _casos_saneado.py         # Entradas de ataque e informes legítimos del saneado
+│   ├── _pp18.py                  # Cargas y oráculo de PP-18 (markdown-it con linkify)
 │   ├── test_llm_fallback.py      # Factoría de cliente Groq, comprobación de modelo, respaldo
 │   ├── test_lifespan_guard.py    # Guardia de arranque ante índice/modelo incompatibles
 │   ├── test_ingest.py            # Tests del mapeo doc_type por documento
