@@ -65,17 +65,23 @@ POST /v1/analyze (QuestionnaireInput)
           │      el chunk proviene de uno)
           │      → fallback: openai/gpt-oss-20b si el principal falla (modelo retirado, 429, 5xx)
           │
-          ├─ 4. Verificación de citas (app/citations.py)
-          │      cada cita del informe se busca literalmente (normalizada, ±10 % en los extremos) en los chunks
-          │      recuperados — determinista, no altera la respuesta del LLM
+          ├─ 4. Saneado de la salida (app/sanitize.py, RNF-20)
+          │      retira imágenes, enlaces no oficiales, HTML, bloques que imitan llamadas a
+          │      herramientas y caracteres invisibles o de control; respeta las URL de los chunks
           │
-          └─ 5. RAGResponse
-                 respuesta_completa  ← aviso de no asesoramiento + LLM output
+          ├─ 5. Verificación de citas (app/citations.py)
+          │      cada cita del informe saneado se busca literalmente (normalizada, ±10 % en los
+          │      extremos) en los chunks recuperados — determinista
+          │
+          └─ 6. RAGResponse
+                 respuesta_completa  ← aviso de no asesoramiento + LLM output saneado
                                         + "## Cobertura del análisis"
+                                        + "## Saneado de la salida" (si retiró algo)
                                         + "## Verificación de citas" + aviso
                  normativas_detectadas ← unique sources con ≥ 2 chunks recuperados
                  chunks_utilizados · citas {total, verificadas, no_verificadas}
                  disclaimer · llm_model · corpus_version
+                 saneado {recuentos por tipo} · generado_por_ia {modelo, proveedor, fecha}
 ```
 
 **Indexación offline** (una vez, antes del Docker build):
@@ -286,6 +292,7 @@ legaldev/
 │   ├── main.py        # FastAPI app, lifespan, endpoints, rate limiting
 │   ├── rag.py         # Pipeline: query building, retrieval, score filter, LLM call
 │   ├── citations.py   # Verificación determinista de citas (extract_quotes, verify_citations)
+│   ├── sanitize.py    # Saneado de la salida del modelo (RNF-20)
 │   ├── ingest.py      # Script de indexación offline (no importado por la app)
 │   ├── models.py      # QuestionnaireInput, RAGResponse (Pydantic)
 │   ├── config.py      # Settings desde .env (pydantic-settings)
@@ -297,6 +304,7 @@ legaldev/
 │   ├── test_rag.py               # Tests del pipeline RAG y construcción de queries
 │   ├── test_retrieval_selection.py # Exclusiones pre-reranker y tope por fuente
 │   ├── test_citations.py         # Extracción y verificación de citas
+│   ├── test_sanitize.py          # Saneado de la salida, regla a regla
 │   ├── test_llm_fallback.py      # Factoría de cliente Groq, comprobación de modelo, respaldo
 │   ├── test_lifespan_guard.py    # Guardia de arranque ante índice/modelo incompatibles
 │   ├── test_ingest.py            # Tests del mapeo doc_type por documento
@@ -445,11 +453,15 @@ curl -X POST http://localhost:8000/v1/analyze \
   "disclaimer": "⚠️ Esta información es orientativa...",
   "corpus_version": "858b81eb27fe",
   "llm_model": "openai/gpt-oss-120b",
-  "citas": {"total": 8, "verificadas": 7, "no_verificadas": ["…"]}
+  "citas": {"total": 8, "verificadas": 7, "no_verificadas": ["…"]},
+  "saneado": {"bloques_herramienta": 0, "imagenes": 0, "enlaces": 0, "html": 0, "urls": 0, "caracteres_control": 0, "caracteres_invisibles": 0, "bloques_codigo_sin_cerrar": 0},
+  "generado_por_ia": {"modelo": "openai/gpt-oss-120b", "proveedor": "Groq", "fecha": "2026-11-12T10:15:03.123456Z"}
 }
 ```
 
-`respuesta_completa` empieza y termina con el aviso de no asesoramiento, el mismo texto del campo `disclaimer`, en una línea de cita (`> ⚠️ …`). Así el aviso acompaña al informe aunque se copie o un cliente de la API solo muestre ese campo. Antes del aviso final puede haber hasta dos secciones generadas en código, no por el LLM: `## Cobertura del análisis` (normativas indexadas sin fragmentos relevantes para este proyecto) y, si hay al menos una cita, `## Verificación de citas` (resume `citas.verificadas`/`citas.total` y lista las citas de `citas.no_verificadas`; ver "Verificación de citas en código" más abajo).
+`respuesta_completa` empieza y termina con el aviso de no asesoramiento, el mismo texto del campo `disclaimer`, en una línea de cita (`> ⚠️ …`). Así el aviso acompaña al informe aunque se copie o un cliente de la API solo muestre ese campo. Antes del aviso final puede haber hasta tres secciones generadas en código, no por el LLM: `## Cobertura del análisis` (normativas indexadas sin fragmentos relevantes para este proyecto), `## Saneado de la salida` si el saneado retiró algo del texto del modelo (cuenta qué, sin repetirlo; detalle en `saneado`), y, si hay al menos una cita, `## Verificación de citas` (resume `citas.verificadas`/`citas.total` y lista las citas de `citas.no_verificadas`; ver "Verificación de citas en código" más abajo).
+
+`generado_por_ia` marca el informe como generado por IA en un formato legible por máquina (Reglamento de IA, art. 50.2): el modelo que lo redactó, el proveedor y la fecha de generación en UTC. El saneado y sus decisiones están en `docs/mcp/README.md`, «Salida segura».
 
 Salvo el Código CCII, una normativa con un único fragmento recuperado no abre sección en el informe (lo indica el prompt) ni figura en `## Cobertura del análisis`, porque sí se recuperó. Hoy desaparece del informe sin aviso (hallazgo C-02 de la revisión jurídica del 10.10.2026).
 

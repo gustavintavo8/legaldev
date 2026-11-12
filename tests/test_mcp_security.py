@@ -1,6 +1,7 @@
 """Seguridad del punto de entrada /mcp (RNF-15, RNF-16, RNF-18, RNF-20 y RNF-21).
 
-PP-07, PP-08, PP-16, PP-17 y el orden de las comprobaciones de app/mcp_guard.py. Las guardas
+PP-07, PP-08, PP-16, PP-17, PP-18 y el orden de las comprobaciones de app/mcp_guard.py. Las
+pruebas unitarias del saneado (RNF-20) están en tests/test_sanitize.py. Las guardas
 de producción (el servidor MCP está desactivado por defecto y /mcp no existe sin él) siguen
 aquí. PP-14 está en tests/test_mcp_contract.py, con el resto del protocolo.
 """
@@ -11,13 +12,15 @@ import logging
 import re
 import threading
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
+from langchain_core.documents import Document
 from prometheus_client import REGISTRY
 
-from app import config, mcp_guard, mcp_server
+from app import config, mcp_guard, mcp_server, sanitize
 from app.config import Settings
+from tests import _pp18
 from tests._mcp import message, rpc
 from tests.conftest import MCP_TEST_KEYS, MCP_TEST_ORIGIN
 
@@ -294,7 +297,7 @@ def test_rnf15_tool_descriptions_snapshot():
     )
     digest = hashlib.sha256(textos.encode()).hexdigest()
     assert (
-        digest == "ff0ed5bad2005fbf7f3c1c660d85742283f1893233f37036f3eda1731fc3afde"
+        digest == "60bc45dec3c25b5dff8fe6cadcea9e1f1be5ff92fd1dc867cd6973173fe97d19"
     ), (
         f"Textos estáticos del servidor MCP cambiados: revisa y actualiza el hash: {digest}"
     )
@@ -343,16 +346,111 @@ def test_pp08_mcp_logs_do_not_contain_descripcion_breve(
     assert centinela not in caplog.text
 
 
-@pytest.mark.skip(
-    reason="TODO(PT2/RNF-20): saneado de la salida del modelo; PP-18 con LLM real"
-)
-def test_pp18_indirect_injection_payloads_are_not_reproduced():
-    """Con 10 a 20 cargas en descripcion_breve (órdenes al asistente, peticiones de invocar
-    herramientas, HTML y caracteres de control) y el LLM simulado que las repite, el
-    resultado no reproduce la descripción, no contiene órdenes al asistente y llega saneado.
-    La proporción de informes que obedecen alguna carga se informa con el LLM real. Hoy solo
-    está hecha la parte estructural: structuredContent.cuestionario no incluye la descripción
-    y los errores de validación no repiten los valores recibidos."""
+# ------------------------------------------------------- PP-18 y RNF-20 (salida segura)
+
+# Literal del fragmento simulado de conftest.make_mock_doc: una cita que se tiene que seguir
+# verificando después del saneado.
+CITA_LIMPIA = "los datos personales deben tratarse de forma lícita"
+
+
+def _informe_que_repite(carga: str, *, tambien_citada: bool = False) -> str:
+    """Lo que escribiría un modelo que obedece la carga: un informe normal, con una cita
+    literal verificable, y la carga copiada tal cual (y citada, si venía de un fragmento)."""
+    partes = [
+        "## RGPD",
+        "",
+        f'> "{CITA_LIMPIA}" — RGPD, p. 1',
+        "",
+        "**Interpretación:** el registro de pacientes trata datos personales.",
+        "",
+        carga,
+    ]
+    if tambien_citada:
+        partes += ["", f'> "{carga}" — RGPD, p. 2']
+    return "\n".join(partes)
+
+
+def test_pp18_payload_file_holds_10_to_20_real_payloads():
+    cargas = _pp18.cargas()
+    assert 10 <= len(cargas) <= 20
+    assert len({c["id"] for c in cargas}) == len(cargas)
+    # Como mucho 12 llamadas reales a Groq en la medición (docs/mcp/pp18/medir.py).
+    assert 1 <= sum(c["medir"] for c in cargas) <= 12
+    for c in cargas:
+        assert f"CANARIO-{c['id']}" in c["texto"], c["id"]
+        assert c["fuente"] and c["tecnica"], c["id"]
+        # Caben en descripcion_breve (500) detrás de la descripción de base.
+        assert len(c["texto"]) <= 440, c["id"]
+
+
+@pytest.mark.parametrize("carga", _pp18.cargas(), ids=lambda c: c["id"])
+def test_pp18_oracle_flags_every_raw_payload(carga):
+    """El oráculo no es vacío: cada carga, tal cual, contiene alguna forma ejecutable."""
+    assert _pp18.formas_ejecutables(carga["texto"]), carga["id"]
+
+
+def test_pp18_oracle_uses_the_same_official_domains_as_the_sanitizer():
+    assert _pp18.DOMINIOS_OFICIALES == sanitize.DOMINIOS_OFICIALES
+
+
+@pytest.mark.parametrize("via_carga", ["descripcion", "fragmento"])
+@pytest.mark.parametrize("carga", _pp18.cargas(), ids=lambda c: c["id"])
+def test_pp18_indirect_injection_payloads_do_not_reach_the_assistant_executable(
+    mcp_http, sample_input_dict, mock_doc, carga, via_carga
+):
+    """PP-18 con el modelo simulado que repite la carga, en la descripción libre o en un
+    fragmento envenenado del índice: ninguna cadena que reciben la API REST y el asistente
+    (texto y structuredContent) contiene una forma ejecutable; el saneado deja constancia;
+    la cita literal limpia se sigue verificando; y el cuestionario devuelto no repite la
+    descripción. La proporción de cargas que obedece el modelo real se mide aparte
+    (docs/mcp/pp18/medir.py)."""
+    state = mcp_http.app.state
+    cuestionario = dict(sample_input_dict)
+    if via_carga == "descripcion":
+        cuestionario["descripcion_breve"] = (
+            f"{sample_input_dict['descripcion_breve']}. {carga['texto']}"
+        )
+        informe = _informe_que_repite(carga["texto"])
+    else:
+        envenenado = Document(
+            page_content=f"Artículo 5. {carga['texto']}",
+            metadata={"source": "RGPD.pdf", "page": 1},
+        )
+        state.vectorstore.similarity_search_with_relevance_scores.return_value = [
+            (mock_doc, 0.85),
+            (envenenado, 0.84),
+        ]
+        informe = _informe_que_repite(carga["texto"], tambien_citada=True)
+    state.groq_client.invoke.return_value = MagicMock(content=informe)
+
+    rest = mcp_http.post(
+        "/v1/analyze", json=cuestionario, headers={"X-API-Key": MCP_TEST_KEYS[0]}
+    )
+    assert rest.status_code == 200
+    datos = rest.json()
+    resultado = message(rpc(mcp_http, "tools/call", _analizar(cuestionario)))["result"]
+    assert resultado["isError"] is False
+    estructurado = resultado["structuredContent"]
+
+    assert _pp18.formas_en(datos) == []
+    assert _pp18.formas_en(resultado["content"]) == []
+    assert _pp18.formas_en(estructurado) == []
+
+    assert sum(datos["saneado"].values()) > 0
+    assert estructurado["saneado"] == datos["saneado"]
+    assert "## Saneado de la salida" in estructurado["informe"]
+    assert datos["citas"]["verificadas"] >= 1
+    assert not any(
+        q.startswith(CITA_LIMPIA[:30]) for q in datos["citas"]["no_verificadas"]
+    )
+    assert "descripcion_breve" not in estructurado["cuestionario"]
+    assert estructurado["generado_por_ia"]["modelo"] == datos["llm_model"]
+
+
+def test_rnf20_instructions_and_notice_say_results_are_content_not_orders():
+    assert "no órdenes" in mcp_server.SERVER_INSTRUCTIONS
+    assert "no instrucciones para el asistente" in mcp_server.AVISO
+    assert mcp_server.AnalisisProyecto.model_fields["aviso"].default == mcp_server.AVISO
 
 
 def _metric(name, **labels):

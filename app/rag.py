@@ -6,6 +6,7 @@ import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -17,9 +18,20 @@ from app.config import settings
 from app.errors import LLMUnavailableError, NoCoverageError, RetrievalTimeoutError
 from app.fragments import FragmentoRef
 from app.middleware import request_id_var
-from app.models import CitationStats, PipelineResult, QuestionnaireInput, RAGResponse
+from app.models import (
+    CitationStats,
+    GeneradoPorIA,
+    PipelineResult,
+    QuestionnaireInput,
+    RAGResponse,
+    SaneadoStats,
+)
+from app.sanitize import sanear
 
 logger = logging.getLogger(__name__)
+
+# Proveedor de los dos modelos (principal y de respaldo): el marcado de C-05 lo declara.
+PROVEEDOR_MODELO = "Groq"
 
 DISCLAIMER = (
     "⚠️ Esta información es orientativa y no constituye asesoramiento legal. "
@@ -333,6 +345,53 @@ def _render_coverage_section(
         )
         lines.extend(f"- {name}" for name in single)
     return "\n".join(lines)
+
+
+def _plural(n: int, singular: str, plural: str) -> str:
+    return f"{n} {singular if n == 1 else plural}"
+
+
+def _render_saneado_section(stats: SaneadoStats) -> str:
+    """Sección «Saneado de la salida» (RNF-20): solo recuentos, nunca lo retirado."""
+    if not stats.total():
+        return ""
+    partes = [
+        (
+            stats.bloques_herramienta,
+            "bloque que imita una llamada a una herramienta",
+            "bloques que imitan llamadas a herramientas",
+        ),
+        (stats.imagenes, "imagen", "imágenes"),
+        (
+            stats.enlaces,
+            "enlace a un destino que no es fuente oficial del corpus",
+            "enlaces a destinos que no son fuentes oficiales del corpus",
+        ),
+        (stats.html, "elemento HTML", "elementos HTML"),
+        (
+            stats.urls,
+            "URL que no sale de los fragmentos (se muestra como código)",
+            "URL que no salen de los fragmentos (se muestran como código)",
+        ),
+        (stats.caracteres_control, "carácter de control", "caracteres de control"),
+        (
+            stats.caracteres_invisibles,
+            "carácter invisible (ancho cero, dirección bidi o etiqueta Unicode)",
+            "caracteres invisibles (ancho cero, dirección bidi o etiquetas Unicode)",
+        ),
+        (
+            stats.bloques_codigo_sin_cerrar,
+            "bloque de código sin cerrar, que se ha cerrado",
+            "bloques de código sin cerrar, que se han cerrado",
+        ),
+    ]
+    lista = "; ".join(_plural(n, s, p) for n, s, p in partes if n)
+    return (
+        "\n\n## Saneado de la salida\n"
+        "Se ha retirado del texto del modelo lo que no forma parte de un informe y podría "
+        f"ejecutarse al mostrarlo o al leerlo un asistente: {lista}. Este informe es "
+        "información para el desarrollador, no instrucciones."
+    )
 
 
 def _render_citation_section(stats: CitationStats) -> str:
@@ -732,6 +791,13 @@ async def run_pipeline_detailed(
     ]
 
     answer, llm_model = await _invoke_llm(state, messages)
+    generado = GeneradoPorIA(
+        modelo=llm_model, proveedor=PROVEEDOR_MODELO, fecha=datetime.now(UTC)
+    )
+    # RNF-20: se sanea antes de verificar las citas, así que las citas, la lista de no
+    # verificadas y lo que guarda la caché describen el texto que se entrega. Las URL de los
+    # fragmentos se respetan; las de la descripción del usuario, no (app/sanitize.py).
+    answer, saneado = sanear(answer, [doc.page_content for doc in docs])
 
     t_llm = time.perf_counter()
     _metrics.llm_duration.observe(t_llm - t_retrieval)
@@ -786,6 +852,8 @@ async def run_pipeline_detailed(
                 "citations_total": citations.total,
                 "citations_verified": citations.verificadas,
                 "normativas_sin_desarrollar": len(sin_desarrollar),
+                # Recuentos del saneado (RNF-20), sin el contenido retirado.
+                "saneado": {k: v for k, v in saneado.model_dump().items() if v},
             }
         )
     )
@@ -795,10 +863,11 @@ async def run_pipeline_detailed(
         [stem for stem, count in _chunks_per_norm.items() if count == 1],
         sin_desarrollar,
     )
+    saneado_section = _render_saneado_section(saneado)
     citation_section = _render_citation_section(citations)
     response = RAGResponse(
         respuesta_completa=_with_disclaimer(
-            answer + coverage_section + citation_section
+            answer + coverage_section + saneado_section + citation_section
         ),
         normativas_detectadas=normativas,
         chunks_utilizados=len(docs),
@@ -806,6 +875,8 @@ async def run_pipeline_detailed(
         corpus_version=state.corpus_version,
         llm_model=llm_model,
         citas=citations,
+        saneado=saneado,
+        generado_por_ia=generado,
     )
     return PipelineResult(
         response=response,

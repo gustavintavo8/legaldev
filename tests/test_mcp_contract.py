@@ -13,6 +13,7 @@ from mcp.shared.exceptions import MCPError
 
 from app import mcp_server
 from app.fragments import fragment_id
+from app.models import SaneadoStats
 from tests._mcp import (
     call_in_process,
     list_tools_in_process,
@@ -304,6 +305,13 @@ def test_pp03_analizar_proyecto_returns_report_and_structured_content(
     assert data["informe"].count("no constituye asesoramiento legal") == 2
     assert data["normativas_sin_desarrollar"] == []
     assert "descripcion_breve" not in data["cuestionario"]
+    # RNF-20 y C-05: campos añadidos al contrato, opcionales en el outputSchema.
+    assert data["saneado"] == dict.fromkeys(SaneadoStats.model_fields, 0)
+    assert data["generado_por_ia"]["modelo"] == data["llm_model"]
+    assert data["generado_por_ia"]["proveedor"] == "Groq"
+    esquema = tools["analizar_proyecto"].output_schema
+    assert {"saneado", "generado_por_ia"} <= set(esquema["properties"])
+    assert not {"saneado", "generado_por_ia"} & set(esquema["required"])
     assert data["cuestionario"]["tipo_proyecto"] == sample_input_dict["tipo_proyecto"]
     texto = text_of(result)
     assert texto.startswith(data["informe"])
@@ -420,6 +428,8 @@ def test_rf23_no_coverage_is_tool_result_not_http_404(
     assert "LOPDGDD, RGPD" in data["informe"]
     assert data["normativas_detectadas"] == []
     assert data["fragmentos"] == []
+    assert data["generado_por_ia"] is None  # no se ha llamado al modelo
+    assert data["saneado"] == dict.fromkeys(SaneadoStats.model_fields, 0)
     assert "LOPDGDD, RGPD" in text_of(result)
     client.app.state.groq_client.invoke.assert_not_called()
 

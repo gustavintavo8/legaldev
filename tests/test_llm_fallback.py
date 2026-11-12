@@ -142,6 +142,8 @@ def test_fallback_used_when_primary_fails(mock_reranker, caplog):
     informe = result.respuesta_completa.removeprefix(f"> {DISCLAIMER}\n\n")
     assert informe.startswith("Respuesta del respaldo")
     assert result.llm_model == settings.groq_fallback_model
+    # C-05: el marcado de IA declara el modelo que redactó el informe, aquí el de respaldo.
+    assert result.generado_por_ia.modelo == settings.groq_fallback_model
     assert _metric("legaldev_llm_fallback_total", reason="Exception") == before + 1
     assert '"event": "llm_fallback"' in caplog.text
 

@@ -13,7 +13,7 @@ El texto completo de cada requisito y de cada criterio de aceptación está en [
 | OE3, comprobación en CI (opcional; se decide el 1 de marzo de 2027) | PT6 | RF-28 | CA-11 |
 | OE4, validación comparativa | PT4, PT5 y PT7 | No añade requisitos funcionales | CA-08 y el diseño de la evaluación (conjunto de prueba congelado, líneas base B1 a B3, cobertura y especificidad del mapeo) |
 
-Los requisitos de OE1 están implementados, probados y desplegados en producción, salvo RNF-20 y la medición de latencia de RNF-19. El modo stdio de RF-22 (un servidor local, que corre en la máquina de quien lo usa) y el tope diario por clave de RNF-21 se añadieron el 12 de noviembre de 2026 y todavía no están en el Space. Los de OE2 y OE3 no están implementados. Si falta tiempo, se recorta primero RF-28. Los requisitos *must* de OE1 y OE2 no se recortan.
+Los requisitos de OE1 están implementados, probados y desplegados en producción, salvo la medición de latencia de RNF-19. El saneado de RNF-20 se añadió el 12 de noviembre de 2026 y todavía no está en el Space. El modo stdio de RF-22 (un servidor local, que corre en la máquina de quien lo usa) y el tope diario por clave de RNF-21 se añadieron el 12 de noviembre de 2026 y todavía no están en el Space. Los de OE2 y OE3 no están implementados. Si falta tiempo, se recorta primero RF-28. Los requisitos *must* de OE1 y OE2 no se recortan.
 
 > **Pendiente (OE2-mapeo).** Tipificación de las obligaciones, módulo y tabla de mapeo, generador de evidencias, pruebas PP-09 y PP-10 y resultados.
 
@@ -47,7 +47,7 @@ Las pruebas del punto de partida son los ficheros `tests/test_<nombre>.py`; la c
 | RF-21 Interfaz web | 01, 03, 06 | Sin prueba automatizada | — |
 | **Servidor MCP, OE1 (pasan en local)** | | | |
 | RF-22 Servidor MCP | 07 | PP-01, PP-02, PP-07, PP-13 a PP-17 | CA-09 |
-| RF-23 Analizar (MCP) | 07, 08 | PP-03 a PP-05, PP-15 (PP-18, pendiente) | CA-09 |
+| RF-23 Analizar (MCP) | 07, 08 | PP-03 a PP-05, PP-15, PP-18 | CA-09 |
 | RF-24 Listar (MCP) | 07 | PP-02 | CA-09 |
 | RF-25 Consultar (MCP) | 07 | PP-06 | CA-09 |
 | **Propuestos (pruebas diseñadas, no ejecutadas)** | | | |
@@ -55,7 +55,7 @@ Las pruebas del punto de partida son los ficheros `tests/test_<nombre>.py`; la c
 | RF-27 Evidencias | 07–09 | PP-10 | CA-10 |
 | RF-28 CI | 09 | PP-11, PP-12 | CA-11 |
 
-> **Pendiente (PT2-rnf20).** PP-18 está omitida en la suite hasta que se implemente el saneado de la salida (RNF-20).
+> **Hecho (PT2-rnf20).** PP-18 pasa en la suite desde el 12 de noviembre de 2026 (`tests/test_mcp_security.py`, con las cargas de `docs/mcp/pp18/cargas.json`); la medición con el modelo real está en `docs/mcp/README.md`.
 
 ## Cómo leer la matriz
 

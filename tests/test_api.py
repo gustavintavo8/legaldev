@@ -42,6 +42,34 @@ def test_analyze_report_carries_disclaimer(client, sample_input_dict):
     assert data["respuesta_completa"].endswith(aviso)
 
 
+def test_analyze_marks_ai_generated_content_and_reports_sanitizing(
+    client, sample_input_dict
+):
+    """C-05 (Reglamento de IA, art. 50.2) y RNF-20: campos nuevos del resultado REST, que
+    no cambian los existentes y se publican en OpenAPI sin ser obligatorios."""
+    from datetime import datetime, timedelta
+
+    from app.models import SaneadoStats
+
+    first = client.post("/v1/analyze", json=sample_input_dict)
+    data = first.json()
+    marca = data["generado_por_ia"]
+    assert marca["modelo"] == data["llm_model"]
+    assert marca["proveedor"] == "Groq"
+    assert datetime.fromisoformat(marca["fecha"]).utcoffset() == timedelta(0)
+    assert data["saneado"] == dict.fromkeys(SaneadoStats.model_fields, 0)
+
+    # Una respuesta de la caché conserva la fecha en que se generó el informe.
+    again = client.post("/v1/analyze", json=sample_input_dict)
+    assert again.headers["X-Cache"] == "HIT"
+    assert again.json()["generado_por_ia"] == marca
+
+    schemas = client.get("/openapi.json").json()["components"]["schemas"]
+    respuesta = next(v for k, v in schemas.items() if k.startswith("RAGResponse"))
+    assert {"saneado", "generado_por_ia"} <= set(respuesta["properties"])
+    assert not {"saneado", "generado_por_ia"} & set(respuesta.get("required", []))
+
+
 def test_analyze_invalid_input_missing_fields(client):
     response = client.post("/v1/analyze", json={"tipo_proyecto": "app_web"})
     assert response.status_code == 422

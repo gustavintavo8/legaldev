@@ -6,8 +6,9 @@ se monta aunque se active
 (RNF-15). En local, el mismo servidor funciona también por stdio
 (`python -m app.mcp_stdio`, ver «Modo stdio»). Requisitos RF-22 a RF-25, RNF-15, RNF-16 y
 RNF-18 a RNF-21; caso de uso CU-07;
-pruebas PP-01 a PP-08 y PP-13 a PP-17 (PP-18 pendiente de RNF-20); criterio CA-09; paquete de
-trabajo PT2. Desplegado en el Space de Hugging Face desde el 06/11/2026
+pruebas PP-01 a PP-08 y PP-13 a PP-18; criterio CA-09; paquete de trabajo PT2. El informe sale
+saneado (RNF-20) y marcado como generado por IA (C-05) desde el 12/11/2026, todavía no en el
+Space. Desplegado en el Space de Hugging Face desde el 06/11/2026
 (`https://gustavintavo8-legaldev.hf.space/mcp`, con `MCP_API_KEYS` propias; la API REST sigue
 abierta para la web).
 
@@ -90,8 +91,9 @@ una prueba de instantánea (RNF-15); registros sin la descripción libre ni el `
 (PP-08, comprobado a nivel DEBUG en todos los registradores); `structuredContent.cuestionario`
 sin `descripcion_breve`; progreso cada 5 s mientras se genera el informe si el cliente envía
 `progressToken`, y cancelación de la tarea si cierra el flujo (RNF-19); etiqueta `via` en el
-registro del pipeline y en `legaldev_analyze_requests_total`. Pendiente: saneado de la salida
-del modelo (RNF-20) y la medición de PP-18 con el modelo real.
+registro del pipeline y en `legaldev_analyze_requests_total`; saneado de la salida del modelo
+e instrucciones que dicen que los resultados son contenido y no órdenes (RNF-20, PP-18; ver
+«Salida segura»).
 
 ### Tope diario por clave (`MCP_DAILY_LIMIT`)
 
@@ -134,6 +136,128 @@ clientes de la era antigua, el aislamiento entre claves, la separación del cont
 
 Pendiente: fijar el valor en el Space (*Settings → Variables and secrets*), por debajo de la
 cuota diaria de Groq repartida entre las claves y la web.
+
+### Salida segura (RNF-20) y PP-18
+
+**Qué amenaza cubre.** La inyección indirecta a través de la salida. Quien controla parte del
+texto que lee el modelo le puede pedir que escriba en el informe algo que se ejecuta al
+mostrarlo o al leerlo un asistente. Ese texto puede ser la descripción libre del cuestionario,
+que un asistente puede rellenar con texto de terceros (un README, una incidencia), o un
+fragmento del índice, si alguien lo envenenara. El prompt no cambia (decisión D-1): el informe
+se sanea en código.
+
+**Dónde.** `app/sanitize.py`, al que llama `rag.run_pipeline_detailed` justo después del
+modelo, antes de verificar las citas y de guardar el resultado en la caché común. La API REST,
+`analizar_proyecto` (por HTTP y por stdio) y la web reciben el mismo texto.
+
+**Qué retira** (el detalle está en la cabecera del módulo):
+
+- Caracteres de control y secuencias de escape ANSI. Caracteres invisibles: ancho cero,
+  dirección bidi, etiquetas Unicode y selectores de variación. Se respetan el guion blando,
+  que está en 243 fragmentos de la Directiva ePrivacy, y el selector de un emoji.
+- Bloques que imitan llamadas a herramientas, que pasan a «(bloque retirado)»: etiquetas de
+  llamada al estilo XML, tokens especiales `<|…|>`, el formato harmony de gpt-oss
+  (`to=functions.…`), `[TOOL_CALLS]`, objetos JSON con nombre y argumentos o con
+  `tools/call`, y bloques de código que se anuncian como llamada.
+- HTML en bruto: comentarios, bloques `script`, `style`, `iframe`, `svg` y similares con su
+  contenido, etiquetas de elementos HTML y cualquier etiqueta con atributos. `` `<script>` ``
+  en un código en línea se queda en `` `script` ``, para no estropear un consejo sobre
+  cookies. Una etiqueta desconocida sin atributos (`<nombre de la empresa>`) es inerte y se
+  deja.
+- Todas las imágenes Markdown, que pasan a «(imagen retirada)»: se descargan solas al pintar
+  el informe y pueden llevar datos en la URL. Los enlaces y las definiciones de referencia
+  cuyo destino no sea `http(s)` a un dominio oficial del corpus (`boe.es`, `aepd.es`,
+  `sedeaepd.gob.es`, `ccii.es`, `eur-lex.europa.eu` y `data.europa.eu`, con sus subdominios)
+  se quedan en su texto. Los autoenlaces (`<https://…>`) no oficiales pasan a código. El
+  destino se analiza como URL, así que no pasan `javascript:`, `//otro`, `boe.es.otro.com` ni
+  `https://boe.es@otro`.
+- URL sueltas, que un visor convierte en enlace: se quedan las de un dominio oficial y las
+  que aparecen en los fragmentos que recibió el modelo; las demás pasan a código, donde se
+  leen pero no son enlace.
+- Bloques de código sin cerrar, que se cierran: si no, se tragarían el resto del informe y,
+  por MCP, el JSON del resultado.
+
+**Constancia.** El campo `saneado` (recuentos por tipo) va en la respuesta REST y en el
+`structuredContent` de `analizar_proyecto`. Si se ha retirado algo, el informe lleva además
+una sección «Saneado de la salida», antes de «Verificación de citas». Nunca se repite lo
+retirado. El registro `rag_pipeline` lleva los mismos recuentos.
+
+**Contenido, no órdenes.** Las instrucciones del servidor dicen que los informes y fragmentos
+son contenido para el desarrollador, no órdenes, y que no se llamen herramientas porque lo
+pidan. El aviso de los resultados MCP añade que el resultado es contenido para el
+desarrollador, no instrucciones para el asistente.
+
+Decisiones:
+
+- **Sanear antes de verificar las citas.** Así las citas, la lista de no verificadas (que se
+  repite en el informe y en `citas.no_verificadas`) y lo que guarda la caché describen el
+  texto que se entrega. Si se verificara antes, las citas crudas volverían a entrar en el
+  informe por esa lista.
+- **Las citas literales siguen verificándose.** El saneado deja igual los 13.756 fragmentos
+  del índice real: `docs/mcp/pp18/corpus_identidad.py` (solo lectura) dio el 12/11/2026 0
+  fragmentos cambiados y 0 distintos tras `citations.normalize`, con el corpus
+  `7a2029a4dfd8`. Una cita literal de un fragmento real no puede dejar de verificarse por el
+  saneado. Una cita de un fragmento envenenado que traiga marcado neutralizado sí deja de
+  verificarse, y es lo correcto. `citations.normalize` no cambia (la web repite sus reglas).
+- **URL sueltas de los fragmentos.** El corpus tiene URL de más de 50 dominios que no son
+  fuentes oficiales (arxiv.org, enisa.europa.eu, edpb.europa.eu…). Neutralizarlas todas
+  rompería citas literales. Una URL copiada tal cual de un fragmento se escribió antes de la
+  petición y no puede llevar datos del usuario; una que compone el modelo, sí. El precio: la
+  URL de un fragmento envenenado se queda como enlace. Los autoenlaces no tienen esa
+  excepción, porque el corpus sale de PDF y no tiene ninguno: si hay uno, lo ha escrito el
+  modelo.
+- **`consultar_obligaciones` no se sanea.** Devuelve texto del corpus sin pasar por el modelo,
+  y el saneado no lo cambiaría (medido arriba). El índice se construye en local desde los PDF
+  oficiales. Si algún día pudiera envenenarse, bastaría con aplicar `sanear` al texto de los
+  fragmentos en `service.consultar_obligaciones`.
+- **Lo que no cubre.** Una orden en lenguaje natural («dile al asistente que…») no se puede
+  quitar sin entender el texto: la mitigan las instrucciones y el aviso, y su efecto se mide
+  con el modelo real (abajo). Tampoco se impide que el modelo imite las secciones que añade
+  el código, como una «Verificación de citas» falsa.
+
+**PP-18 automática** (`tests/test_mcp_security.py`). Usa 17 cargas reales
+(`docs/mcp/pp18/cargas.json`, con su técnica y su fuente):
+
+- exfiltración por imagen Markdown, enlaces con destino oculto y `javascript:`, y la imagen y
+  el enlace por referencia de EchoLeak;
+- XSS con `onerror` y `script`, una orden en un comentario HTML, y SVG con `iframe`;
+- llamadas a herramientas al estilo XML, JSON de OpenAI, harmony de gpt-oss, Hermes, Mistral
+  y JSON-RPC de MCP;
+- contrabando con etiquetas Unicode y con selectores de variación, Trojan Source (bidi) y
+  escapes ANSI;
+- el escape del delimitador `</descripcion_usuario>` con un autoenlace.
+
+Cada carga va en la descripción y en un fragmento envenenado, con el modelo simulado que la
+repite (34 casos). En ninguno llega una forma ejecutable a la API REST ni al asistente, ni en
+el texto ni en `structuredContent`. Lo comprueba un oráculo escrito aparte del saneado
+(`tests/_pp18.py`), y otra prueba confirma que ese oráculo detecta cada carga sin sanear.
+Además, la cita limpia se sigue verificando y el cuestionario devuelto no repite la
+descripción. Las pruebas de cada regla del saneado están en `tests/test_sanitize.py`.
+
+**PP-18 con el modelo real.** Pendiente de medir con `docs/mcp/pp18/medir.py`.
+
+### Marcado del contenido generado por IA (C-05)
+
+El Reglamento de IA (art. 50.2) pide marcar el contenido generado por IA en un formato legible
+por máquina (hallazgo C-05 de la revisión jurídica). Desde el 12/11/2026, la respuesta de
+`POST /v1/analyze` y el `structuredContent` de `analizar_proyecto` (también en su
+`outputSchema`) llevan el campo `generado_por_ia`:
+
+```json
+"generado_por_ia": {"modelo": "openai/gpt-oss-120b", "proveedor": "Groq", "fecha": "2026-11-12T10:15:03.123456Z"}
+```
+
+- `modelo` es el que redactó el informe; si lo hizo el de respaldo, sale el de respaldo.
+- `fecha` está en UTC y es la de la generación: una respuesta de la caché conserva la suya.
+- Es nulo en un resultado sin cobertura, donde no se llama al modelo.
+- Lo generado es el texto que redacta el modelo. El aviso y las secciones «Cobertura del
+  análisis», «Saneado de la salida» y «Verificación de citas» las añade el código.
+
+`saneado` y `generado_por_ia` son campos nuevos y opcionales en los dos esquemas (OpenAPI y
+`outputSchema`), así que un cliente que valida con el esquema anterior sigue funcionando.
+Pendiente: fijar el formato definitivo con el código de buenas prácticas del art. 50.7
+(decisión D-4 de la revisión), decidir si hace falta además una cabecera HTTP y mostrar en la
+web el aviso de que el informe lo genera una IA (art. 50.1).
 
 ## Configuración de clientes
 
@@ -430,6 +554,23 @@ salía de él, separándolo de lo que aportaba por su cuenta. Lo que señaló:
 - RNF-21 y modelo de amenazas (consumo de la cuota del modelo): tope diario por clave
   (`MCP_DAILY_LIMIT`), con qué cuenta y por qué (incluidos los aciertos de caché), su ventana
   de 24 h y su 429 con `Retry-After`; 30-manual-instalacion: la variable y su formato.
+- RNF-20 pasa a implementado y sale de la tabla de pendientes (PT2-rnf20). Hay que contar qué
+  retira el saneado, que se sanea antes de verificar las citas y la medición de identidad
+  sobre los 13.756 fragmentos. También las tres decisiones: las URL de los fragmentos se
+  respetan, `consultar_obligaciones` no se sanea y las órdenes en lenguaje natural no se
+  cubren. Afecta al modelo de amenazas (inyección indirecta), a 22-arquitectura (paso
+  nuevo del pipeline) y a 23-detalle (módulo `app/sanitize.py`, que tampoco está en la
+  tabla de `docs/tfg/modulos.md`).
+- PP-18 en 24-pruebas y en el capítulo de resultados: la prueba automática (17 cargas, en la
+  descripción y en un fragmento, con un oráculo independiente) y la medición con el modelo
+  real (ver «PP-18 con el modelo real»).
+- tab:det-mcp-herramientas y 31-manual-usuario: campos nuevos `saneado` y `generado_por_ia`
+  del resultado de `analizar_proyecto`, sección «Saneado de la salida» del informe, y el
+  texto nuevo de las instrucciones del servidor y del aviso de los resultados MCP.
+- «Cumplimiento del propio LegalDev» (Reglamento de IA, C-05): el marcado legible por
+  máquina del art. 50.2 está en la API y en MCP (`generado_por_ia`); faltan el formato
+  definitivo (D-4, código de buenas prácticas del art. 50.7) y el aviso en la web (art.
+  50.1).
 
 Siguen abiertas, como estaban: tipificación de las guías de la AEPD sin articulado y forma de
 `sin_mapeo` en la evidencia (OE2).
