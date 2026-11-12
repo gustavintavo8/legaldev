@@ -1,4 +1,4 @@
-.PHONY: dev test ingest eval eval-sweep push-space todos mcp-dev mcp-inspect validate-mapping eval-baselines
+.PHONY: dev test ingest eval eval-sweep push-space todos mcp-dev mcp-stdio mcp-inspect validate-mapping eval-baselines
 
 dev:
 	uv run uvicorn app.main:app --reload
@@ -20,8 +20,15 @@ eval-sweep:
 todos:
 	uv run python tools/list_todos.py
 
+# API con /mcp en http://localhost:8000/mcp. Necesita MCP_API_KEYS o API_KEYS (en el entorno
+# o en .env): sin claves /mcp no se monta y el registro lo avisa (RNF-15).
 mcp-dev:
-	@echo "TODO(PT2/RF-22): servidor MCP sin implementar (app/mcp_server.py). Cuando exista: MCP_ENABLED=true API_KEYS=<clave> uv run uvicorn app.main:app --reload y cliente en http://localhost:8000/mcp (sin API_KEYS no se monta)" >&2; exit 1
+	MCP_ENABLED=true uv run uvicorn app.main:app --reload
+
+# Servidor MCP local por stdio (docs/mcp/README.md, «Modo stdio»). Un cliente lo lanza con
+# uv run --directory <ruta del repositorio> python -m app.mcp_stdio
+mcp-stdio:
+	uv run python -m app.mcp_stdio
 
 mcp-inspect:
 	@echo "TODO(PT2/RNF-16): inspección pendiente con el modo CLI de MCP Inspector (npx @modelcontextprotocol/inspector --cli --method tools/list --transport http --server-url <URL>/mcp --header X-API-Key:...); comprobar antes que habla la revisión 2026-07-28" >&2; exit 1

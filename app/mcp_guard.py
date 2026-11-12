@@ -17,10 +17,15 @@ de entregar la petición al SDK; las dos últimas, el SDK:
    diferencia de ``app.main._verify_api_key``, que deja la API abierta si no hay claves,
    ``/mcp`` nunca queda abierto: sin claves la ruta no se monta.
 3. Límite (RNF-21, PP-17): solo ``tools/call`` de las herramientas que consumen cuota del
-   modelo (``RATE_LIMITED_TOOLS``); al superarlo, 429. Método y herramienta se leen **del
-   cuerpo**, no de ``Mcp-Name``: un cliente de la era del ``initialize`` no envía esa
-   cabecera y no debe librarse del límite. Mentir en ``Mcp-Name`` tampoco sirve: el SDK
-   rechaza después la incoherencia con el cuerpo.
+   modelo (``RATE_LIMITED_TOOLS``); al superarlo, 429 con ``Retry-After``. Primero el cupo
+   por minuto (``RATE_LIMIT``) y después, si ``MCP_DAILY_LIMIT`` lo fija, el tope diario
+   por clave, en el mismo almacén. Método y herramienta se leen **del cuerpo**, no de
+   ``Mcp-Name``: un cliente de la era del ``initialize`` no envía esa cabecera y no debe
+   librarse del límite. Mentir en ``Mcp-Name`` tampoco sirve: el SDK rechaza después la
+   incoherencia con el cuerpo. Se cuentan todas las llamadas que pasan la guarda, también
+   las que acaban saliendo de la caché, las de un cuestionario inválido y las que no tienen
+   cobertura: la guarda decide antes de validar y de mirar la caché (``docs/mcp/README.md``,
+   «Tope diario por clave»).
 4. Cabeceras (RNF-16, PP-14): el SDK compara ``Mcp-Method``/``Mcp-Name`` con el cuerpo
    (400, ``HeaderMismatch``, -32020) cuando la petición es de la era sin estado.
 5. Versión (RNF-16, PP-01): el SDK rechaza una revisión no soportada en ``_meta`` (400,
@@ -68,6 +73,12 @@ CHECK_ORDER: Final[tuple[str, ...]] = (
 # app/mcp_server.py) y no se limitan.
 RATE_LIMITED_TOOLS: Final[frozenset[str]] = frozenset({"analizar_proyecto"})
 
+# Identificador del contador del tope diario (MCP_DAILY_LIMIT) en el almacén del limitador.
+# limits nombra cada contador por identificadores y límite («LIMITER/<ids>/200/1/day»): si
+# RATE_LIMIT incluyera el mismo límite («10/minute;200/day»), sin este identificador los dos
+# compartirían contador y cada llamada contaría dos veces.
+DAILY_LIMIT_SCOPE: Final = "tope_diario"
+
 # Un cuestionario ocupa unos 2 KB; el SDK admitiría 4 MiB.
 MAX_BODY_BYTES: Final = 256 * 1024
 
@@ -108,6 +119,11 @@ class RateLimited(GuardRejection):
     def __init__(self, message: str, retry_after: int) -> None:
         super().__init__(message)
         self.headers = {"Retry-After": str(retry_after)}
+
+
+class DailyLimitExceeded(RateLimited):
+    """Tope diario de la clave agotado (``MCP_DAILY_LIMIT``): 429 como el cupo por minuto,
+    con otro mensaje y otro ``reason`` en el registro."""
 
 
 class BodyTooLarge(GuardRejection):
@@ -218,18 +234,46 @@ def _client_ip(request: Request) -> str:
     return _get_real_ip(request)
 
 
+def _retry_after(strategy, item: limits.RateLimitItem, *identifiers: str) -> int:
+    """Segundos hasta que se renueva la ventana (al menos 1), para ``Retry-After``."""
+    reset_at = strategy.get_window_stats(item, *identifiers)[0]
+    return max(1, int(reset_at - time.time()))
+
+
 def _hit_rate_limit(scope: Scope, key: str) -> None:
     """Cuenta una invocación en el limitador de la API (mismo almacén y mismo cupo).
 
     ``RATE_LIMIT`` admite varios límites («10/minute;100/day»), como en slowapi: se cuentan
     todos y basta con que se agote uno.
     """
-    limiter = scope["app"].state.limiter
+    strategy = scope["app"].state.limiter._limiter
     for item in limits.parse_many(config.settings.rate_limit):
-        if not limiter._limiter.hit(item, key):
-            reset_at = limiter._limiter.get_window_stats(item, key)[0]
-            retry_after = max(1, int(reset_at - time.time()))
-            raise RateLimited("Límite de peticiones superado", retry_after)
+        if not strategy.hit(item, key):
+            raise RateLimited(
+                "Límite de peticiones superado", _retry_after(strategy, item, key)
+            )
+
+
+def _hit_daily_limit(scope: Scope, key: str) -> None:
+    """Cuenta una invocación en el tope diario de la clave (``MCP_DAILY_LIMIT``), si lo hay.
+
+    Mismo almacén que el cupo por minuto, con un identificador propio
+    (``DAILY_LIMIT_SCOPE``). Ventana fija de 24 h desde la primera llamada contada de cada
+    clave, no desde medianoche; el almacén es la memoria del proceso, así que un reinicio la
+    vacía.
+    """
+    item = config.settings.mcp_daily_limit_item
+    if item is None:
+        return
+    strategy = scope["app"].state.limiter._limiter
+    if not strategy.hit(item, key, DAILY_LIMIT_SCOPE):
+        retry_after = _retry_after(strategy, item, key, DAILY_LIMIT_SCOPE)
+        raise DailyLimitExceeded(
+            f"Tope diario de analizar_proyecto agotado para esta clave ({item.amount} "
+            f"al día). Se renueva dentro de {retry_after} s; listar_normativas y "
+            "consultar_obligaciones siguen disponibles.",
+            retry_after,
+        )
 
 
 async def _read_body(receive: Receive) -> bytes:
@@ -287,7 +331,10 @@ class McpGuard:
             if invalido is not None:
                 raise invalido
             if is_rate_limited(*_invocation(payload)):
-                _hit_rate_limit(scope, rate_limit_key(api_key, _client_ip(request)))
+                clave = rate_limit_key(api_key, _client_ip(request))
+                # Primero el cupo por minuto: una ráfaga frenada no gasta el tope diario.
+                _hit_rate_limit(scope, clave)
+                _hit_daily_limit(scope, clave)
         except GuardRejection as rej:
             logger.info(
                 json.dumps(

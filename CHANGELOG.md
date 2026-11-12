@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Servidor MCP en `POST /mcp` (`MCP_ENABLED`, desactivado por defecto; exige `API_KEYS`), sobre el SDK oficial `mcp==2.3.0`: herramientas `analizar_proyecto`, `listar_normativas` y `consultar_obligaciones`, con salida estructurada. Atiende la revisión 2026-07-28 y la era del `initialize`. Guarda propia de `Origin` (`MCP_ALLOWED_ORIGINS`), clave y límite. Claves propias opcionales (`MCP_API_KEYS`) para desplegarlo junto a la web pública sin cerrar `/v1/analyze`. El informe completo va también en `structuredContent.informe`. Detalles y decisiones en `docs/mcp/README.md`.
+- Servidor MCP local por stdio (`uv run --directory <repositorio> python -m app.mcp_stdio`, o `make mcp-stdio`): las mismas tres herramientas y el mismo motor que `/mcp`, en las dos eras, sin clave ni límites (el proceso es del cliente y gasta su propia clave de Groq) y con los registros por stderr. El motor se carga con stdout ya desviado a stderr, para que lo que escriben las bibliotecas al cargar no corrompa el protocolo. Es un servidor local, no un puente al Space; la decisión está en `docs/mcp/README.md`, «Modo stdio».
+- Tope diario por clave en `/mcp` (`MCP_DAILY_LIMIT`, por ejemplo `200/day`; vacío o 0, sin tope): cuenta las llamadas a `analizar_proyecto` de cada clave en el mismo almacén que el cupo por minuto, después de él, y al agotarse responde 429 con `Retry-After`. Cuentan también las que salen de la caché. Un valor que no sea un único límite por día impide arrancar.
 - Capa de servicio común REST/MCP (`app/service.py`): una entrada de caché por cuestionario para las dos vías y métrica `legaldev_analyze_requests_total{via}`.
 - El aviso de no asesoramiento abre y cierra `respuesta_completa`, además de ir en el campo `disclaimer`, para que acompañe al informe cuando se copia o cuando un cliente solo muestra ese texto.
 - `NOTICE.md`: licencias y atribución de los textos de terceros del índice (guías de la AEPD con CC BY-NC-SA 4.0, BOE, EUR-Lex y CCII). Sección «Privacidad y datos» en el README con lo que trata hoy el servicio y lo que falta por publicar.
@@ -25,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `tools/eval_retrieval.py --chroma-path` y comprobación de modelo del índice; `make eval-sweep`.
 
 ### Changed
+- La carga del motor (índice, embeddings, clientes de Groq y reordenador) sale del `lifespan` a `app.main.load_engine`, que comparten la API y el modo stdio.
 - Documentación del corpus (`docs/CORPUS_SOURCES.md`, README): títulos y fechas oficiales de las guías de la AEPD, marca «EN REVISIÓN», versiones que no incorporan correcciones o modificaciones (RGPD, Reglamento de IA, Data Act, DGA), ámbito del ENS (sector público y proveedores por contrato), búsquedas auxiliares sin filtro por fuente y estado actual del DSA.
 - Índice ChromaDB reconstruido (2026-09-12) con el splitter v2 a partir de los 22 documentos descargados de sus fuentes oficiales (EUR-Lex, BOE, AEPD, CCII; ver `docs/CORPUS_SOURCES.md`): 13.756 chunks, `corpus_version` `7a2029a4dfd8`, `.index_meta.json` presente (la guardia de arranque ya verifica el modelo de embeddings). La «Directiva de Responsabilidad por Productos con IA» corresponde a la Directiva (UE) 2024/2853 en vigor.
 - `GROQ_MAX_TOKENS` por defecto 4000 → 8000 (en gpt-oss los tokens de razonamiento cuentan como salida).
@@ -35,6 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Dependencias: eliminadas `langchain` y `langchain-community`; `langchain-core` explícita.
 
 ### Fixed
+- `make mcp-dev` arranca la API con `/mcp` (seguía diciendo que el servidor MCP no estaba implementado).
 - Verificación de citas: se ignoran los guiones Unicode (U+2010, U+2011, U+2012, U+2212, U+2043) que el modelo escribe donde el PDF tiene «-»; antes una cita literal partida por un guion de corte de línea se daba por no verificada.
 - «Cobertura del análisis» lista primero las normativas detectadas a las que el informe no dedica sección (encabezado con su nombre o cita verificada en sus fragmentos), y `analizar_proyecto` las devuelve en `normativas_sin_desarrollar`; `consultar_obligaciones` lleva el aviso también en `structuredContent`.
 - «Cobertura del análisis» lista también las normativas con un solo fragmento recuperado, que el informe no desarrolla y antes no salían en ninguna parte, y aclara que «sin fragmentos» se refiere a ese análisis.

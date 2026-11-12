@@ -1,7 +1,8 @@
 """Servidor MCP de LegalDev (RF-22 a RF-25; RNF-15, RNF-16, RNF-18 a RNF-21; CU-07).
 
 Expone el motor como tres herramientas de solo lectura sobre el SDK oficial de Python
-(``mcp==2.3.0``, ``MCPServer``), en ``POST /mcp`` dentro del mismo proceso que la API REST.
+(``mcp==2.3.0``, ``MCPServer``), en ``POST /mcp`` dentro del mismo proceso que la API REST
+y, en local, por stdio (``app/mcp_stdio.py``, con el mismo ``build_mcp_server``).
 Es una capa fina: las herramientas llaman a ``app.service`` (la misma caché, el mismo motor y
 los mismos errores de dominio que ``POST /v1/analyze``) y solo traducen entradas y salidas.
 
@@ -698,18 +699,3 @@ async def serve(app, *, version: str) -> AsyncIterator[None]:
         finally:
             app.state.mcp_session_manager = None
             app.state.mcp_server = None
-
-
-def run_stdio() -> None:
-    """Transporte stdio para uso local (RF-22: «y por stdio en local»).
-
-    En stdio no hay capa HTTP: no se aplican ``Origin``, cabeceras ni clave, y solo quedan los
-    errores de protocolo y de herramienta (21-analisis, «Errores de la interfaz MCP»).
-    """
-    # TODO(PT2/RF-22): aplazado en la prueba de concepto. La memoria no fija qué se ejecuta en
-    # local: 22-arquitectura («Despliegue») y 30-manual-instalacion describen un puente que
-    # reenvía al servidor remoto sin ejecutar el motor, mientras RF-22, la precondición de
-    # CU-07 y el riesgo de latencia de 05-metodologia («ejecución local por stdio») suponen el
-    # servidor en local. Con build_mcp_server bastaría server.run("stdio") tras cargar el
-    # índice como el lifespan; decidir y alinear la memoria.
-    raise NotImplementedError

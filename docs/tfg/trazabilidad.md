@@ -13,7 +13,7 @@ El texto completo de cada requisito y de cada criterio de aceptación está en [
 | OE3, comprobación en CI (opcional; se decide el 1 de marzo de 2027) | PT6 | RF-28 | CA-11 |
 | OE4, validación comparativa | PT4, PT5 y PT7 | No añade requisitos funcionales | CA-08 y el diseño de la evaluación (conjunto de prueba congelado, líneas base B1 a B3, cobertura y especificidad del mapeo) |
 
-Los requisitos de OE1 están implementados, probados y desplegados en producción, salvo RNF-20, el modo stdio de RF-22 y la medición de latencia de RNF-19. Los de OE2 y OE3 no están implementados. Si falta tiempo, se recorta primero RF-28. Los requisitos *must* de OE1 y OE2 no se recortan.
+Los requisitos de OE1 están implementados, probados y desplegados en producción, salvo RNF-20 y la medición de latencia de RNF-19. El modo stdio de RF-22 (un servidor local, que corre en la máquina de quien lo usa) y el tope diario por clave de RNF-21 se añadieron el 12 de noviembre de 2026 y todavía no están en el Space. Los de OE2 y OE3 no están implementados. Si falta tiempo, se recorta primero RF-28. Los requisitos *must* de OE1 y OE2 no se recortan.
 
 > **Pendiente (OE2-mapeo).** Tipificación de las obligaciones, módulo y tabla de mapeo, generador de evidencias, pruebas PP-09 y PP-10 y resultados.
 

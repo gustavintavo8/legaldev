@@ -3,7 +3,9 @@
 **Estado: implementado, desactivado por defecto.** `POST /mcp` existe cuando
 `MCP_ENABLED=true` y hay claves (`MCP_API_KEYS` o, si está vacía, `API_KEYS`); sin claves no
 se monta aunque se active
-(RNF-15). Requisitos RF-22 a RF-25, RNF-15, RNF-16 y RNF-18 a RNF-21; caso de uso CU-07;
+(RNF-15). En local, el mismo servidor funciona también por stdio
+(`python -m app.mcp_stdio`, ver «Modo stdio»). Requisitos RF-22 a RF-25, RNF-15, RNF-16 y
+RNF-18 a RNF-21; caso de uso CU-07;
 pruebas PP-01 a PP-08 y PP-13 a PP-17 (PP-18 pendiente de RNF-20); criterio CA-09; paquete de
 trabajo PT2. Desplegado en el Space de Hugging Face desde el 06/11/2026
 (`https://gustavintavo8-legaldev.hf.space/mcp`, con `MCP_API_KEYS` propias; la API REST sigue
@@ -66,8 +68,10 @@ Quién comprueba qué, en este orden (`mcp_guard.CHECK_ORDER`):
    claves son las de `MCP_API_KEYS` o, si está vacía, las de `API_KEYS`.
 3. Límite (RNF-21, `McpGuard`): solo `tools/call` de `analizar_proyecto`, la única
    herramienta que consume cuota del modelo; mismo cupo (`RATE_LIMIT`) y mismo almacén que la
-   API, por resumen SHA-256 de la clave; 429 con `Retry-After` (PP-17). Método y herramienta
-   se leen del cuerpo, no de `Mcp-Name`, para que los clientes de la era antigua no se libren.
+   API, por resumen SHA-256 de la clave; 429 con `Retry-After` (PP-17). Después del cupo por
+   minuto, el tope diario por clave si `MCP_DAILY_LIMIT` lo fija (ver «Tope diario por
+   clave»). Método y herramienta se leen del cuerpo, no de `Mcp-Name`, para que los clientes
+   de la era antigua no se libren.
 4. Cabeceras (RNF-16, SDK): 400 con `HeaderMismatch` (-32020) si `Mcp-Method`, `Mcp-Name` o la
    versión de la cabecera no coinciden con el cuerpo (PP-14).
 5. Versión y `_meta` (RNF-16, SDK): 400 con `UnsupportedProtocolVersionError` (-32022) y las
@@ -88,6 +92,48 @@ sin `descripcion_breve`; progreso cada 5 s mientras se genera el informe si el c
 `progressToken`, y cancelación de la tarea si cierra el flujo (RNF-19); etiqueta `via` en el
 registro del pipeline y en `legaldev_analyze_requests_total`. Pendiente: saneado de la salida
 del modelo (RNF-20) y la medición de PP-18 con el modelo real.
+
+### Tope diario por clave (`MCP_DAILY_LIMIT`)
+
+Responde a la amenaza de consumo de la cuota del proveedor del modelo: con solo el cupo por
+minuto, una clave filtrada podía pedir `10/minute` × 1.440 minutos = 14.400 análisis al día y
+agotar la cuota de Groq, que el Space comparte con la web.
+
+- **Valor.** `MCP_DAILY_LIMIT=200/day` (o `200`): como mucho 200 llamadas a
+  `analizar_proyecto` por clave y día. Vacío o `0` (el valor por defecto), sin tope. Si no
+  es un único límite por día (`200/hour`, `1/day;2/day`), la aplicación no arranca, igual que
+  con un `*` en `MCP_ALLOWED_ORIGINS`.
+- **Cómo cuenta.** Por clave (el mismo resumen SHA-256 que el cupo por minuto) y en el mismo
+  almacén del limitador, con un identificador propio (`tope_diario`): si `RATE_LIMIT`
+  incluyera el mismo límite (`10/minute;200/day`), sin él los dos compartirían contador y
+  cada llamada contaría dos veces. Se comprueba después del cupo por minuto, así que una
+  llamada frenada por el cupo no gasta el tope.
+- **Qué cuenta.** Toda llamada a `analizar_proyecto` que pasa la guarda: también las que
+  acaban saliendo de la caché, las de un cuestionario inválido (resultado con `isError`) y
+  las que no tienen cobertura, aunque ninguna de las tres llame a Groq. La guarda decide
+  antes de entregar la petición al SDK, sin validar el cuestionario ni mirar la caché. Para
+  descontar esos casos habría que repetir en la guarda la validación estricta y la clave de
+  la caché, o llevar el tope a la herramienta, donde el rechazo dejaría de ser un 429 con
+  `Retry-After` como el resto y pasaría a ser un resultado con `isError`. Además, el tope es
+  una cota del gasto: contar de más lo hace más estricto, nunca más laxo, y un cliente que
+  repite un cuestionario ya tiene la respuesta. El cupo por minuto cuenta igual.
+- **Ventana.** 24 horas desde la primera llamada contada de cada clave, no desde
+  medianoche. El almacén es la memoria del proceso: un reinicio del Space (se duerme por
+  inactividad o se redespliega) pone a cero el tope, igual que el cupo por minuto.
+- **Al agotarse.** 429 con `Retry-After` (los segundos que faltan), código -32000 y un
+  mensaje que da el tope, cuándo se renueva y que `listar_normativas` y
+  `consultar_obligaciones` siguen disponibles. Se registra como `mcp_rejected` con `reason`
+  `DailyLimitExceeded`, distinto del `RateLimited` del cupo por minuto.
+- **Dónde no se aplica.** En stdio (no hay clave: cada desarrollador gasta su propia cuota
+  de Groq) ni en la API REST, que la web llama sin clave y se limita por IP.
+
+Pruebas en `tests/test_mcp_daily_limit.py`: el tope y su `Retry-After`, que cuentan los
+aciertos de caché y los cuestionarios inválidos, que las otras herramientas no lo gastan, los
+clientes de la era antigua, el aislamiento entre claves, la separación del contador de
+`RATE_LIMIT`, el orden con el cupo por minuto, la ausencia de tope y la validación del valor.
+
+Pendiente: fijar el valor en el Space (*Settings → Variables and secrets*), por debajo de la
+cuota diaria de Groq repartida entre las claves y la web.
 
 ## Configuración de clientes
 
@@ -124,8 +170,90 @@ verificadas. La misma llamada desde el cliente de la era antigua salió de la ca
 (0,03 s). El registro no contenía la descripción.
 
 TODO(PT2/CU-07): registrar `/mcp` en VS Code, Cursor y Claude Code con la versión vigente de
-cada cliente y anotar qué revisión negocia cada uno; puente o modo `stdio` para los clientes
-que solo lo admiten.
+cada cliente y anotar qué revisión negocia cada uno.
+
+## Modo stdio (servidor local)
+
+Para los clientes que lanzan el servidor como un proceso suyo y le hablan por su entrada y su
+salida estándar (RF-22: «y por stdio en local»). Es el mismo servidor que `/mcp`:
+`app/mcp_stdio.py` llama a `build_mcp_server` (mismas herramientas, esquemas, textos y capa
+de servicio) sobre el índice y el modelo que carga `app.main.load_engine`, la función que
+usa también el `lifespan` de la API. La orden, desde cualquier directorio:
+
+```
+uv run --directory <ruta del repositorio> python -m app.mcp_stdio
+```
+
+o `make mcp-stdio` desde el repositorio. `--directory` hace falta porque el cliente lanza el
+proceso desde el directorio de su proyecto, y `.env` y `CHROMA_DB_PATH=./chroma_db` se buscan
+en el directorio de trabajo. Requisitos: el índice construido (`make ingest`) y
+`GROQ_API_KEY` en el `.env` del repositorio. Con una clave de Groq no válida,
+`listar_normativas` y `consultar_obligaciones` funcionan igual (no llaman al modelo) y
+`analizar_proyecto` devuelve `MODELO_NO_DISPONIBLE`.
+
+En Claude Code (ámbito local, fuera del repositorio):
+`claude mcp add legaldev -- uv run --directory <ruta del repositorio> python -m app.mcp_stdio`.
+En un fichero de configuración, el servidor es `"command": "uv"` con
+`"args": ["run", "--directory", "<ruta del repositorio>", "python", "-m", "app.mcp_stdio"]`
+y sin `url` ni cabeceras. Estas configuraciones no se han probado todavía con cada cliente;
+la prueba de abajo usa el cliente del SDK.
+
+Qué cambia respecto a `/mcp`:
+
+- **Sin clave, sin `Origin` y sin límites** (ni el cupo por minuto ni el tope diario). El
+  proceso es hijo del cliente, corre en la máquina de quien lo lanza y gasta su propia clave
+  de Groq; quien puede lanzarlo ya puede leer ese `.env`. Tampoco pasa por `McpGuard`: el
+  tope de 256 KiB y el rechazo de lotes y claves repetidas existen en HTTP para que la guarda
+  y el SDK lean lo mismo, y aquí solo lee el SDK.
+- **stdout es del protocolo.** Los registros van a stderr, que los clientes guardan en su
+  registro. El motor se carga dentro de `stdio_server()` del SDK, que mientras sirve desvía
+  el descriptor 1 a stderr: lo que escriben las bibliotecas al cargar (barras de progreso,
+  avisos) no llega al cliente. La carga va en un hilo y la primera petición del cliente espera
+  en la tubería hasta que termina. El SDK no ofrece otra forma de abrir el transporte antes
+  de cargar el motor que `MCPServer._lowlevel_server.run` (API privada, versión fijada, como
+  `_tool_manager` en `_register`).
+- **Las dos eras, como por HTTP:** la primera petición decide (`server/discover` de la
+  2026-07-28 o `initialize` de la 2025-11-25).
+- **PP-08 se mantiene:** el registro no contiene ni la descripción libre ni el `contexto`.
+
+**Decisión: servidor local, no puente.** RF-22 admitía las dos formas. Se elige el servidor
+local porque:
+
+- RF-22, la precondición de CU-07 y el riesgo de latencia de 05-metodologia («ejecución local
+  por stdio») ya lo suponían. 22-arquitectura («Despliegue») y 30-manual-instalacion
+  describían un puente y se alinean con esta decisión (ver «Cambios que necesita la memoria»).
+- Reutiliza `build_mcp_server` y el motor sin código de protocolo nuevo. Un puente propio
+  tendría que reenviar las dos eras, el progreso, la cancelación y los errores, que es lo que
+  ya hacen los puentes genéricos.
+- No depende del Space (que se duerme) ni reparte claves de `/mcp`: cada desarrollador usa su
+  propia clave de Groq, y `listar_normativas` y `consultar_obligaciones` ni siquiera la
+  necesitan.
+
+El precio es instalar las dependencias del repositorio (torch en CPU incluido), construir el
+índice y esperar el arranque. Quien no quiera eso tiene el servidor remoto por HTTP, que
+admiten los tres clientes de `clients/`. Para un cliente que solo hable stdio y quiera el
+remoto existen puentes genéricos (por ejemplo, `mcp-remote`), que no se han probado con
+LegalDev.
+
+**Comprobado el 12/11/2026** con el cliente del SDK por stdio, con el índice real (22
+documentos) y la orden de arriba lanzada desde otro directorio, en las dos eras (`mode="auto"`
+negocia 2026-07-28 por `server/discover`; `mode="legacy"`, 2025-11-25 por `initialize`). En
+el portátil de desarrollo (Windows, CPU), la primera respuesta llegó a los 71-73 s: casi todo
+es importar las bibliotecas (solo `import app.main` tarda 44 s en esa máquina) y cargar los
+dos modelos. Después, `listar_normativas` tardó 1,2-1,7 s, `consultar_obligaciones` (RGPD, 6
+fragmentos) 6,6-11,4 s, y una normativa desconocida devolvió `NORMATIVA_DESCONOCIDA`. Todo lo
+que escribieron las bibliotecas (peticiones a Hugging Face, barras de progreso) salió por
+stderr. No se llamó a `analizar_proyecto`, para no gastar cuota de Groq: su camino es el
+mismo que por HTTP (`service.analyze`) y la prueba automática lo cubre con el modelo simulado.
+Ese arranque es más de lo que algunos clientes esperan por defecto al conectar: en Claude Code
+se amplía con la variable de entorno `MCP_TIMEOUT` (en milisegundos).
+
+Pruebas en `tests/test_mcp_stdio.py`: lanzan el servidor como proceso hijo
+(`tests/_mcp_stdio_launcher.py`, con el motor simulado, sin red y en un directorio sin
+`.env`) y le hablan con el cliente del SDK, una sesión por era, con `tools/list` y una
+llamada a cada herramienta. Los embeddings simulados escriben en stdout al cargarse: la sesión
+funciona y ese texto aparece en stderr, junto con los registros, sin la descripción ni el
+`contexto` aunque el nivel sea DEBUG. El código del proceso hijo no cuenta en la cobertura.
 
 ## Despliegue en el Space de Hugging Face
 
@@ -134,7 +262,8 @@ El Space (`https://gustavintavo8-legaldev.hf.space`) se despliega con `make push
 `true` y `MCP_API_KEYS` con las claves que se repartan (secreto); `API_KEYS` sigue vacía para
 la web. Los asistentes se conectan a `https://gustavintavo8-legaldev.hf.space/mcp` con la
 cabecera `X-API-Key` (ejemplos en `clients/`). El cupo de `analizar_proyecto` es por clave y
-comparte la cuota de Groq con la web.
+comparte la cuota de Groq con la web. `MCP_DAILY_LIMIT` (variable, no secreto) añade el tope
+diario por clave; en el Space todavía no está fijado.
 
 Comprobado en producción el 06/11/2026, con el cliente del SDK por internet y en las dos eras:
 sin clave, 401; con una clave falsa, 403; GET, 405; las tres herramientas con el índice del
@@ -245,12 +374,13 @@ salía de él, separándolo de lo que aportaba por su cuenta. Lo que señaló:
   30 candidatos filtrados por documento, reordenados, 6 devueltos. Identificador exacto,
   sensible a mayúsculas; uno desconocido devuelve la lista de válidos.
 - **Clave del límite.** Por clave de API (resumen SHA-256), y por IP solo si no la hubiera
-  (inalcanzable con RNF-15). El «tope diario por clave» del modelo de amenazas sigue sin
-  concretar.
+  (inalcanzable con RNF-15). El «tope diario por clave» del modelo de amenazas es
+  `MCP_DAILY_LIMIT` desde el 12/11/2026 (ver «Tope diario por clave»).
 - **Cupo de `consultar_obligaciones`.** No se limita (RNF-21 solo limita lo que consume cuota
   del modelo), pero ocupa unos 4 s de CPU por llamada. Con la clave obligatoria el riesgo es
   bajo; si hiciera falta, un cupo propio más amplio o un semáforo alrededor de la recuperación.
-- **stdio.** Aplazado: `run_stdio` sigue sin implementar.
+- **stdio.** Aplazado en la prueba de concepto; desde el 12/11/2026, servidor completo en
+  local (`app/mcp_stdio.py`; ver «Modo stdio»).
 - **Claves propias de `/mcp` (`MCP_API_KEYS`).** La web pública llama a `/v1/analyze` sin
   clave (una clave en el JavaScript de la web sería pública), así que en producción
   `API_KEYS` tiene que quedar vacía. Para no dejar `/mcp` abierto, tiene su propio conjunto
@@ -282,6 +412,17 @@ salía de él, separándolo de lo que aportaba por su cuenta. Lo que señaló:
   `informe`.
 - tab:det-mcp-herramientas: el cuestionario devuelto excluye `descripcion_breve`; campo
   `sin_cobertura`.
+- RF-22, precondición de CU-07, 22-arquitectura («Despliegue») y 30-manual-instalacion: el
+  modo stdio es el servidor completo en local, no un puente; orden
+  `uv run --directory <repositorio> python -m app.mcp_stdio`, sin clave ni límites, registros
+  por stderr y unos 70 s de arranque en el portátil de desarrollo. Sale PT2-stdio de la tabla
+  de pendientes del capítulo de resultados (`docs/tfg/requisitos.md` y
+  `docs/tfg/trazabilidad.md` ya lo recogen).
+- 23-detalle: `app.main.load_engine` carga el motor para el `lifespan` y para stdio;
+  módulo nuevo `app/mcp_stdio.py`.
+- RNF-21 y modelo de amenazas (consumo de la cuota del modelo): tope diario por clave
+  (`MCP_DAILY_LIMIT`), con qué cuenta y por qué (incluidos los aciertos de caché), su ventana
+  de 24 h y su 429 con `Retry-After`; 30-manual-instalacion: la variable y su formato.
 
 Siguen abiertas, como estaban: tipificación de las guías de la AEPD sin articulado y forma de
 `sin_mapeo` en la evidencia (OE2).

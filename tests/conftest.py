@@ -7,6 +7,7 @@ os.environ["API_KEYS"] = ""
 os.environ["MCP_ENABLED"] = "false"
 os.environ["MCP_API_KEYS"] = ""
 os.environ["MCP_ALLOWED_ORIGINS"] = ""
+os.environ["MCP_DAILY_LIMIT"] = ""
 
 from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
@@ -14,14 +15,18 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 
-@pytest.fixture
-def mock_doc():
+def make_mock_doc():
     doc = MagicMock()
     doc.page_content = (
         "El RGPD establece que los datos personales deben tratarse de forma lícita."
     )
     doc.metadata = {"source": "RGPD.pdf", "doc_type": "normativa_europea"}
     return doc
+
+
+@pytest.fixture
+def mock_doc():
+    return make_mock_doc()
 
 
 @pytest.fixture
@@ -101,13 +106,13 @@ def mock_reranker():
     Requested automatically by the client fixture (covers all HTTP-based tests).
     Tests that call run_pipeline directly must request this fixture by name.
     """
-    from unittest.mock import patch
-
-    with patch(
-        "app.reranker.rerank",
-        side_effect=lambda query, docs, top_k: docs[:top_k],
-    ):
+    with patch("app.reranker.rerank", side_effect=fake_rerank):
         yield
+
+
+def fake_rerank(query, docs, top_k):
+    """Sustituto del reordenador: conserva el orden de llegada."""
+    return docs[:top_k]
 
 
 @contextmanager

@@ -108,8 +108,13 @@ def _verify_api_key(x_api_key: str | None = Header(default=None)) -> None:
         raise HTTPException(status_code=403, detail="Invalid API key")
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
+def load_engine(state) -> None:
+    """Carga en ``state`` el índice, los embeddings, los clientes de Groq y el reordenador.
+
+    La usan el ``lifespan`` de la aplicación y el servidor MCP por stdio
+    (``app/mcp_stdio.py``), para que los dos sirvan el mismo índice con el mismo modelo.
+    Síncrona y lenta (carga de modelos en CPU); lanza ``RuntimeError`` si el índice no sirve.
+    """
     # Guardia de compatibilidad primero: si el índice es de otro modelo, abortar antes
     # de gastar tiempo cargando embeddings/Chroma/Groq — falla rápido, no a mitad de boot.
     index_meta = store.read_index_meta(settings.chroma_db_path)
@@ -127,51 +132,54 @@ async def lifespan(app: FastAPI):
             f"'{EMBEDDING_MODEL}'. Re-run 'make ingest'."
         )
     logger.info("Loading embedding model: %s", EMBEDDING_MODEL)
-    app.state.embeddings = HuggingFaceEmbeddings(
+    state.embeddings = HuggingFaceEmbeddings(
         model_name=EMBEDDING_MODEL, encode_kwargs={"normalize_embeddings": True}
     )
     logger.info("Connecting to ChromaDB at %s", settings.chroma_db_path)
-    app.state.vectorstore = Chroma(
+    state.vectorstore = Chroma(
         persist_directory=settings.chroma_db_path,
-        embedding_function=app.state.embeddings,
+        embedding_function=state.embeddings,
         collection_name=CHROMA_COLLECTION,
     )
     logger.info("Initializing Groq client with model %s", settings.groq_model)
-    app.state.groq_client = _make_groq_client(settings.groq_model)
-    app.state.groq_fallback_client = (
+    state.groq_client = _make_groq_client(settings.groq_model)
+    state.groq_fallback_client = (
         _make_groq_client(settings.groq_fallback_model)
         if settings.groq_fallback_model
         else None
     )
-    if app.state.groq_fallback_client is not None:
+    if state.groq_fallback_client is not None:
         logger.info("Groq fallback model: %s", settings.groq_fallback_model)
-    app.state.groq_model_available = (
+    state.groq_model_available = (
         _check_groq_model(settings.groq_api_key, settings.groq_model)
         if settings.groq_verify_model_on_startup
         else None
     )
+    count = store.count(state.vectorstore)
+    if count == 0:
+        raise RuntimeError(
+            f"ChromaDB at '{settings.chroma_db_path}' is empty. Run 'make ingest' first."
+        )
+    state.indexed_normativas = frozenset(
+        Path(s).stem for s in store.list_sources(state.vectorstore)
+    )
+    logger.info("Indexed normativas: %d unique sources", len(state.indexed_normativas))
+    state.corpus_version = store.read_corpus_version(settings.chroma_db_path)
+    logger.info("Corpus version: %s", state.corpus_version)
+    logger.info("Warming up reranker (%s)", _reranker._MODEL_NAME)
+    _reranker.warmup()
+    logger.info("LegalDev is ready — %d chunks indexed", count)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    load_engine(app.state)
     logger.info(
         "Rate limit IP source: %s",
         "X-Forwarded-For (TRUST_PROXY_HEADERS=true)"
         if settings.trust_proxy_headers
         else "direct connection IP (TRUST_PROXY_HEADERS=false)",
     )
-    count = store.count(app.state.vectorstore)
-    if count == 0:
-        raise RuntimeError(
-            f"ChromaDB at '{settings.chroma_db_path}' is empty. Run 'make ingest' first."
-        )
-    app.state.indexed_normativas = frozenset(
-        Path(s).stem for s in store.list_sources(app.state.vectorstore)
-    )
-    logger.info(
-        "Indexed normativas: %d unique sources", len(app.state.indexed_normativas)
-    )
-    app.state.corpus_version = store.read_corpus_version(settings.chroma_db_path)
-    logger.info("Corpus version: %s", app.state.corpus_version)
-    logger.info("Warming up reranker (%s)", _reranker._MODEL_NAME)
-    _reranker.warmup()
-    logger.info("LegalDev is ready — %d chunks indexed", count)
     # Servidor MCP en /mcp, solo si la ruta está montada (MCP_ENABLED y API_KEYS).
     async with _mcp_server.serve(app, version=app.version):
         yield

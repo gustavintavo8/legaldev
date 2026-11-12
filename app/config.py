@@ -1,5 +1,8 @@
+import limits
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_MCP_DAILY_LIMIT_FORMAT = "MCP_DAILY_LIMIT es un tope diario: «N/day» (p. ej. «200/day») o «N»; vacío o 0, sin tope"
 
 
 class Settings(BaseSettings):
@@ -47,6 +50,10 @@ class Settings(BaseSettings):
     # separados por comas. Independiente de ALLOWED_ORIGINS (CORS de la web): los clientes MCP
     # de escritorio no envían Origin, así que la lista vacía solo rechaza a los navegadores.
     mcp_allowed_origins: str = ""
+    # Tope diario de analizar_proyecto por clave en /mcp (modelo de amenazas: una clave filtrada
+    # no puede agotar la cuota de Groq). «200/day» o «200»; vacío o 0, sin tope. Se suma al
+    # cupo por minuto de RATE_LIMIT y usa el mismo almacén (app/mcp_guard.py).
+    mcp_daily_limit: str = ""
 
     @property
     def api_key_set(self) -> frozenset[str]:
@@ -72,6 +79,35 @@ class Settings(BaseSettings):
                 "MCP_ALLOWED_ORIGINS no admite '*': la validación de Origin no protegería de nada"
             )
         return v
+
+    @field_validator("mcp_daily_limit")
+    @classmethod
+    def validate_mcp_daily_limit(cls, v: str) -> str:
+        """Forma normal «N/day», o «» sin tope (vacío, «0» o «0/day»).
+
+        Un valor que no sea un único límite por día falla al arrancar, como las listas de
+        orígenes: «200/hour» no es un tope diario y «1/day;2/day» no se puede leer como uno.
+        """
+        v = v.strip()
+        if v.isdigit():
+            v = f"{v}/day"
+        if not v:
+            return ""
+        try:
+            items = limits.parse_many(v)
+        except ValueError:
+            raise ValueError(f"{_MCP_DAILY_LIMIT_FORMAT}; recibido {v!r}") from None
+        if len(items) != 1:
+            raise ValueError(f"{_MCP_DAILY_LIMIT_FORMAT}; recibido {v!r}")
+        item = items[0]
+        if not isinstance(item, limits.RateLimitItemPerDay) or item.multiples != 1:
+            raise ValueError(f"{_MCP_DAILY_LIMIT_FORMAT}; recibido {v!r}")
+        return f"{item.amount}/day" if item.amount else ""
+
+    @property
+    def mcp_daily_limit_item(self) -> limits.RateLimitItem | None:
+        """El tope diario como límite de ``limits``, o ``None`` si no hay tope."""
+        return limits.parse(self.mcp_daily_limit) if self.mcp_daily_limit else None
 
     @property
     def mcp_key_set(self) -> frozenset[str]:
