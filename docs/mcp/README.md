@@ -381,7 +381,7 @@ añade el código) queda fuera de los bloques de código. Y comprueba que los in
 legítimos conservan su estructura con los dos intérpretes (las mismas etiquetas, sin contar
 los enlaces): `LEGITIMOS` de `tests/_casos_saneado.py` y el informe de ejemplo de la web.
 
-Los casos son las 20 cargas de PP-18 y las 210 entradas de `tests/_casos_saneado.py`, que
+Los casos son las 20 cargas de PP-18 y las 238 entradas de `tests/_casos_saneado.py`, que
 usan también las pruebas:
 
 - 19 de la primera revisión;
@@ -390,13 +390,16 @@ usan también las pruebas:
 - 20 variantes con dominios `.com` y `.co.uk`: linkify no enlaza los canarios `.example` en
   modo difuso, así que sin ellas el oráculo no vería un enlace que se formara detrás de un
   escape;
-- 117 entradas de ataque de las pruebas del saneado anterior.
+- 145 de las pruebas del saneado anterior (`62e858f`): todas las que esas pruebas pasaban a
+  `sanear`, también las formas legítimas y del corpus que comprobaban. Se cotejaron de forma
+  mecánica: se ejecutaron esas pruebas con el saneado de entonces, se apuntó cada entrada y
+  no falta ninguna (las de coste están en las pruebas de tiempo).
 
 Resultado del 12/11/2026:
 
 | | marked + DOMPurify | markdown-it |
 |---|---|---|
-| Casos que pintan algo peligroso sin sanear | 175 de 230 | 168 de 230 |
+| Casos que pintan algo peligroso sin sanear | 185 de 258 | 179 de 258 |
 | Después del saneado | 0 | 0 |
 | Secciones del código dentro de un bloque | 0 | 1 (el residual cosmético de arriba) |
 | Enlaces difusos (residual) | — | 0 |
@@ -404,6 +407,11 @@ Resultado del 12/11/2026:
 
 Con el saneado anterior, la misma comprobación con solo marked daba 0 en los 79 casos de las
 dos primeras revisiones, pero la comprobación posterior encontró 7 huecos más.
+
+Las pruebas usan los dos intérpretes. `tests/test_sanitize.py` pinta todas las entradas con
+markdown-it. También repite la parte de marked con `oraculo.comprobar` cuando encuentra Node
+y `legaldev-web` con sus dependencias (en `LEGALDEV_WEB` o junto al repositorio). Donde no
+los hay, como en la integración continua, esa prueba se salta.
 
 **Fuzzers** (`docs/mcp/pp18/fuzz.py`). Son los de las revisiones, con piezas nuevas con
 dominios que linkify enlaza. Tienen tres modos:
@@ -1043,7 +1051,7 @@ salía de él, separándolo de lo que aportaba por su cuenta. Lo que señaló:
   líneas.
 - PP-18 en 24-pruebas y en el capítulo de resultados: la prueba automática (20 cargas, en la
   descripción y en un fragmento, 40 casos, con un oráculo que pinta con markdown-it), el
-  oráculo doble con el visor de la web y markdown-it (`docs/mcp/pp18/oraculo.py`: de 230
+  oráculo doble con el visor de la web y markdown-it (`docs/mcp/pp18/oraculo.py`: de 258
   casos, 0 pintan nada peligroso con ninguno de los dos), los fuzzers (54.000 casos, 0
   fallos) y la medición con el modelo real, que hay que repetir con la codificación (ver
   «PP-18 con el modelo real»).

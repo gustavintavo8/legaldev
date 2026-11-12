@@ -8,9 +8,13 @@ visor de la web), los informes legítimos, el coste y las citas.
 """
 
 import asyncio
+import importlib.util
 import json
+import os
+import shutil
 import time
 from collections import Counter
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -300,12 +304,50 @@ def test_attack_inputs_render_nothing_executable_and_sanitizing_twice_changes_no
     assert sanear(salida) == (salida, sanitize.SaneadoStats())
 
 
+RAIZ = Path(__file__).resolve().parents[1]
+
+
+def _web() -> Path | None:
+    """legaldev-web con sus dependencias (npm ci): LEGALDEV_WEB o junto al repositorio."""
+    candidatos = [
+        os.environ.get("LEGALDEV_WEB", ""),
+        RAIZ.parent / "legaldev-web",
+        RAIZ.parents[2] / "legaldev-web",  # desde un worktree en .worktrees/
+    ]
+    for c in candidatos:
+        if c and (Path(c) / "node_modules" / "marked").is_dir():
+            return Path(c)
+    return None
+
+
+@pytest.mark.skipif(
+    shutil.which("node") is None or _web() is None,
+    reason="hace falta Node y legaldev-web con npm ci (variable LEGALDEV_WEB)",
+)
+def test_attack_inputs_render_nothing_with_the_web_viewer_either():
+    """La otra mitad del oráculo doble: las mismas entradas, pintadas con el visor de la web
+    (marked 18.1.2 + DOMPurify 3.4.17) por docs/mcp/pp18/oraculo.py. Sin red ni .env; se
+    salta donde no hay Node ni legaldev-web, como en la integración continua."""
+    spec = importlib.util.spec_from_file_location(
+        "oraculo", RAIZ / "docs" / "mcp" / "pp18" / "oraculo.py"
+    )
+    oraculo = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(oraculo)
+    web = _web()
+    r = oraculo.comprobar(ATAQUES, web)
+    assert r["fallos"] == {"marked": [], "markdown-it": []}
+    assert r["centinela"]["marked"] == []
+    # Sin sanear, marked pinta algo en 185 de los 258 casos (12/11/2026).
+    assert r["peligrosos_antes"]["marked"] >= 0.7 * len(ATAQUES)
+    assert oraculo.comprobar_legitimos(list(LEGITIMOS), web) == []
+
+
 def test_the_oracle_sees_the_attacks_before_sanitizing():
-    """El oráculo no es vacío: sin sanear, encuentra algo en 187 de los 230 casos (12/11/2026).
+    """El oráculo no es vacío: sin sanear, encuentra algo en 198 de los 258 casos (12/11/2026).
     Los demás los pinta solo marked (URL detrás de una letra, vallas que solo cierra marked)
-    o eran formas legítimas que el saneado anterior estropeaba."""
+    o son formas legítimas o del corpus que comprobaban las pruebas anteriores."""
     peligrosos = sum(1 for _g, t in ATAQUES if _pp18.formas_ejecutables(t))
-    assert peligrosos >= 0.75 * len(ATAQUES)
+    assert peligrosos >= 0.7 * len(ATAQUES)
 
 
 # ------------------------------------------------------------- informes legítimos
@@ -571,11 +613,17 @@ def _repetida(unidad: str, n: int) -> str:
 
 # Tokens especiales anidados: cada pasada quita un nivel, así que obliga a hacer todas.
 VEINTE_PASADAS = f"{LT}|" * 25 + "x" + f"|{GT}" * 25
+# El prefijo que obligaba al saneado que detectaba patrones a hacer las 20 pasadas (cada una
+# quitaba dos niveles de «<b>»). Con la codificación ya no hay pasadas para el HTML.
+VEINTE_PASADAS_HTML = LT * 40 + f"b{GT}" * 40
 
 ADVERSARIAS = {
     # De las revisiones del saneado que detectaba patrones (siguen siendo entradas válidas).
     "enlace_espacios": lambda n: "[a](" + " " * (n - 4),
     "imagen_saltos": lambda n: "![a](" + "\n" * (n - 5),
+    "pasadas_enlace": lambda n: VEINTE_PASADAS_HTML + "[a](" + " " * (n - 124),
+    "pasadas_colas_html": lambda n: VEINTE_PASADAS_HTML + _repetida("](", n - 120),
+    "declaracion": lambda n: _repetida(f"{LT}!a", n),
     "pasadas_colas": lambda n: VEINTE_PASADAS + _repetida("](", n - 102),
     "instruccion": lambda n: _repetida(f"{LT}?", n),
     "comentario": lambda n: _repetida(f"{LT}!--", n),
@@ -627,6 +675,30 @@ def test_adversarial_inputs_cost_linear_time(nombre):
     t_largo = _tiempo(sanear, largo)
     assert t_largo < 2
     assert t_largo < 24 * max(t_corto, 0.002)
+
+
+def test_adversarial_input_is_sanitized_quickly():
+    texto = (
+        ('{"a": [' * 2000) + ("[x" * 3000) + (f"{LT}a " * 3000) + ('"name": ' * 2000)
+    )
+    t0 = time.perf_counter()
+    sanear(texto)
+    assert time.perf_counter() - t0 < 5
+
+
+@pytest.mark.parametrize(
+    "prefijo", ["", "[" * 25 + "a" + "](x)" * 25], ids=["parrafos", "enlaces_anidados"]
+)
+def test_unclosed_json_and_nested_links_cost_linear_time(prefijo):
+    """Revisión del 12/11/2026. Cada «{"» sin cerrar recorría el resto del texto (2,58 s con
+    16.000 caracteres de «{"» y líneas en blanco), y con 25 enlaces anidados delante el
+    saneado que detectaba patrones hacía 20 pasadas (51,09 s). El cierre del JSON se busca
+    dentro de su párrafo, y la codificación no hace pasadas."""
+    texto = prefijo + '{"\n\n' * 8000 + _tag("nombre de la empresa")
+    t0 = time.perf_counter()
+    salida, _ = sanear(texto)
+    assert time.perf_counter() - t0 < 2
+    assert salida.endswith(BS + _tag("nombre de la empresa"))
 
 
 def test_tool_call_marks_cost_linear_time():
