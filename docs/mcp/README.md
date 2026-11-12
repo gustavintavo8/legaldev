@@ -306,7 +306,8 @@ comprueba en los seis. Formatos comprobados en la documentación de cada cliente
   el mismo que el de Claude Code, así que sirven `clients/claude-code.mcp.json` y
   `clients/stdio/claude-code.mcp.json` tal cual, con la clave en `LEGALDEV_API_KEY`. Para que
   *MCP: Add Server* lo ofrezca hay que activar el ajuste experimental
-  `chat.mcp.workspaceRootConfig.enabled`. El ejemplo de `.vscode/mcp.json` se mantiene
+  `chat.mcp.workspaceRootConfig.enabled`. Ese ajuste está en VS Code 1.143.1, la versión
+  instalada en el portátil de desarrollo. El ejemplo de `.vscode/mcp.json` se mantiene
   porque es el del listado `lst:man-mcp` y sigue funcionando hasta esa fecha.
 - **Cursor**: `clients/cursor.mcp.json` -> `.cursor/mcp.json`. Cursor interpola
   `${env:NOMBRE}` en `command`, `args`, `env`, `url` y `headers`: la clave sale de la variable
@@ -378,6 +379,10 @@ revisión que pide y el `clientInfo` del cliente, nunca la clave ni los argument
 Qué anotar en cada uno (es lo que pide el marcador de CU-07, abajo):
 
 - Si conecta.
+- En stdio, si el cliente sustituye la variable de la ruta dentro de `args`. Cursor y Claude
+  Code documentan que lo hacen. La documentación de VS Code solo nombra `${env:NOMBRE}` en una
+  tabla. Si no la sustituye, el error dirá que no encuentra el directorio. Entonces se pone la
+  ruta absoluta en la copia local y se anota.
 - Qué revisión negocia. Los clientes no lo enseñan: sale en el registro de
   `tools/servidor_mcp_prueba.py`, en la primera petición (`server/discover` o `initialize`).
 - Si el modo stdio aguanta el arranque (de 20 a 75 s en el portátil de desarrollo). VS Code y
@@ -409,7 +414,8 @@ prueba aleatoria, por HTTP. Se lanzó con un prototipo de `tools/servidor_mcp_pr
 de latencia. Por stdio, la orden documentada
 (`uv run --directory <repositorio> python -m app.mcp_stdio`) con una clave de Groq falsa en
 `-e`. No hubo ninguna llamada a Groq. `MCP_CATALOG_PATH` y `MCP_CLIENT_CONFIG_PATH` apuntaban a
-un directorio temporal, para que el Inspector no escribiera en `~/.mcp-inspector`.
+un directorio temporal, y ahí el Inspector no escribió nada. Aun así creó la carpeta
+`~/.mcp-inspector/storage`, vacía (`make mcp-inspect` también la creará).
 
 `make mcp-inspect` repite la parte HTTP contra `LEGALDEV_URL` (por defecto
 `http://localhost:8000`) con la clave de `LEGALDEV_API_KEY`: `tools/list --strict` y
@@ -659,18 +665,25 @@ No son cifras de RNF-19: el modelo no se llamó, el Space tiene otra CPU y n = 5
 **Qué responde a RNF-19.** RNF-19 pide que «la latencia p95 por MCP en caliente» sea menor que
 la espera por defecto de los clientes. Con «en caliente» como acierto de caché, se cumple
 siempre (unos 0,03 s en local y 0,29 s en el Space el 06/11/2026). La cifra que dice algo es el
-p95 de `analizar_frio` con el Space ya despierto, y aparte el arranque del Space dormido. Las
-esperas de los clientes, según su documentación del 12/11/2026:
+p95 de `analizar_frio` con el Space ya despierto, y aparte el arranque del Space dormido.
 
-- Claude Code espera a una herramienta unas 28 horas por defecto (`MCP_TOOL_TIMEOUT`, o
-  `timeout` por servidor en `.mcp.json`). Solo el arranque de un servidor stdio tiene una
-  espera corta (`MCP_TIMEOUT`, 30 s).
-- VS Code y Cursor no documentan sus esperas.
+Esperas de los clientes:
 
-Para Claude Code el criterio se cumple de sobra con cualquier cifra razonable. Para VS Code y
-Cursor no hay una espera documentada con la que comparar. La memoria tiene que fijar con qué
-espera se compara (ver «Cambios que necesita la memoria»), o medirla con los pasos de
-«Configuración de clientes».
+- **Claude Code 2.1.268.** Leído en el binario el 12/11/2026, coincide con su documentación:
+  - Una espera total por llamada a una herramienta de 100.000.000 ms, unas 28 horas. Se cambia
+    con `MCP_TOOL_TIMEOUT` o con `timeout` por servidor en `.mcp.json`, y el texto de ese campo
+    dice que las notificaciones de progreso no la alargan.
+  - Una espera de inactividad (`CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT`) de 300.000 ms (5 min) para
+    un servidor remoto y de 1.800.000 ms (30 min) para uno stdio. No se ha comprobado qué
+    cuenta como actividad: si el progreso cada 5 s de `analizar_proyecto` la reinicia, no
+    aprieta nunca.
+  - Para el arranque de un servidor, `MCP_TIMEOUT`, de 30.000 ms.
+- **VS Code y Cursor** no documentan sus esperas.
+
+Para Claude Code, el límite que cuenta es la inactividad de 5 minutos por HTTP, y un análisis
+tarda decenas de segundos. Para VS Code y Cursor no hay una espera documentada con la que
+comparar. La memoria tiene que fijar con qué espera se compara (ver «Cambios que necesita la
+memoria»), o medirla con los pasos de «Configuración de clientes».
 
 ## Primera prueba con un asistente real (Claude Code, 06/11/2026)
 
@@ -860,7 +873,8 @@ salía de él, separándolo de lo que aportaba por su cuenta. Lo que señaló:
   - las esperas y lo que gasta del tope diario.
 
   Hay que corregir el criterio de RNF-19. Con «en caliente» como acierto de caché se cumple
-  siempre, y Claude Code espera unas 28 horas a una herramienta. La cifra útil es el p95 de
+  siempre, y Claude Code 2.1.268 espera a una herramienta unas 28 horas en total y 5 minutos
+  sin actividad por HTTP (leído en su binario). La cifra útil es el p95 de
   `analizar_frio` con el Space despierto, comparado con una espera que la memoria tiene que
   fijar. La medición en el Space queda para después del despliegue (PT2-latencia).
 - 23-detalle o el anexo de herramientas: `tools/medir_latencia_mcp.py` (latencia) y

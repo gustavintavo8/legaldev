@@ -120,7 +120,7 @@ Llevan las mismas claves de prioridad, verificación y estado que los funcionale
 
 > **Pendiente (PT2-memoria).** Medir la memoria residente del proceso con los dos modelos cargados (RNF-12).
 >
-> **Pendiente (PT2-latencia).** Medir la latencia p50 y p95 por MCP en el Space, en caliente y en frío, con una muestra (RNF-19). El script, `tools/medir_latencia_mcp.py`, está listo y probado el 12 de noviembre de 2026 contra una API local con el modelo simulado; la medición espera al despliegue. Antes hay que precisar el criterio: un acierto de caché lo cumple siempre, y Claude Code espera unas 28 horas a una herramienta (`docs/mcp/README.md`, «Latencia»).
+> **Pendiente (PT2-latencia).** Medir la latencia p50 y p95 por MCP en el Space, en caliente y en frío, con una muestra (RNF-19). El script, `tools/medir_latencia_mcp.py`, está listo y probado el 12 de noviembre de 2026 contra una API local con el modelo simulado; la medición espera al despliegue. Antes hay que precisar el criterio: un acierto de caché lo cumple siempre. Claude Code 2.1.268, según su binario, espera a una herramienta unas 28 horas en total y 5 minutos sin actividad por HTTP (`docs/mcp/README.md`, «Latencia»).
 
 ### Fiabilidad
 
