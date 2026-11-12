@@ -57,7 +57,9 @@ Qué hace, en este orden:
    cualquier lectura: los bloques con valla que cierran igual para marked y para CommonMark y
    el código en línea cuyos acentos solo se pueden emparejar de una manera (``_codigo_en_linea``).
 6. **Bloques de código sin cerrar**: se cierran, para que no se traguen las secciones que
-   añade el código ni, por MCP, el JSON del resultado.
+   añade el código ni, por MCP, el JSON del resultado. Un bloque acaba donde lo cierra marked
+   o CommonMark, y esa línea se reescribe para que cierre en los dos (``_vallas``, que corre
+   también en las pasadas).
 
 Los pasos 2 a 4 se repiten hasta que el texto no cambia, porque quitar algo puede formar otra
 construcción (``<scr<b>ipt>``). Las tres reglas de piezas sueltas del paso 4 se aplican en la
@@ -538,12 +540,35 @@ def _cierra_valla_commonmark(linea: str, valla: str) -> bool:
     return bool(mc and mc.group(1)[0] == valla[0] and len(mc.group(1)) >= len(valla))
 
 
+def _cierra_alguna(linea: str, valla: str) -> bool:
+    return _cierra_valla(linea, valla) or _cierra_valla_commonmark(linea, valla)
+
+
+def _sangrar(contenido: list[str], sangria: int) -> list[str]:
+    """Las líneas de un bloque con la apertura sangrada, sangradas al menos como ella. Dentro
+    de una lista, CommonMark acaba el elemento (y el bloque) en una línea con menos sangría,
+    y la valla de cierre abre otro bloque que se traga el resto; marked sigue en el bloque.
+    Los dos quitan esa sangría al pintar, así que el código se ve igual."""
+    if not sangria:
+        return contenido
+    salida = []
+    for linea in contenido:
+        falta = sangria - (len(linea) - len(linea.lstrip(" ")))
+        salida.append(" " * falta + linea if falta > 0 and linea.strip() else linea)
+    return salida
+
+
 def _vallas(texto: str, c: Counter, *, cerrar: bool) -> str:
-    """Bloques de código delimitados por vallas (``` o ~~~), con la regla de cierre de marked.
+    """Bloques de código delimitados por vallas (``` o ~~~).
 
     Quita los que se anuncian como llamada a herramienta y los que han quedado vacíos (por
     ejemplo, después de quitar el JSON de una llamada). Con ``cerrar``, cierra el último si
     quedó abierto: un bloque sin cerrar llega hasta el final del documento.
+
+    Un bloque acaba en la primera línea que lo cierra para marked o para CommonMark, y si
+    solo lo cierra para una de las dos («```~», o «```» con un tabulador detrás), esa línea
+    se reescribe como la valla de apertura, para que cierre en las dos. Si no, en una de las
+    dos lecturas el bloque seguía abierto y se tragaba las secciones que añade el código.
     """
     lineas = texto.split("\n")
     salida: list[str] = []
@@ -556,7 +581,7 @@ def _vallas(texto: str, c: Counter, *, cerrar: bool) -> str:
             continue
         valla = m.group(2)
         j = i + 1
-        while j < len(lineas) and not _cierra_valla(lineas[j], valla):
+        while j < len(lineas) and not _cierra_alguna(lineas[j], valla):
             j += 1
         cerrada = j < len(lineas)
         contenido = lineas[i + 1 : j]
@@ -571,9 +596,15 @@ def _vallas(texto: str, c: Counter, *, cerrar: bool) -> str:
             pass  # vacío: no aporta nada y una valla suelta podría quedar abierta
         else:
             salida.append(lineas[i])
-            salida.extend(contenido)
+            salida.extend(_sangrar(contenido, len(m.group(1))))
             if cerrada:
-                salida.append(lineas[j])
+                cierre = lineas[j]
+                if not (
+                    _cierra_valla(cierre, valla)
+                    and _cierra_valla_commonmark(cierre, valla)
+                ):
+                    cierre = cierre[: len(cierre) - len(cierre.lstrip(" "))] + valla
+                salida.append(cierre)
             elif cerrar:
                 salida.append(m.group(1) + valla)
                 c["bloques_codigo_sin_cerrar"] += 1

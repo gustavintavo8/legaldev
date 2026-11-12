@@ -206,7 +206,11 @@ modelo, antes de verificar las citas y de guardar el resultado en la caché com�
   para CommonMark, y el código en línea cuyos acentos solo se pueden emparejar de una manera
   (ver «Segunda revisión»).
 - Bloques de código sin cerrar, que se cierran: si no, se tragarían el resto del informe y,
-  por MCP, el JSON del resultado.
+  por MCP, el JSON del resultado. Un bloque acaba donde lo cierra marked o CommonMark, y si
+  la línea solo cierra para uno de los dos (```` ```~ ````, o ```` ``` ```` con un tabulador
+  detrás), se reescribe para que cierre en los dos. Dentro de un bloque sangrado (en una
+  lista), las líneas con menos sangría se sangran como la apertura: si no, para CommonMark
+  la lista acaba ahí y la valla de cierre abre otro bloque.
 
 **Constancia.** El campo `saneado` (recuentos por tipo) va en la respuesta REST y en el
 `structuredContent` de `analizar_proyecto`. Si se ha retirado algo, el informe lleva además
@@ -281,10 +285,9 @@ Decisiones:
     el correo suelto da el mismo enlace.
   - Una URL no oficial dentro de un código en línea que marked podría emparejar de otra
     manera (más acentos de la misma longitud, un «]», «)», «>» o «|» dentro, una barra
-    invertida delante) se encierra otra vez en código, y se ve con acentos de más. Lo mismo
-    pasa dentro de un bloque con valla que solo cierra igual para una de las dos lecturas, o
-    sangrado en una lista con líneas sin sangrar. Y una URL no oficial con `>` o `)` queda
-    en código solo hasta ahí (el resto se ve como texto, sin enlace).
+    invertida delante) se encierra otra vez en código, y se ve con acentos de más. Y una URL
+    no oficial con `>` o `)` queda en código solo hasta ahí (el resto se ve como texto, sin
+    enlace).
   - Un objeto JSON con forma de llamada que tenga una línea en blanco dentro: el cierre se
     busca en su párrafo, así que cada párrafo se mira por separado.
   - Una definición de referencia con destino relativo (`[r]: x.png`). Se deja porque el
@@ -346,7 +349,7 @@ anterior):
 | `[BOE](https://www.boe.es<NBSP>"@otro/…")`: `\s` de Python casa los espacios Unicode y el saneado leía un destino oficial y un título; marked pinta un enlace a `otro` | alta | La gramática de marked (`[ \t\n]`); `destino_oficial` rechaza espacios, no imprimibles y acentos graves |
 | `[a](` y 32.000 espacios: 9,5 s, con el bucle de eventos parado; ya pasaba antes de la primera revisión | alta | Cuantificadores posesivos en las expresiones de los enlaces |
 | `https://www.boe.es'@otro/…` (también con `"`, `>`, `` ` ``): la URL suelta se cortaba antes que en marked | media | Se juzga hasta donde la lee marked |
-| Una valla cerrada con ```` ```~ ```` (marked) o con un tabulador detrás (CommonMark): lo que es texto en una lectura se tomaba por código | media | Solo se aparta lo que es código en las dos lecturas |
+| Una valla cerrada con ```` ```~ ```` (marked) o con un tabulador detrás (CommonMark): lo que es texto en una lectura se tomaba por código | media | El bloque acaba donde lo cierra cualquiera de las dos y esa línea se reescribe para que cierre en las dos; el paso 5 solo aparta lo que es código en las dos lecturas |
 | Dos acentos dentro de un autoenlace, un enlace o una URL (o en un título, una referencia, una celda o un escape) se tomaban por código en línea, y la URL de en medio se quedaba como enlace | media | El código en línea solo se respeta si sus acentos se emparejan de una sola manera |
 | Objetos JSON de llamada con las claves escritas con `\u…` o `\/` | media | Se resuelven los escapes antes de buscar las claves |
 | `asyncio.to_thread` no evita parar el bucle de eventos si una sola expresión tarda; la cabecera y `rag.py` decían que sí | media | Expresiones lineales, comentarios corregidos y una prueba que mide el bucle |

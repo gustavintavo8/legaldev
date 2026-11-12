@@ -630,26 +630,39 @@ URL = "https://p.exfil.example/?d=DATOS"
 
 
 @pytest.mark.parametrize(
-    "texto",
+    "texto, esperado",
     [
-        f"```\nx\n```~\n{URL}\n```",
-        f"~~~\nx\n~~~`\n{URL}\n~~~",
-        f"Texto.\n\n```\ncódigo\n```~~\n\nVisita {URL}\n\n```",
-        f"```\nx\n```\t\n{URL}\n```",
-        f"- a\n\n  ```\n  x\n{URL}\n  ```",
+        (f"```\nx\n```~\n{URL}\n```", f"```\nx\n```\n`{URL}`"),
+        (f"~~~\nx\n~~~`\n{URL}\n~~~", f"~~~\nx\n~~~\n`{URL}`"),
+        (
+            f"Texto.\n\n```\ncódigo\n```~~\n\nVisita {URL}\n\n```",
+            f"Texto.\n\n```\ncódigo\n```\n\nVisita `{URL}`\n",
+        ),
+        (f"```\nx\n```\t\n{URL}\n```", f"```\nx\n```\n`{URL}`"),
     ],
-    ids=["acentos_tilde", "tildes_acento", "parrafos", "tabulador", "lista"],
+    ids=["acentos_tilde", "tildes_acento", "parrafos", "tabulador"],
 )
-def test_fence_closed_for_only_one_reading_is_not_code(texto):
+def test_fence_closed_for_only_one_reading_is_closed_for_both(texto, esperado):
     """Revisión del 12/11/2026. marked cierra una valla con la de apertura seguida de
     cualquier mezcla de «~» y «`» (``` ```~ ```), y CommonMark no; CommonMark admite un
     tabulador detrás de la de cierre, y marked no. Lo que solo es código en una lectura es
-    texto en la otra, donde la URL se pinta como enlace: ahora solo se aparta lo que es
-    código para las dos. Un bloque con la apertura sangrada (en una lista) solo cuenta si su
-    contenido va sangrado igual."""
+    texto en la otra, donde la URL se pinta como enlace; y en la que no cierra, el bloque se
+    tragaba las secciones que añade el código. Ahora el bloque acaba donde lo cierra
+    cualquiera de las dos, esa línea se reescribe para que cierre en las dos, y la URL de
+    detrás pasa a código."""
     salida, stats = _san(texto)
-    assert stats.get("urls") == 1
-    assert f"`{URL}`" in salida
+    assert (salida, stats) == (esperado, {"urls": 1})
+    assert _pp18.formas_ejecutables(salida + "\n\n## Verificación de citas") == []
+
+
+def test_indented_fence_in_a_list_is_code_for_both_readings():
+    """Un bloque sangrado dentro de una lista con una línea sin sangrar: para CommonMark, la
+    lista (y el bloque) acaban en esa línea, que es texto, y la valla de cierre abre otro
+    bloque que se traga el resto; marked sigue en el bloque. Las líneas se sangran como la
+    apertura (los dos visores quitan esa sangría al pintar), y es código en los dos
+    (comprobado con marked y con markdown-it-py)."""
+    salida, stats = _san(f"- a\n\n  ```\n  x\n{URL}\n  ```")
+    assert (salida, stats) == (f"- a\n\n  ```\n  x\n  {URL}\n  ```", {})
 
 
 BOE_ACENTO = "https://www.boe.es/`"
