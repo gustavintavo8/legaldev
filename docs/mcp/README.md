@@ -240,11 +240,13 @@ Decisiones:
 - **Coste y bucle de eventos.** `sanear` es Python puro. La búsqueda del cierre de un objeto
   JSON se limita a su párrafo y las colas de los enlaces se quitan en una sola pasada, así
   que ningún bucle de Python vuelve a recorrer el texto por cada construcción. Con 27 entradas
-  adversarias de 32.000 caracteres (una por regla), la peor tardó 0,59 s. Son miles de
+  adversarias de 32.000 caracteres (una por regla), la peor tardó unos 0,6 s. Son miles de
   `<script>` sin cerrar, que se resuelven dentro de las expresiones regulares, igual que
   antes de la revisión. `rag.run_pipeline_detailed` lo llama con `asyncio.to_thread`, como
-  la recuperación y el modelo. Mientras sanea, el bucle de eventos sigue atendiendo la API,
-  `/mcp` y la salud, aunque el código Python del hilo comparte el intérprete (GIL) con él.
+  la recuperación y el modelo. El bucle de eventos sigue atendiendo la API, `/mcp` y la salud
+  entre una llamada y otra a las expresiones regulares. Una sola llamada no suelta el
+  intérprete (GIL), así que el bucle espera como mucho lo que dure la más larga: en el peor
+  caso medido, menos de esos 0,6 s.
 - **`consultar_obligaciones` no se sanea.** Devuelve texto del corpus sin pasar por el modelo,
   y el saneado no lo cambiaría (medido arriba). El índice se construye en local desde los PDF
   oficiales. Si algún día pudiera envenenarse, bastaría con aplicar `sanear` al texto de los
@@ -270,12 +272,29 @@ el visor de la web (marked 18.1.2 + DOMPurify 3.4.17), y se arreglaron con su pr
 | Problema | Gravedad | Arreglo |
 |---|---|---|
 | Imagen o enlace con corchetes anidados a dos niveles, o con paréntesis anidados en el destino, y destino `//otro`: salían intactos y la web pintaba `<img src="//otro…">` (se descarga sola) o `<a href="//otro…">` | alta | Reglas de piezas sueltas para `![` y `](` (arriba) |
-| Una salida de 16.000 caracteres de `{"` y líneas en blanco tardaba 2,4 s, y con 25 enlaces anidados delante, 48 s (20 pasadas). Mientras tanto, el bucle de eventos estaba parado | alta | Cierre del JSON buscado en su párrafo, colas en una pasada y `asyncio.to_thread`: 0,03 s y 0,05 s |
+| Coste cuadrático con `{"` sin cerrar y líneas en blanco, y 20 pasadas si se ponen 25 enlaces anidados delante. Mientras tanto, el bucle de eventos estaba parado | alta | Cierre del JSON buscado en su párrafo, colas en una pasada y `asyncio.to_thread` (tiempos abajo) |
 | Definiciones de referencia en una lista, con sangría o con la etiqueta escapada o partida | media | `_DEFINICION_RE` admite marcas de lista y cita y cualquier sangría, y la regla de `]:` recoge el resto |
 | URL detrás de una letra, un dígito, `_`, `/` o `@`: marked las enlaza | media | Sin mirar lo que va delante de la URL |
 | Valla falsa (```` ```x` ````) y CRLF: el saneado tomaba por código lo que el visor pinta como texto, y con CRLF la valla añadida al final metía el aviso en un bloque de código | media | La misma regla de apertura de valla en los dos sitios y CRLF pasado a LF |
 | URL de otro dominio que solo se diferencia en guiones de una de los fragmentos | baja | El host tiene que coincidir |
 | El oráculo de PP-18 tenía los mismos huecos | baja | Más amplio: piezas sueltas (ver PP-18) |
+
+Al repasar los arreglos salió también un fallo del lado contrario, que borraba texto
+legítimo: un `[` o un `![` sin cerrar se llevaba los párrafos que hubiera hasta el siguiente
+`]`. Ya pasaba con las expresiones de las imágenes, y la nueva de las definiciones lo hacía
+también. Ahora ni el texto de un enlace ni una etiqueta cruzan una línea en blanco, como en
+CommonMark.
+
+Tiempos de `sanear` con las entradas de la revisión, en el portátil de desarrollo (Windows,
+CPU), el 12/11/2026:
+
+| Entrada | Antes | Después |
+|---|---|---|
+| 16.000 caracteres de `{"` y líneas en blanco | 2,58 s | 0,02 s |
+| 32.000 caracteres de lo mismo | 10,18 s | 0,05 s |
+| 16.000 caracteres con 25 enlaces anidados delante (20 pasadas antes) | 51,09 s | 0,03 s |
+
+Los revisores midieron en su máquina 2,4 s, 10,4 s y 48,4 s antes del arreglo.
 
 Dos partes de los arreglos propuestos no hacían falta. `destino_oficial` ya rechazaba `//otro`
 (lo fija una prueba). Y el paso de las URL sueltas no tiene que tratar `//otro` como URL,
@@ -930,7 +949,7 @@ salía de él, separándolo de lo que aportaba por su cuenta. Lo que señaló:
   tabla de `docs/tfg/modulos.md`).
 - RNF-20, revisión del 12/11/2026 (ver «Revisión del saneado»): las reglas de piezas sueltas
   (`![`, `](` y `]:`) y por qué fallan hacia el lado seguro, el host exacto de las URL de los
-  fragmentos, el coste (de 48 s a 0,05 s en el peor caso medido) y que el saneado corre en un
+  fragmentos, el coste (de 51,09 s a 0,03 s en el peor caso medido) y que el saneado corre en un
   hilo. Es un ejemplo de revisión independiente que encuentra fallos que las pruebas propias
   no veían, porque el oráculo compartía los huecos del saneado.
 - PP-18 en 24-pruebas y en el capítulo de resultados: la prueba automática (20 cargas, en la

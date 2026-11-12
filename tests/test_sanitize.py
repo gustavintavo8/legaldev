@@ -323,6 +323,34 @@ def test_reference_definitions_in_any_container_are_removed(texto, esperado):
     assert _pp18.formas_ejecutables(salida) == []
 
 
+@pytest.mark.parametrize(
+    "texto, esperado, stats",
+    [
+        (
+            "[nota sin cerrar\n\nPárrafo uno.\n\nPárrafo dos]: //p.exfil.example/x\n\nFin.",
+            "[nota sin cerrar\n\nPárrafo uno.\n\nPárrafo dos]:\n\nFin.",
+            {"enlaces": 1},
+        ),
+        (
+            "![nota\n\nPárrafo uno.\n\nfin](//p.exfil.example/x)",
+            "[nota\n\nPárrafo uno.\n\nfin]",
+            {"imagenes": 1, "enlaces": 1},
+        ),
+        (
+            "![nota\n\nPárrafo uno.\n\nfin] y más",
+            "[nota\n\nPárrafo uno.\n\nfin] y más",
+            {"imagenes": 1},
+        ),
+    ],
+    ids=["definicion", "imagen", "imagen_ref"],
+)
+def test_brackets_never_swallow_paragraphs(texto, esperado, stats):
+    """Ni el texto de un enlace ni una etiqueta cruzan una línea en blanco (CommonMark): un
+    «[» o un «![» sin cerrar se llevaba los párrafos que hubiera hasta el siguiente «]». Se
+    quita solo lo que puede llevar a otro sitio o hacer de imagen."""
+    assert _san(texto) == (esperado, stats)
+
+
 def test_destinations_that_lead_elsewhere_are_recognized_in_any_spelling():
     """«\\/\\/», «&#47;&#47;» y «/\\» llevan a otro dominio igual que «//»; un destino que
     no parece URL se deja (está así en el corpus)."""
@@ -560,11 +588,12 @@ def test_adversarial_input_is_sanitized_quickly():
     "prefijo", ["", "[" * 25 + "a" + "](x)" * 25], ids=["parrafos", "enlaces_anidados"]
 )
 def test_unclosed_json_and_nested_links_cost_linear_time(prefijo):
-    """Revisión del 12/11/2026. Cada «{"» sin cerrar recorría el resto del texto: 16.000
-    caracteres de «{"» y líneas en blanco tardaban 2,4 s, y 32.000, 10,4 s. Con 25 enlaces
-    anidados delante, cada pasada pelaba un nivel: 20 pasadas, 48 s. Ahora el cierre se busca
-    dentro del párrafo y las colas se quitan en una pasada. Que la etiqueta inerte siga
-    ahí demuestra que las pasadas convergen sin el último recurso (_neutralizar_resto)."""
+    """Revisión del 12/11/2026. Cada «{"» sin cerrar recorría el resto del texto. En el
+    portátil de desarrollo, con el saneado anterior, 16.000 caracteres de «{"» y líneas en
+    blanco tardaban 2,58 s, y 32.000, 10,18 s. Con 25 enlaces anidados delante, cada pasada
+    pelaba un nivel: 20 pasadas y 51,09 s. Ahora el cierre se busca dentro del párrafo y las
+    colas se quitan en una pasada (0,05 s y 0,03 s). Que la etiqueta inerte siga ahí
+    demuestra que las pasadas convergen sin el último recurso (_neutralizar_resto)."""
     texto = prefijo + '{"\n\n' * 8000 + _tag("nombre de la empresa")
     t0 = time.perf_counter()
     salida, _ = sanear(texto)

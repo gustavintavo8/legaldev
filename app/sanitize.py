@@ -50,9 +50,10 @@ Los pasos 2 a 4 se repiten hasta que el texto no cambia, porque quitar algo pued
 construcción (``<scr<b>ipt>``).
 
 Coste: ningún bucle de Python vuelve a recorrer el texto por cada construcción (con 27
-entradas adversarias de 32.000 caracteres, la peor tardó 0,59 s el 12/11/2026).
-``rag.run_pipeline_detailed`` lo llama en un hilo, para no parar el bucle de eventos del
-proceso mientras tanto.
+entradas adversarias de 32.000 caracteres, la peor tardó unos 0,6 s el 12/11/2026).
+``rag.run_pipeline_detailed`` lo llama en un hilo: el bucle de eventos sigue atendiendo entre
+una llamada y otra a las expresiones regulares, y solo espera lo que dure una de ellas, que
+no suelta el intérprete (GIL).
 
 Citas: ``sanear`` deja igual (comparando con ``citations.normalize``) los 13.756 fragmentos
 del índice real, medido el 12/11/2026, así que una cita literal de un fragmento real no deja
@@ -271,7 +272,8 @@ def _objetos_llamada(texto: str, c: Counter) -> str:
     cierre se busca dentro del párrafo en que empieza el objeto: si no se cierra ahí (sin
     cerrar, o con una línea en blanco dentro), el objeto llega hasta el final del párrafo.
     Así cada carácter se recorre una vez. Buscando el cierre en todo el texto, cada «{"» sin
-    cerrar recorría el resto: 16.000 caracteres de «{"» y líneas en blanco tardaban 2,4 s.
+    cerrar recorría el resto: 16.000 caracteres de «{"» y líneas en blanco tardaban 2,58 s
+    (0,02 s ahora), medido el 12/11/2026 en el portátil de desarrollo.
     """
     salida: list[str] = []
     pos = 0
@@ -463,8 +465,13 @@ def _html(texto: str, c: Counter) -> str:
 
 # ------------------------------------------------------------------------- 4. Markdown
 
+# Un carácter del texto de un enlace o de una etiqueta: cualquiera menos corchetes y barra
+# invertida, y saltos de línea solo si no empiezan una línea en blanco. En CommonMark ni el
+# texto de un enlace ni una etiqueta cruzan un párrafo; sin esa condición, un «[» o un «![»
+# sin cerrar se llevaba por delante los párrafos que hubiera hasta el siguiente «]».
+_CARACTER_MD = r"(?:[^\[\]\\\n]|\n(?![ \t]*\n))"
 # Texto de un enlace: corchetes anidados un nivel y escapes.
-_TEXTO_MD = r"\[((?:[^\[\]\\]|\\.|\[(?:[^\[\]\\]|\\.)*\])*)\]"
+_TEXTO_MD = r"\[((?:" + _CARACTER_MD + r"|\\.|\[(?:" + _CARACTER_MD + r"|\\.)*\])*)\]"
 # Destino: entre <…> (admite espacios) o sin espacios, con paréntesis equilibrados un nivel.
 _DESTINO_MD = r"(<[^<>\n]*>|(?:[^\s()<>\\]|\\.|\((?:[^\s()\\]|\\.)*\))*)"
 _TITULO_MD = r"""(?:\s+(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|\((?:[^()\\]|\\.)*\)))?"""
@@ -480,7 +487,9 @@ _AUTOENLACE_RE = re.compile(r"<([A-Za-z][A-Za-z0-9+.-]{1,31}:[^<>\s]*)>")
 # _RESTO_DEFINICION_RE.
 _DEFINICION_RE = re.compile(
     r"^(?:[ \t]*(?:>|(?:[-+*]|\d{1,9}[.)])(?=[ \t])))*[ \t]*"
-    r"\[(?:[^\[\]\\]|\\.)+\]:[ \t]*(?:\n[ \t]*)?(<[^<>\n]*>|\S+)[^\n]*(?:\n|$)",
+    r"\[(?:"
+    + _CARACTER_MD
+    + r"|\\.)+\]:[ \t]*(?:\n[ \t]*)?(<[^<>\n]*>|\S+)[^\n]*(?:\n|$)",
     re.M,
 )
 _HOST_VALIDO_RE = re.compile(r"[a-z0-9.-]+")
