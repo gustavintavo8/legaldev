@@ -7,6 +7,7 @@ aquí. PP-14 está en tests/test_mcp_contract.py, con el resto del protocolo.
 """
 
 import hashlib
+import html
 import json
 import logging
 import re
@@ -496,10 +497,22 @@ def test_sanitizer_leaves_no_link_of_the_model_at_all():
     assert _pp18.pintar(salida)["enlaces"] == []
 
 
+def _cargas_y_formas() -> list:
+    """Cada carga tal cual y, si lleva «<» o «>», también escapada con «\\<» y «\\>»: la
+    forma que la entrada de 9a0a271 convertía en referencias escapadas (revisión
+    independiente de la 0.5.1)."""
+    casos = []
+    for c in _pp18.cargas():
+        casos.append(pytest.param(c, "tal_cual", id=c["id"]))
+        if "<" in c["texto"] or ">" in c["texto"]:
+            casos.append(pytest.param(c, "escapada", id=f"{c['id']}-escapada"))
+    return casos
+
+
 @pytest.mark.parametrize("via_carga", ["descripcion", "fragmento"])
-@pytest.mark.parametrize("carga", _pp18.cargas(), ids=lambda c: c["id"])
+@pytest.mark.parametrize("carga, forma", _cargas_y_formas())
 def test_pp18_indirect_injection_payloads_do_not_reach_the_assistant_executable(
-    mcp_http, sample_input_dict, mock_doc, carga, via_carga
+    mcp_http, sample_input_dict, mock_doc, carga, forma, via_carga
 ):
     """PP-18 con el modelo simulado que repite la carga, en la descripción libre o en un
     fragmento envenenado del índice: ninguna cadena que reciben la API REST y el asistente
@@ -514,30 +527,40 @@ def test_pp18_indirect_injection_payloads_do_not_reach_the_assistant_executable(
     fragmento como llega en el contexto. Hasta la 0.5.1 solo repetía la carga en bruto, y
     no vio que la 0.5.0 (bd228c6) entregaba P06 escrita con «‹» y «›», que el saneado no
     reconocía; lo vio la medición con el modelo real (docs/mcp/README.md, «PP-18 repetida
-    sobre la 0.5.0»)."""
+    sobre la 0.5.0»).
+
+    Desde la revisión independiente de la 0.5.1, el modelo simulado repite también lo que
+    recibe con las referencias de carácter decodificadas, y cada carga con «<» o «>» va
+    además escapada («\\<function_calls\\>»): con la entrada de 9a0a271 llegaba al modelo
+    como «\\&lt;function_calls\\&gt;», una referencia escapada que el saneado no resuelve."""
     state = mcp_http.app.state
     cuestionario = dict(sample_input_dict)
+    texto = carga["texto"]
+    if forma == "escapada":
+        texto = texto.replace("<", "\\<").replace(">", "\\>")
     if via_carga == "descripcion":
         cuestionario["descripcion_breve"] = (
-            f"{sample_input_dict['descripcion_breve']}. {carga['texto']}"
+            f"{sample_input_dict['descripcion_breve']}. {texto}"
         )
-        informe = _informe_que_repite(carga["texto"])
+        assert len(cuestionario["descripcion_breve"]) <= 500  # si no, sería un 422
+        informe = _informe_que_repite(texto)
     else:
         envenenado = Document(
-            page_content=f"Artículo 5. {carga['texto']}",
+            page_content=f"Artículo 5. {texto}",
             metadata={"source": "RGPD.pdf", "page": 1},
         )
         state.vectorstore.similarity_search_with_relevance_scores.return_value = [
             (mock_doc, 0.85),
             (envenenado, 0.84),
         ]
-        informe = _informe_que_repite(carga["texto"], tambien_citada=True)
+        informe = _informe_que_repite(texto, tambien_citada=True)
     vistas: list[str] = []
 
     def modelo(messages):
         recibido = _lo_que_ve_el_modelo(messages[1].content, f"CANARIO-{carga['id']}")
         vistas.extend(recibido)
-        return MagicMock(content="\n\n".join([informe, *recibido]))
+        decodificado = [html.unescape(v) for v in recibido]
+        return MagicMock(content="\n\n".join([informe, *recibido, *decodificado]))
 
     state.groq_client.invoke.side_effect = modelo
 

@@ -121,21 +121,39 @@ def _detect_injection(text: str) -> bool:
 # que ve, el paso 1 del saneado resuelve las referencias una vez y el paso de llamadas
 # retira el bloque; si las decodifica, también.
 #
+# La barra invertida va también como referencia, «&#92;», y con ella las dos formas que el
+# paso 1 del saneado lleva a «\» (la de ancho completo, «＼», y la pequeña, «﹨»). El paso 1
+# no resuelve una referencia escapada, porque el visor la muestra tal cual. Sin esto,
+# «\<function_calls\>» llegaba al modelo como «\&lt;function_calls\&gt;»; copiado, el paso de
+# llamadas no veía nada y el visor pintaba «&lt;function_calls&gt;…»: la entrada volvía a
+# fabricar un residual de la salida (revisión independiente de la 0.5.1). Con «&#92;&lt;», el
+# paso 1 resuelve las dos referencias y queda «\<function_calls», que se retira, tanto si el
+# modelo lo copia como si lo decodifica. Vale igual para lo que ya venía escrito como
+# referencia escapada («\&lt;invoke\&gt;»).
+#
 # El «&» no se escapa. No hace falta para la frontera (solo «<» y «>» forman etiquetas), y
 # escaparlo subiría un nivel lo que ya viniera escrito con referencias: «&lt;invoke&gt;»
 # llegaría como «&amp;lt;invoke&amp;gt;» y, copiado tal cual, el saneado, que resuelve una
-# vez, dejaría «&lt;invoke&gt;» (el residual de los dos niveles de app/sanitize.py). Así, lo
-# que puede copiar el modelo está siempre a un solo nivel. Que «<» y «&lt;» lleguen igual da
-# lo mismo: nadie tiene que recuperar la descripción desde el mensaje.
+# vez, dejaría «&lt;invoke&gt;» (el residual de los dos niveles de app/sanitize.py). Así, en
+# lo que ve el modelo de la descripción no hay nada que el saneado lea como una barra
+# invertida, y cada referencia que el modelo copie se resuelve en el paso 1. Lo que ya venga
+# escrito a dos niveles («&amp;lt;invoke&amp;gt;») sigue siendo ese residual, pero no lo
+# crea la entrada. Que «<» y «&lt;» lleguen igual da lo mismo: nadie tiene que recuperar la
+# descripción desde el mensaje.
 #
 # Residual: a la vista, «&lt;/descripcion_usuario&gt;» o la forma de ancho completo
 # «＜/descripcion_usuario＞» se parecen al cierre; el modelo podría tomarlas por él, pero no
-# son la etiqueta. La defensa de la salida (app/sanitize.py) no depende de esto.
-_DELIMITADOR_NEUTRO = str.maketrans({"<": "&lt;", ">": "&gt;"})
+# son la etiqueta. Si el modelo decodificara «&#92;» y no «&lt;», volvería la referencia
+# escapada. La defensa de la salida (app/sanitize.py) no depende de esto.
+_BARRAS_INVERTIDAS = ("\\", "＼", "﹨")
+_DELIMITADOR_NEUTRO = str.maketrans(
+    {"<": "&lt;", ">": "&gt;", **dict.fromkeys(_BARRAS_INVERTIDAS, "&#92;")}
+)
 
 
 def _neutralizar_delimitador(texto: str) -> str:
-    """La descripción con «<» y «>» escritos como «&lt;» y «&gt;» (ver arriba)."""
+    """La descripción con «<» y «>» escritos como «&lt;» y «&gt;», y las barras invertidas
+    como «&#92;» (ver arriba)."""
     return texto.translate(_DELIMITADOR_NEUTRO)
 
 

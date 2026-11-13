@@ -201,13 +201,32 @@ casos, y `tests/test_api.py`).
   Además, desde la 0.5.1 ese paso lee también como `<` y `>` esos signos y otros parecidos,
   así que una de las dos defensas ya no depende de la otra (ver «Bloques que imitan llamadas
   a herramientas» en «Salida segura»).
+- **La barra invertida también va como referencia** (`&#92;`), y con ella las dos formas que
+  el paso 1 del saneado lleva a `\` (`＼`, la de ancho completo, y `﹨`, la pequeña). La
+  revisión independiente de la 0.5.1 encontró que, sin esto, la entrada volvía a fabricar un
+  residual de la salida, como en la 0.5.0. Con P06 escrita como `\<function_calls\>…`, el
+  modelo recibía `\&lt;function_calls\&gt;…`. Es una referencia escapada, y el paso 1 no la
+  resuelve a propósito, porque el visor la muestra tal cual. Copiada, el saneado no retiraba
+  nada y la web pintaba `&lt;function_calls&gt;&lt;invoke name="Bash"&gt;…curl … | sh`.
+  Ahora el modelo recibe `&#92;&lt;function_calls&#92;&gt;…`: el paso 1 resuelve las dos
+  referencias, queda `\<function_calls\>` y el bloque se retira, tanto si el modelo lo copia
+  como si lo decodifica. Vale igual para lo que ya venía escrito como referencia escapada
+  (`\&lt;invoke\&gt;`), que antes pasaba con cualquier versión. Las pruebas recorren todo
+  Unicode para comprobar que no falta ninguna forma que el paso 1 lleve a `\`
+  (`test_every_character_the_sanitizer_reads_as_a_backslash_goes_as_a_reference`). Se
+  descartó la otra opción que propuso la revisión, volver a «‹» y «›»: retira
+  `\‹function_calls\›`, pero deja pasar lo que ya venía escrito como referencia escapada. Y
+  escribir como `&#92;` solo la barra ASCII no bastaba con `＼<` ni con `﹨<`.
 - **El `&` no se escapa.** La frontera solo necesita que no haya «<» ni «>», y escapar el `&`
   subiría un nivel lo que ya viniera escrito con referencias: `&lt;invoke&gt;` llegaría como
   `&amp;lt;invoke&amp;gt;` y, copiado tal cual, el saneado, que resuelve las referencias una
   vez, dejaría `&lt;invoke&gt;` (el residual de los dos niveles, en «Lo que no cubre»). Sin
-  escaparlo, todo lo que el modelo puede copiar de la descripción está a un solo nivel. Que
-  `<` y `&lt;` lleguen igual al modelo no importa: nadie recupera la descripción a partir del
-  mensaje (`test_build_user_message_keeps_ampersands_so_references_stay_one_level`).
+  escaparlo, y con las barras como referencia, en lo que el modelo ve de la descripción no
+  hay nada que el saneado lea como una barra invertida, y cada referencia que el modelo copie
+  se resuelve en el paso 1. Lo que ya venga escrito a dos niveles (`&amp;lt;invoke&amp;gt;`)
+  sigue siendo ese residual, pero la entrada no lo crea. Que `<` y `&lt;` lleguen igual al
+  modelo no importa: nadie recupera la descripción a partir del mensaje
+  (`test_build_user_message_keeps_ampersands_so_references_stay_one_level`).
 - El `SYSTEM_PROMPT` no cambia (su resumen fijado en `test_system_prompt_snapshot` es el
   mismo). Un delimitador con un valor aleatorio por petición también cerraría el paso, pero
   cambiaría el prompt y obligaría a repetir PP-18 con el modelo real.
@@ -560,9 +579,10 @@ Decisiones:
     de la lista de arriba (`‹invoke›`, `〈invoke〉`). No ve, y no puede ver sin entender el
     texto, una llamada escrita con otros signos que se parezcan a `<` y no estén en la lista
     (`«invoke»`, `≺invoke≻`), con dos niveles de referencias (`&amp;lt;invoke&amp;gt;`, que
-    la web pinta como `&lt;invoke&gt;`; por eso la entrada no escapa el `&`, ver «Entrada:
-    la descripción y su delimitador»), partida por el marcado (`<**invoke**>`) o por un
-    escape dentro del nombre (`<function\_calls>`, que el visor pinta sin la barra), en
+    la web pinta como `&lt;invoke&gt;`) o con una referencia escapada (`\&lt;invoke\&gt;`,
+    que la web pinta igual; por eso la entrada no escapa el `&` y escribe las barras
+    invertidas como `&#92;`, ver «Entrada: la descripción y su delimitador»), partida por
+    el marcado (`<**invoke**>`) o por un escape dentro del nombre (`<function\_calls>`, que el visor pinta sin la barra), en
     base64 o letra a letra. Tampoco un objeto JSON de llamada partido por una línea en blanco fuera de un
     bloque de código: el cierre de un objeto se busca dentro de su párrafo, porque buscarlo
     en todo el texto hacía cuadrático el coste (dentro de un bloque de código se busca hasta
@@ -628,9 +648,13 @@ la descripción como va en el mensaje de usuario que construye `rag._build_user_
 `### Fuente N`. Hasta entonces solo la repetía en bruto, y no vio que la 0.5.0 entregaba P06
 al modelo con `‹` y `›`. Con `bd228c6` esta prueba falla en P06 por la descripción, y con
 el oráculo de la 0.5.1, que lee los signos de un ángulo, también en P08 y P13, cuyos
-`‹|start|›` y `‹tool_call›` quedaban en el informe (el modelo real no las reprodujo). En
-ninguno llega una forma ejecutable a la API REST ni al asistente, ni en el texto ni en
-`structuredContent`. Las cargas de llamadas y de caracteres dejan constancia en `saneado`;
+`‹|start|›` y `‹tool_call›` quedaban en el informe (el modelo real no las reprodujo).
+Desde la revisión independiente de la 0.5.1 la repite también con las referencias de
+carácter decodificadas, y cada carga con `<` o `>` (P04, P05, P06, P08, P12, P13 y P17) va
+además escapada, con `\<` y `\>`, en la descripción y en el fragmento: 54 casos. Con la
+entrada de `9a0a271`, P06 escapada llegaba al modelo como `\&lt;function_calls\&gt;` y la
+prueba falla en ella por la descripción. En ninguno llega una forma ejecutable a la API
+REST ni al asistente, ni en el texto ni en `structuredContent`. Las cargas de llamadas y de caracteres dejan constancia en `saneado`;
 las demás se codifican. Lo comprueba un oráculo escrito aparte del saneado
 (`tests/_pp18.py`). Ya no aproxima con expresiones regulares lo que pinta un visor (el de
 antes se equivocaba como el saneado y compartía sus huecos): pinta con markdown-it-py en modo
@@ -846,15 +870,19 @@ real.
 1. **Entrada.** La descripción lleva `&lt;` y `&gt;` en lugar de «‹» y «›». Si el modelo la
    copia, el paso 1 del saneado resuelve las referencias una vez y el paso de llamadas
    retira el bloque; si las decodifica, también. El `&` no se escapa, para que lo que ya
-   venía con referencias no suba a dos niveles (ver «Entrada: la descripción y su
-   delimitador»).
+   venía con referencias no suba a dos niveles, y las barras invertidas van como `&#92;`,
+   para que ninguna convierta un `&lt;` en una referencia escapada (lo encontró la revisión
+   independiente de la 0.5.1; ver «Entrada: la descripción y su delimitador»).
 2. **Salida, en profundidad.** El paso que retira las llamadas lee como `<` y `>` los signos
    de un ángulo que el paso 1 no lleva a ASCII, y el respaldo cuando no converge pasa de `‹`
    a U+FFFD (ver «Bloques que imitan llamadas a herramientas»). Ya no depende de cómo
    llegue la descripción: P06 con «‹» y «›» se retira aunque la entrada volviera a la 0.5.0.
 3. **Prueba automática.** El modelo simulado repite la carga también tal como la recibe en
    el mensaje de usuario y en el contexto. Con `bd228c6` falla en P06; con la 0.5.1 pasa,
-   y también con cada capa por separado.
+   y también con cada capa por separado. Desde la revisión independiente de la 0.5.1 lo
+   repite además con las referencias decodificadas, y cada carga con `<` o `>` va también
+   escapada (`\<function_calls\>`): 54 casos. Con la entrada de `9a0a271` falla en P06
+   escapada por la descripción.
 
 **Falta repetirla sobre la 0.5.1** (12 llamadas a Groq; la hace el autor). `medir.py` la
 guardará en `resultado-AAAA-MM-DD-<commit>.json`, sin pisar las anteriores.
@@ -866,6 +894,12 @@ vio la medición con el modelo real, que se repitió porque había cambiado lo q
 modelo. De ahí los dos cambios de método: la prueba automática simula ahora lo que de verdad
 recibe el modelo, y la medición con el modelo real se repite después de cada cambio en lo
 que recibe.
+
+El patrón se repitió dentro del propio arreglo. La entrada con `&lt;` y `&gt;` convertía
+`\<function_calls\>` en `\&lt;function_calls\&gt;`, una referencia escapada que el saneado
+no resuelve, es decir, otro residual de la salida. Lo encontró la revisión independiente de
+la 0.5.1, no las pruebas: la de extremo a extremo no escapaba las cargas ni simulaba un
+modelo que decodifica. Las dos cosas están ahora en la prueba.
 
 **Nombre de los resultados.** Desde la 0.5.1, `medir.py` guarda cada medición en
 `resultado-AAAA-MM-DD-<commit>.json`, con el commit corto de `HEAD`, o en el fichero que se
@@ -1511,8 +1545,8 @@ salía de él, separándolo de lo que aportaba por su cuenta. Lo que señaló:
   líneas con el rediseño, y a 759 con los arreglos de la revisión de la codificación (la
   cuarta, del 13/11/2026: 7 hallazgos, ninguno que dejara pasar un enlace o una imagen).
 - PP-18 en 24-pruebas y en el capítulo de resultados:
-  - la prueba automática: 20 cargas, en la descripción y en un fragmento (40 casos), con un
-    oráculo que pinta con markdown-it;
+  - la prueba automática: 20 cargas, en la descripción y en un fragmento, y las 7 que
+    llevan `<` o `>` también escapadas (54 casos), con un oráculo que pinta con markdown-it;
   - el oráculo doble con el visor de la web y markdown-it (`docs/mcp/pp18/oraculo.py`): de
     323 casos (0.5.1), 0 pintan nada peligroso con ninguno de los dos, y 19 informes
     legítimos conservan su estructura;
@@ -1562,7 +1596,7 @@ salía de él, separándolo de lo que aportaba por su cuenta. Lo que señaló:
   0.4.0 la descripción podía cerrar `</descripcion_usuario>` y salir del delimitador, y las
   pruebas «sandboxed» lo fijaban; desde la 0.5.0 sus «<» y «>» se neutralizan y el mensaje
   tiene una sola apertura y un solo cierre (en la 0.5.0 con «‹» y «›»; desde la 0.5.1, con
-  `&lt;` y `&gt;`). Los «patrones registrados» de RNF-05 son telemetría, no defensa, y ahora
+  `&lt;` y `&gt;`, y las barras invertidas como `&#92;`). Los «patrones registrados» de RNF-05 son telemetría, no defensa, y ahora
   incluyen el español. Ver «Entrada: la descripción y su delimitador».
 - Versión: el servidor se publica como 0.5.1 (`CHANGELOG.md`; la 0.5.0 tenía la regresión
   de P06). Donde la memoria dé la versión que anuncia `server/discover`, o la del generador

@@ -75,8 +75,9 @@ Lo que queda fuera (detalle en el README): un dominio sin esquema que escribe el
 (``evil.com/?d=…``) sigue siendo enlace en los visores con linkify en modo difuso. Hay que
 pulsarlo y se ve a dónde lleva. Las casillas de las listas de tareas (``- [ ]``) se ven
 como texto. Y el paso 2 no ve una llamada escrita de otra forma (en lenguaje natural, con
-signos que se parecen a «<» y no están en ``_ANGULOS``, con dos niveles de referencias o
-como un objeto JSON partido por una línea en blanco fuera de un bloque de código).
+signos que se parecen a «<» y no están en ``_ANGULOS``, con dos niveles de referencias, con
+una referencia escapada («\\&lt;invoke») o como un objeto JSON partido por una línea en
+blanco fuera de un bloque de código).
 
 Coste: lineal. Los cierres de las etiquetas de llamada se buscan una vez para todo el texto
 y se agrupan por nombre; el cierre de un objeto JSON se busca dentro de su párrafo; la
