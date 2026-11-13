@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- La descripción del cuestionario llega al modelo con sus «<» y «>» escritos como referencias de carácter (`&lt;` y `&gt;`), y no como «‹» y «›», que es como iban en la 0.5.0. El modelo copia lo que ve: PP-18 repetida con el modelo real sobre la 0.5.0 (`bd228c6`) encontró la carga P06 copiada con «‹» y «›», que el saneado no reconocía, y el bloque de llamada llegó entero al asistente. Con referencias, el paso 1 del saneado las resuelve una vez y el paso de llamadas retira el bloque, tanto si el modelo las copia como si las decodifica. El `&` no se escapa: así, lo que ya venía escrito con referencias (`&lt;invoke&gt;`) no sube a dos niveles, que el saneado no resuelve. La descripción sigue sin poder cerrar su delimitador, y el `SYSTEM_PROMPT`, la búsqueda, la clave de la caché y la telemetría no cambian.
+
 ## [0.5.0] - 2026-11-13
 
 Primera versión publicada con el servidor MCP. Recoge todo lo que estaba en [Unreleased] desde la 0.4.0, incluidos los arreglos de la revisión externa del 13/11/2026. El código desplegado en el Space ese día (`ab3e3a3`) era anterior a esta publicación y todavía anunciaba la 0.4.0; la 0.5.0 está pendiente de desplegar y de etiquetar.

@@ -129,7 +129,7 @@ def test_analyze_prompt_injection_tag_in_descripcion(client, sample_input_dict):
     user_content = messages[1].content
     assert user_content.count("<descripcion_usuario>") == 1
     assert user_content.count("</descripcion_usuario>") == 1
-    neutralizada = malicious.replace("<", "\u2039").replace(">", "\u203a")
+    neutralizada = malicious.replace("<", "&lt;").replace(">", "&gt;")
     assert f"<descripcion_usuario>{neutralizada}</descripcion_usuario>" in user_content
 
 

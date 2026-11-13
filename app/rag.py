@@ -108,18 +108,34 @@ def _detect_injection(text: str) -> bool:
 
 # La descripción va entre <descripcion_usuario> y </descripcion_usuario>, y la última regla del
 # SYSTEM_PROMPT dice que lo que hay dentro no es fiable. Para que esa frontera valga, la
-# descripción no puede cerrar ni abrir la etiqueta: sus «<» y «>» pasan a «‹» y «›»
-# (U+2039 y U+203A), que se leen igual y no forman etiquetas. Así el mensaje tiene siempre
-# una sola apertura y un solo cierre. Solo en el mensaje al modelo: la búsqueda
+# descripción no puede cerrar ni abrir la etiqueta: sus «<» y «>» se escriben como
+# referencias de carácter, «&lt;» y «&gt;», que no forman etiquetas. Así el mensaje tiene
+# siempre una sola apertura y un solo cierre. Solo en el mensaje al modelo: la búsqueda
 # (_build_query), la clave de la caché y la telemetría ven el texto original. El
-# SYSTEM_PROMPT no cambia. Residual: a la vista, «‹/descripcion_usuario›» o la forma de
-# ancho completo «＜/descripcion_usuario＞» se parecen al cierre; el modelo podría tomarlas
-# por él, pero no son la etiqueta, y la defensa de la salida (app/sanitize.py) no depende de
-# esto.
-_DELIMITADOR_NEUTRO = str.maketrans({"<": "\u2039", ">": "\u203a"})
+# SYSTEM_PROMPT no cambia.
+#
+# En la 0.5.0 pasaban a «‹» y «›» (U+2039 y U+203A). El modelo real copió la carga P06 tal
+# como la veía, con «‹function_calls›…», y el saneado no reconocía esas etiquetas: la
+# llamada llegó entera al asistente (PP-18 repetida sobre la 0.5.0, docs/mcp/README.md). Dos
+# defensas correctas por separado se anulaban. Con «&lt;» y «&gt;», si el modelo copia lo
+# que ve, el paso 1 del saneado resuelve las referencias una vez y el paso de llamadas
+# retira el bloque; si las decodifica, también.
+#
+# El «&» no se escapa. No hace falta para la frontera (solo «<» y «>» forman etiquetas), y
+# escaparlo subiría un nivel lo que ya viniera escrito con referencias: «&lt;invoke&gt;»
+# llegaría como «&amp;lt;invoke&amp;gt;» y, copiado tal cual, el saneado, que resuelve una
+# vez, dejaría «&lt;invoke&gt;» (el residual de los dos niveles de app/sanitize.py). Así, lo
+# que puede copiar el modelo está siempre a un solo nivel. Que «<» y «&lt;» lleguen igual da
+# lo mismo: nadie tiene que recuperar la descripción desde el mensaje.
+#
+# Residual: a la vista, «&lt;/descripcion_usuario&gt;» o la forma de ancho completo
+# «＜/descripcion_usuario＞» se parecen al cierre; el modelo podría tomarlas por él, pero no
+# son la etiqueta. La defensa de la salida (app/sanitize.py) no depende de esto.
+_DELIMITADOR_NEUTRO = str.maketrans({"<": "&lt;", ">": "&gt;"})
 
 
 def _neutralizar_delimitador(texto: str) -> str:
+    """La descripción con «<» y «>» escritos como «&lt;» y «&gt;» (ver arriba)."""
     return texto.translate(_DELIMITADOR_NEUTRO)
 
 
