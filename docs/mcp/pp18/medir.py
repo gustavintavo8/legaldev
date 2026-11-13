@@ -7,7 +7,12 @@ carga de ``cargas.json`` marcada con ``medir`` hace una llamada a ``analizar_pro
 MCP (revisión 2026-07-28), con la carga en el campo libre del cuestionario. Las llamadas van
 espaciadas, sin reintentos y sin modelo de respaldo (``GROQ_FALLBACK_MODEL`` vacío), así que
 cada carga cuesta como mucho una llamada a Groq. Guarda el resultado, sin claves, en
-``resultado-AAAA-MM-DD.json``, junto a este fichero.
+``resultado-AAAA-MM-DD-<commit>.json`` (el commit corto de ``HEAD``), junto a este fichero,
+o en el que se dé con ``--salida``. Nunca sobrescribe otro resultado: el 13/11/2026 se midió
+dos veces, con ``ab3e3a3`` y con ``bd228c6``, y con el nombre de antes
+(``resultado-AAAA-MM-DD.json``, el de los resultados del 12 y del 13/11/2026, que lo
+conservan) la segunda habría pisado la primera. El destino se comprueba antes de arrancar el
+servidor, para no gastar las llamadas si ya existe.
 
 Cómo se puntúa cada llamada (el resultado ya llega saneado, así que no se ve lo que escribió
 el modelo antes del saneado):
@@ -24,6 +29,7 @@ el modelo antes del saneado):
 Uso, desde la raíz del repositorio (hace falta el índice y ``GROQ_API_KEY`` en ``.env``):
 
     uv run python docs/mcp/pp18/medir.py [--espera 90] [--puerto 8765] [--solo P01,P02]
+        [--salida docs/mcp/pp18/resultado-AAAA-MM-DD-<commit>-segunda.json]
     uv run python docs/mcp/pp18/medir.py --sin-modelo   # solo arranque y tools/list
 
 Al terminar se para el servidor. ``chroma_db/chroma.sqlite3`` puede quedar modificado (Chroma
@@ -193,12 +199,33 @@ def _commit() -> str:
         return "desconocido"
 
 
+def destino(
+    salida: Path | None, fecha: dt.date, commit: str, *, carpeta: Path | None = None
+) -> Path:
+    """El fichero del resultado: ``salida`` o ``resultado-AAAA-MM-DD-<commit>.json`` en
+    ``carpeta`` (por defecto, la de este script). Lanza ``FileExistsError`` si ya existe:
+    nunca se sobrescribe un resultado (ver la cabecera del módulo)."""
+    carpeta = carpeta or Path(__file__).resolve().parent
+    ruta = salida or carpeta / f"resultado-{fecha.isoformat()}-{commit}.json"
+    if ruta.exists():
+        raise FileExistsError(
+            f"{ruta} ya existe y no se sobrescribe un resultado; elige otro con --salida"
+        )
+    return ruta
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--espera", type=float, default=90.0, help="segundos entre llamadas")
     ap.add_argument("--puerto", type=int, default=8765)
     ap.add_argument("--solo", default="", help="ids separados por comas (p. ej. P01,P05)")
     ap.add_argument("--sin-modelo", action="store_true", help="no llama a analizar_proyecto")
+    ap.add_argument(
+        "--salida",
+        type=Path,
+        default=None,
+        help="fichero del resultado (por defecto, resultado-AAAA-MM-DD-<commit>.json aquí)",
+    )
     args = ap.parse_args()
 
     seleccion = [c for c in cargas() if c["medir"]]
@@ -206,6 +233,16 @@ def main() -> int:
         ids = set(args.solo.split(","))
         seleccion = [c for c in seleccion if c["id"] in ids]
     assert len(seleccion) <= 12, "PP-18 admite como mucho 12 llamadas reales"
+
+    commit = _commit()
+    fichero: Path | None = None
+    if not args.sin_modelo:
+        # Antes de arrancar el servidor: si ya existe, no se gasta ninguna llamada.
+        try:
+            fichero = destino(args.salida, dt.date.today(), commit)
+        except FileExistsError as exc:
+            print(exc, file=sys.stderr)
+            return 2
 
     clave = secrets.token_urlsafe(32)  # solo para este servidor; no se imprime ni se guarda
     entorno = dict(os.environ)
@@ -305,7 +342,7 @@ def main() -> int:
     }
     salida = {
         "fecha": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"),
-        "commit": _commit(),
+        "commit": commit,
         "corpus_version": corpus,
         "espera_s": args.espera,
         "descripcion_base": DESCRIPCION_BASE,
@@ -324,12 +361,12 @@ def main() -> int:
         "resumen": resumen,
         "llamadas": llamadas,
     }
-    destino = Path(__file__).with_name(f"resultado-{dt.date.today().isoformat()}.json")
-    destino.write_text(
-        json.dumps(salida, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
-    )
+    assert fichero is not None  # sin --sin-modelo, elegido antes de arrancar
+    # «x»: si alguien lo ha creado mientras tanto, falla en lugar de sobrescribirlo.
+    with fichero.open("x", encoding="utf-8") as f:
+        f.write(json.dumps(salida, ensure_ascii=False, indent=2) + "\n")
     print(json.dumps(resumen, ensure_ascii=False))
-    print(f"Resultado: {destino}")
+    print(f"Resultado: {fichero}")
     return 0
 
 

@@ -782,6 +782,14 @@ Los límites son los de arriba. Además, el JSON guarda solo extractos, así que
 se ha podido revisar a mano si P05 y P12 obedecen sin copiarlas las órdenes en lenguaje
 natural.
 
+**Nombre de los resultados.** Desde la 0.5.1, `medir.py` guarda cada medición en
+`resultado-AAAA-MM-DD-<commit>.json`, con el commit corto de `HEAD`, o en el fichero que se
+le dé con `--salida`, y nunca sobrescribe otro resultado. Lo comprueba antes de arrancar el
+servidor, para no gastar las 12 llamadas si el fichero ya existe
+(`tests/test_pp18_medir.py`). El 13/11/2026 se midió dos veces, y con el nombre de antes
+(`resultado-AAAA-MM-DD.json`) la segunda habría pisado la primera. Los resultados del 12 y
+del 13/11/2026 (`ab3e3a3`) conservan su nombre.
+
 ### Marcado del contenido generado por IA (C-05)
 
 El Reglamento de IA (art. 50.2) pide marcar el contenido generado por IA en un formato legible
