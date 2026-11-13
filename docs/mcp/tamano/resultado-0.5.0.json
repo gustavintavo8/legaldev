@@ -1,0 +1,267 @@
+[
+ {
+  "herramienta": "consultar_obligaciones",
+  "normativa": "RGPD",
+  "fragmentos": 6,
+  "content_caracteres": 4277,
+  "structured_caracteres": 3770,
+  "texto_fragmentos_caracteres": 2717,
+  "apariciones_texto_en_content": [
+   1,
+   1,
+   1,
+   1,
+   1,
+   1
+  ],
+  "articulos": [
+   null,
+   null,
+   null,
+   null,
+   null,
+   null
+  ],
+  "considerandos": [
+   null,
+   null,
+   null,
+   null,
+   null,
+   null
+  ]
+ },
+ {
+  "herramienta": "consultar_obligaciones",
+  "normativa": "LSSI",
+  "fragmentos": 6,
+  "content_caracteres": 6093,
+  "structured_caracteres": 5454,
+  "texto_fragmentos_caracteres": 4374,
+  "apariciones_texto_en_content": [
+   1,
+   1,
+   1,
+   1,
+   1,
+   1
+  ],
+  "articulos": [
+   "21",
+   "20",
+   null,
+   null,
+   "22",
+   "22"
+  ],
+  "considerandos": [
+   null,
+   null,
+   null,
+   null,
+   null,
+   null
+  ]
+ },
+ {
+  "herramienta": "consultar_obligaciones",
+  "normativa": "EU AI Act",
+  "fragmentos": 6,
+  "content_caracteres": 4300,
+  "structured_caracteres": 3758,
+  "texto_fragmentos_caracteres": 2675,
+  "apariciones_texto_en_content": [
+   1,
+   1,
+   1,
+   1,
+   1,
+   1
+  ],
+  "articulos": [
+   null,
+   null,
+   null,
+   null,
+   null,
+   null
+  ],
+  "considerandos": [
+   null,
+   null,
+   null,
+   null,
+   null,
+   null
+  ]
+ },
+ {
+  "herramienta": "consultar_obligaciones",
+  "normativa": "LOPDGDD",
+  "fragmentos": 6,
+  "content_caracteres": 4545,
+  "structured_caracteres": 3888,
+  "texto_fragmentos_caracteres": 2814,
+  "apariciones_texto_en_content": [
+   1,
+   1,
+   1,
+   1,
+   1,
+   1
+  ],
+  "articulos": [
+   "7",
+   "92",
+   null,
+   "7",
+   "73",
+   null
+  ],
+  "considerandos": [
+   null,
+   null,
+   null,
+   null,
+   null,
+   null
+  ]
+ },
+ {
+  "herramienta": "consultar_obligaciones",
+  "normativa": "Guía sobre uso de cookies - AEPD",
+  "fragmentos": 6,
+  "content_caracteres": 4864,
+  "structured_caracteres": 4161,
+  "texto_fragmentos_caracteres": 2874,
+  "apariciones_texto_en_content": [
+   1,
+   1,
+   1,
+   1,
+   1,
+   1
+  ],
+  "articulos": [
+   null,
+   null,
+   null,
+   null,
+   null,
+   null
+  ],
+  "considerandos": [
+   null,
+   null,
+   null,
+   null,
+   null,
+   null
+  ]
+ },
+ {
+  "herramienta": "consultar_obligaciones",
+  "normativa": "RGPD",
+  "fragmentos": 6,
+  "content_caracteres": 4120,
+  "structured_caracteres": 3613,
+  "texto_fragmentos_caracteres": 2568,
+  "apariciones_texto_en_content": [
+   1,
+   1,
+   1,
+   1,
+   1,
+   1
+  ],
+  "articulos": [
+   null,
+   null,
+   null,
+   null,
+   null,
+   null
+  ],
+  "considerandos": [
+   null,
+   null,
+   null,
+   null,
+   null,
+   null
+  ]
+ },
+ {
+  "herramienta": "consultar_obligaciones",
+  "normativa": "Directiva NIS2",
+  "fragmentos": 6,
+  "content_caracteres": 4352,
+  "structured_caracteres": 3775,
+  "texto_fragmentos_caracteres": 2656,
+  "apariciones_texto_en_content": [
+   1,
+   1,
+   1,
+   1,
+   1,
+   1
+  ],
+  "articulos": [
+   null,
+   null,
+   null,
+   null,
+   null,
+   null
+  ],
+  "considerandos": [
+   null,
+   null,
+   null,
+   null,
+   null,
+   null
+  ]
+ },
+ {
+  "herramienta": "consultar_obligaciones",
+  "normativa": "LSSI",
+  "fragmentos": 6,
+  "content_caracteres": 4158,
+  "structured_caracteres": 3621,
+  "texto_fragmentos_caracteres": 2567,
+  "apariciones_texto_en_content": [
+   1,
+   1,
+   1,
+   1,
+   1,
+   1
+  ],
+  "articulos": [
+   null,
+   null,
+   null,
+   null,
+   "12",
+   null
+  ],
+  "considerandos": [
+   null,
+   null,
+   null,
+   null,
+   null,
+   null
+  ]
+ },
+ {
+  "herramienta": "analizar_proyecto",
+  "fragmentos": 20,
+  "content_caracteres": 5563,
+  "informe_caracteres": 1626,
+  "apendice_caracteres": 3937,
+  "nulos_en_content": 0,
+  "structured_caracteres": 5926
+ }
+]

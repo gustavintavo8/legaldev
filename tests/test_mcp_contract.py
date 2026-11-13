@@ -6,6 +6,7 @@ peticiones JSON-RPC en crudo contra /mcp montado en la aplicación (TestClient, 
 """
 
 import base64
+import json
 
 import jsonschema
 import pytest
@@ -482,6 +483,87 @@ def test_outputschema_declara_considerando_como_campo_opcional(client, herramien
     assert not {"articulo", "considerando"} & set(fragmento["required"])
     assert "número" in fragmento["properties"]["articulo"]["description"].lower()
     assert "considerando" in fragmento["properties"]["considerando"]["description"]
+
+
+def _apariciones(texto: str, fragmento: str) -> int:
+    """Veces que ``fragmento`` está en ``texto``, en crudo o escapado como cadena JSON."""
+    escapado = json.dumps(fragmento, ensure_ascii=False)[1:-1]
+    return texto.count(fragmento) + (
+        texto.count(escapado) if escapado != fragmento else 0
+    )
+
+
+def _apendice_json(texto: str) -> dict:
+    """El JSON que acompaña al texto legible, entre ```json y ```."""
+    return json.loads(texto.rsplit("```json\n", 1)[1].rsplit("\n```", 1)[0])
+
+
+def test_rf25_consultar_obligaciones_sends_each_fragment_text_once_in_content(client):
+    """En ``content`` el texto de cada fragmento va una sola vez: en el JSON que acompaña al
+    texto legible (la revisión 2026-07-28 recomienda que un resultado con
+    ``structuredContent`` lleve también su serialización JSON en un bloque de texto). La
+    parte legible solo localiza cada fragmento. ``structuredContent`` no cambia."""
+    from langchain_core.documents import Document
+
+    textos = [
+        'Artículo 22.\n1. Los prestadores de servicios "podrán" utilizar dispositivos.',
+        "Artículo 21.\nQueda prohibido el envío de comunicaciones\npublicitarias.",
+        "Texto con «comillas» y una barra \\ invertida.",
+    ]
+    docs = [
+        Document(
+            page_content=t,
+            metadata={"source": "RGPD.pdf", "page": i, "article": f"Artículo {22 - i}"},
+        )
+        for i, t in enumerate(textos)
+    ]
+    client.app.state.vectorstore.similarity_search_with_relevance_scores.return_value = [
+        (d, 0.9) for d in docs
+    ]
+
+    result = call_in_process(
+        client.app.state,
+        "consultar_obligaciones",
+        {"normativa": "RGPD", "contexto": "comunicaciones comerciales"},
+    )
+
+    assert result.is_error is False
+    contenido = text_of(result)
+    assert [_apariciones(contenido, t) for t in textos] == [1, 1, 1]
+    apendice = _apendice_json(contenido)
+    assert [f["texto"] for f in apendice["fragmentos"]] == textos
+    assert [f["texto"] for f in result.structured_content["fragmentos"]] == textos
+    # La parte legible localiza cada fragmento, en el mismo orden que el JSON.
+    legible = contenido.split("```json")[0]
+    for f in apendice["fragmentos"]:
+        assert (
+            f"[{f['identificador']}] RGPD, p. {f['pagina']}, art. {f['articulo']}"
+            in (legible)
+        )
+
+
+def test_tool_results_json_appendix_has_no_nulls_but_structured_content_keeps_them(
+    client, mock_doc, sample_input_dict
+):
+    """El JSON del texto se serializa sin nulos (``texto`` de los fragmentos de
+    ``analizar_proyecto``, ``articulo`` y ``considerando`` sin localizador); el
+    ``structuredContent`` conserva el contrato, con los nulos."""
+    analisis = call_in_process(client.app.state, "analizar_proyecto", sample_input_dict)
+    consulta = call_in_process(
+        client.app.state,
+        "consultar_obligaciones",
+        {"normativa": "RGPD", "contexto": "registro de usuarios con email"},
+    )
+
+    for result in (analisis, consulta):
+        assert result.is_error is False
+        contenido = text_of(result)
+        assert "null" not in contenido.split("```json")[1]
+        fragmento = result.structured_content["fragmentos"][0]
+        assert fragmento["articulo"] is None
+        assert fragmento["considerando"] is None
+    assert analisis.structured_content["fragmentos"][0]["texto"] is None
+    assert "texto" not in _apendice_json(text_of(analisis))["fragmentos"][0]
 
 
 def test_rf23_no_coverage_is_tool_result_not_http_404(

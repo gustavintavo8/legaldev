@@ -348,13 +348,35 @@ def tool_error_result(codigo: str, mensaje: str) -> CallToolResult:
     )
 
 
+def _sin_nulos(valor: Any) -> Any:
+    """Copia de un valor JSON sin las claves cuyo valor es nulo, a cualquier profundidad."""
+    if isinstance(valor, dict):
+        return {k: _sin_nulos(v) for k, v in valor.items() if v is not None}
+    if isinstance(valor, list):
+        return [_sin_nulos(v) for v in valor]
+    return valor
+
+
 def _structured_result(texto: str, estructurado: BaseModel) -> CallToolResult:
-    """Texto legible seguido del JSON del contenido estructurado (sin repetir ``informe``,
-    que ya es el texto), y el contenido estructurado completo."""
+    """Texto legible seguido del JSON del contenido estructurado, y el contenido
+    estructurado completo.
+
+    La revisión 2026-07-28 («Structured Content») recomienda que una herramienta que devuelve
+    ``structuredContent`` devuelva también, por compatibilidad, su serialización JSON en un
+    bloque de texto: así la recibe el asistente cuyo cliente solo pasa ``content``. Cada dato
+    va una sola vez en ``content``, que es contexto del asistente:
+
+    * el JSON no repite ``informe``, que ya es el texto legible de ``analizar_proyecto``;
+    * el texto legible de ``consultar_obligaciones`` solo localiza los fragmentos, y sus
+      textos van en el JSON;
+    * el JSON va sin nulos (un campo opcional ausente equivale a nulo), también los del
+      ``cuestionario``, que es un diccionario y no un modelo (``exclude_none`` de Pydantic no
+      entra en él). El ``structuredContent`` sí los lleva: es el contrato, validado con el
+      ``outputSchema``.
+    """
     data = estructurado.model_dump(mode="json")
-    serializado = json.dumps(
-        {k: v for k, v in data.items() if k != "informe"}, ensure_ascii=False, indent=2
-    )
+    apendice = _sin_nulos({k: v for k, v in data.items() if k != "informe"})
+    serializado = json.dumps(apendice, ensure_ascii=False, indent=2)
     return CallToolResult(
         content=[
             TextContent(type="text", text=f"{texto}\n\n```json\n{serializado}\n```")
@@ -587,13 +609,17 @@ def build_mcp_server(state, *, version: str = "0.0.0") -> MCPServer:
                 CODIGO_TIEMPO_AGOTADO,
                 "La búsqueda en el índice ha tardado demasiado. Vuelve a intentarlo.",
             )
+        # Solo la localización: el texto de cada fragmento va una vez, en el JSON que
+        # _structured_result añade detrás (antes iba también aquí: dos veces en content).
         lineas = [
             f"Fragmentos de {consulta.normativa} (orden de pertinencia). {AVISO}",
+            "El texto de cada fragmento va en el JSON de abajo, en este mismo orden.",
+            "",
         ]
-        for f in consulta.fragmentos:
-            lineas.append(
-                f"\n[{f.identificador}] {f.normativa}, {_donde(f)}\n{f.texto}"
-            )
+        lineas += [
+            f"[{f.identificador}] {f.normativa}, {_donde(f)}"
+            for f in consulta.fragmentos
+        ]
         return _structured_result(
             "\n".join(lineas), ConsultaObligaciones(**consulta.model_dump())
         )

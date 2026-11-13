@@ -64,6 +64,50 @@ en las guías de la AEPD, el encabezado es casi siempre una mención a otra norm
 empieza el fragmento («ARTÍCULO 5» es el art. 5 del RGPD copiado en la guía; los 90
 considerandos son del RGPD), así que `articulo` no es un artículo de la guía.
 
+### Texto y contenido estructurado de los resultados
+
+Cada resultado lleva `structuredContent` (el contrato, conforme al `outputSchema`) y un único
+bloque de texto en `content`. La revisión 2026-07-28 («Structured Content», en *Tools*)
+recomienda que una herramienta que devuelve contenido estructurado devuelva también, por
+compatibilidad, su serialización JSON en un bloque de texto: así lo recibe el asistente cuyo
+cliente solo pasa `content` al modelo. El bloque es, por eso, un texto legible seguido de ese
+JSON (`app/mcp_server.py`, `_structured_result`), con una regla: en `content`, que es contexto
+del asistente, cada dato va una sola vez.
+
+- `analizar_proyecto`: el texto legible es el informe, y el JSON lleva todo lo demás (no
+  repite `informe`).
+- `consultar_obligaciones`: el texto legible es la cabecera con el aviso y una línea de
+  localización por fragmento («[identificador] LSSI, p. 17, art. 22»); los textos de los
+  fragmentos van solo en el JSON. Hasta la 0.4.0 iban también en la parte legible: dos veces
+  en `content` y una tercera en `structuredContent`.
+- El JSON va sin nulos, a cualquier profundidad (un campo opcional ausente equivale a nulo):
+  ni los `"texto": null` de los fragmentos de `analizar_proyecto`, ni los `articulo` y
+  `considerando` vacíos, ni los nulos del cuestionario. `structuredContent` sí los lleva.
+
+Se eligió conservar la serialización completa en el JSON y quitar los textos de la parte
+legible (y no al revés) porque es lo que pide la especificación; el informe es la excepción,
+ya existente, porque es en sí mismo el texto legible y repetirlo como cadena JSON doblaría el
+resultado. Un cliente que solo lea el texto sigue teniéndolo todo.
+
+**Tamaño (13/11/2026).** Medido con `docs/mcp/tamano/medir.py` (resultados en
+`resultado-0.4.0.json` y `resultado-0.5.0.json` de esa carpeta): en proceso, sin red, con una
+copia del índice (corpus
+`7a2029a4dfd8`), el reordenador real, las 8 consultas de `CONSULTAS` de
+`tools/medir_latencia_mcp.py` (6 fragmentos cada una) y, para `analizar_proyecto`, el
+cuestionario de IA generativa de ese script con el modelo simulado (el informe no entra en la
+medida del JSON). Caracteres por llamada:
+
+| Resultado | 0.4.0 | 0.5.0 |
+|---|---|---|
+| `consultar_obligaciones`, texto de `content` (mediana; mín.–máx.) | 7.084 (6.771–10.526) | 4.326 (4.120–6.093) |
+| `consultar_obligaciones`, `structuredContent` (mediana) | 3.640,5 | 3.772,5 |
+| `analizar_proyecto`, JSON del texto (20 fragmentos) | 4.860, con 41 nulos | 3.937, sin nulos |
+
+El texto de `consultar_obligaciones` baja un 39 % (entre 2.644 y 4.433 caracteres menos por
+llamada); el `structuredContent` crece unos 130 por el campo nuevo `considerando`, nulo en la
+mayoría de los fragmentos. Con un cliente que pase al modelo el texto y la estructura, una
+consulta típica pasa de unos 10.700 caracteres a unos 8.100.
+
 ## Lo que exige la revisión 2026-07-28
 
 Resumen del [registro de cambios](https://modelcontextprotocol.io/specification/2026-07-28/changelog):
@@ -1198,7 +1242,9 @@ salía de él, separándolo de lo que aportaba por su cuenta. Lo que señaló:
   asistente recibió las normativas, los fragmentos y el recuento de citas, pero no el
   informe: Claude Code solo pasa al modelo el contenido estructurado cuando la herramienta
   declara `outputSchema`, y el informe iba solo en el texto. Desde entonces va también en
-  `structuredContent.informe`; el JSON del texto no lo repite.
+  `structuredContent.informe`; el JSON del texto no lo repite. Desde la 0.5.0, tampoco se
+  repiten en `content` los textos de los fragmentos de `consultar_obligaciones` (ver «Texto y
+  contenido estructurado de los resultados»).
 
 ## Cambios que necesita la memoria
 
@@ -1294,6 +1340,11 @@ salía de él, separándolo de lo que aportaba por su cuenta. Lo que señaló:
   `tools/servidor_mcp_prueba.py`. Este último es la API local con registro de la revisión que
   negocia cada cliente y, si se pide, el modelo simulado.
 
+- 23-detalle (resultado de las herramientas): el bloque de texto de `content` es el texto
+  legible más la serialización JSON del contenido estructurado, como recomienda la revisión
+  2026-07-28, con cada dato una sola vez y sin nulos; en `consultar_obligaciones` la parte
+  legible solo localiza los fragmentos. Cifras de tamaño en «Texto y contenido estructurado
+  de los resultados».
 - tab:det-mcp-herramientas, 23-detalle («Herramientas, identificadores y resultado») y
   31-manual-usuario: `articulo` es el número del artículo como cadena («22») y no el
   encabezado del índice, y el campo nuevo `considerando` lleva el número del considerando
