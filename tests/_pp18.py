@@ -26,6 +26,10 @@ markdown-it (con las referencias de carácter resueltas: ``&lt;invoke`` se ve co
 ``<invoke``) y en la información de los bloques de código (```` ```tool_code ````, también
 dentro de una lista o de una cita). Los caracteres invisibles, en el texto y en lo que pinta
 (``&#x202E;`` da el carácter real en la página). Revisión de la codificación, 13/11/2026.
+Desde la 0.5.1, los signos de un ángulo que se leen como «<» y «>» y que NFKC no lleva a
+ASCII («‹›», «〈〉», «ᐸᐳ»…) cuentan como ellos al buscar llamadas (``_ANGULOS``): la 0.5.0
+entregaba la descripción al modelo con «‹» y «›», y PP-18 con el modelo real encontró P06
+copiada así.
 """
 
 from __future__ import annotations

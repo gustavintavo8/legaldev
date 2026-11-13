@@ -451,9 +451,11 @@ def test_legitimate_reports_keep_their_structure(texto):
     código no se ve ninguna barra invertida añadida, tampoco con «&» y referencias de
     carácter, y las secciones que añade el código quedan fuera de los bloques.
     docs/mcp/pp18/oraculo.py lo comprueba también con marked y con el informe de ejemplo de
-    la web. Y no se retira nada: un marcador como «<parameter_name>» no es una llamada."""
+    la web. Y no se retira nada: un marcador como «<parameter_name>» no es una llamada, ni
+    «invoke» entre comillas. Sanear otra vez no cambia nada."""
     salida, stats = sanear(texto)
     assert stats.total() == 0
+    assert sanear(salida) == (salida, sanitize.SaneadoStats())
     assert _estructura(salida) == _estructura(texto)
     assert _pp18.fuera_de_codigo(salida).count(BS) == _pp18.fuera_de_codigo(
         texto
@@ -961,6 +963,8 @@ def _repetida(unidad: str, n: int) -> str:
 
 # Tokens especiales anidados: cada pasada quita un nivel, así que obliga a hacer todas.
 VEINTE_PASADAS = f"{LT}|" * 25 + "x" + f"|{GT}" * 25
+# Lo mismo con signos de un ángulo, que el paso 2 lee como «<» y «>» desde la 0.5.1.
+VEINTE_PASADAS_ANGULOS = "‹|" * 25 + "x" + "|›" * 25
 # El prefijo que obligaba al saneado que detectaba patrones a hacer las 20 pasadas (cada una
 # quitaba dos niveles de «<b>»). Con la codificación ya no hay pasadas para el HTML.
 VEINTE_PASADAS_HTML = LT * 40 + f"b{GT}" * 40
@@ -1014,11 +1018,12 @@ ADVERSARIAS = {
     "vallas_herramienta": lambda n: _repetida("- ```tool_code\n  ```\n", n),
     "marcadores": lambda n: _repetida("> - 1. ", n - 12) + "```tool_code",
     # PP-18 repetida sobre la 0.5.0: los signos que se leen como «<» y «>» (el cierre de una
-    # apertura se busca ahora entre todos ellos), anidados y sin cerrar.
+    # apertura se busca ahora entre todos ellos), sin cerrar y anidados (las 21 pasadas; el
+    # peor caso con ellos va en test_event_loop_keeps_answering_while_sanitizing).
     "homoglifos": lambda n: _repetida("‹invoke›〈/invoke〉", n),
     "homoglifos_sin_mayor": lambda n: _repetida("ᐸinvoke x\n\n", n),
     "pasadas_homoglifos": lambda n: (
-        "‹|" * 25 + "x" + "|›" * 25 + _repetida('{"\n\n', n - 102) + '"arguments": 1'
+        VEINTE_PASADAS_ANGULOS + _repetida('{"a":1} ', n - 101)
     ),
 }
 
@@ -1091,6 +1096,7 @@ def test_tool_call_marks_cost_linear_time():
         VEINTE_PASADAS + _repetida("](", 31898),
         BS * 31999 + "x",
         VEINTE_PASADAS + "\n" + _repetida('{"\n\n', 31884) + '"arguments": 1',
+        VEINTE_PASADAS_ANGULOS + "\n" + _repetida('{"\n\n', 31884) + '"arguments": 1',
     ],
     ids=[
         "enlace_espacios",
@@ -1098,6 +1104,7 @@ def test_tool_call_marks_cost_linear_time():
         "pasadas_colas",
         "barras_invertidas",
         "peor_caso_conocido",
+        "peor_caso_con_signos_de_un_angulo",
     ],
 )
 def test_event_loop_keeps_answering_while_sanitizing(texto):

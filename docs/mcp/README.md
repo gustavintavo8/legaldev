@@ -523,7 +523,10 @@ Decisiones:
   ahora por una clase de caracteres y el final de una apertura se busca con una expresión,
   no con `str.find`. El mismo anidamiento escrito con `‹|…|›`, que antes no se quitaba y
   costaba 0,05 s, obliga ahora también a las 21 pasadas y tarda lo mismo, unos 0,55 s.
-  `fuzz_tiempo.py` lleva esas entradas, y las pruebas de coste, tres más con esos signos.
+  `fuzz_tiempo.py` lleva esas entradas. Las pruebas de coste llevan tres más con esos signos
+  (la de las 21 pasadas, con una cola barata) y la del bucle de eventos, el peor caso escrito
+  con ellos: con cobertura y el resto de la batería a la vez, ese pasaba de los 2 s que
+  admite la prueba de coste, como el peor caso con `<`, que tampoco está en ella.
 
   | Entrada | 62e858f (antes) | Ahora |
   |---|---|---|

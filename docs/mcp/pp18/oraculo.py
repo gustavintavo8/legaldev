@@ -16,7 +16,8 @@ difuso con un dominio sin esquema se cuentan aparte: son el residual documentado
 revisión de la codificación (13/11/2026) también falla si en lo que pinta (con las
 referencias de carácter resueltas y pasado por NFKC) se ve una llamada a una herramienta, un
 bloque de código se anuncia como llamada (```` ```tool_code ````, también en una lista o una
-cita) o aparece un carácter invisible o de control.
+cita) o aparece un carácter invisible o de control. Desde la 0.5.1, la llamada se busca
+también con los signos de un ángulo leídos como «<» y «>» (``tests/_pp18.py``).
 
 Comprueba además, con los dos intérpretes:
 
@@ -32,7 +33,8 @@ Comprueba además, con los dos intérpretes:
   «[ ]» (los dos son cambios aceptados).
 
 Casos: las cargas de PP-18 (``cargas.json``) y las entradas de ``tests/_casos_saneado.py``
-(las tres revisiones del 12/11/2026 y las entradas de ataque de las pruebas anteriores).
+(las tres revisiones del 12/11/2026, la de la codificación, las llamadas escritas con signos
+de un ángulo de la 0.5.1 y las entradas de ataque de las pruebas anteriores).
 Los fuzzers están en ``fuzz.py``.
 
 Solo lee: no carga la configuración, el ``.env`` ni el índice, y de ``legaldev-web`` solo
