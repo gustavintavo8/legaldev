@@ -1223,13 +1223,17 @@ salía de él, separándolo de lo que aportaba por su cuenta. Lo que señaló:
   marked. Es un ejemplo de revisión independiente que encuentra fallos que las pruebas
   propias no veían (el oráculo compartía los huecos del saneado) y de cuándo hay que
   cambiar de enfoque en lugar de seguir arreglando. `app/sanitize.py` pasó de 1.355 a 575
-  líneas.
-- PP-18 en 24-pruebas y en el capítulo de resultados: la prueba automática (20 cargas, en la
-  descripción y en un fragmento, 40 casos, con un oráculo que pinta con markdown-it), el
-  oráculo doble con el visor de la web y markdown-it (`docs/mcp/pp18/oraculo.py`: de 258
-  casos, 0 pintan nada peligroso con ninguno de los dos), los fuzzers (54.000 casos, 0
-  fallos) y la medición con el modelo real, que hay que repetir con la codificación (ver
-  «PP-18 con el modelo real»).
+  líneas con el rediseño, y a 759 con los arreglos de la revisión de la codificación (la
+  cuarta, del 13/11/2026: 7 hallazgos, ninguno que dejara pasar un enlace o una imagen).
+- PP-18 en 24-pruebas y en el capítulo de resultados:
+  - la prueba automática: 20 cargas, en la descripción y en un fragmento (40 casos), con un
+    oráculo que pinta con markdown-it;
+  - el oráculo doble con el visor de la web y markdown-it (`docs/mcp/pp18/oraculo.py`): de
+    302 casos, 0 pintan nada peligroso con ninguno de los dos, y 18 informes legítimos
+    conservan su estructura;
+  - los fuzzers: 108.000 casos, 0 fallos;
+  - la medición con el modelo real, repetida con la codificación el 13/11/2026 (ver «PP-18
+    repetida con la codificación»).
 - tab:det-mcp-herramientas y 31-manual-usuario: campos nuevos `saneado` y `generado_por_ia`
   del resultado de `analizar_proyecto`, sección «Saneado de la salida» del informe, y el
   texto nuevo de las instrucciones del servidor y del aviso de los resultados MCP.
