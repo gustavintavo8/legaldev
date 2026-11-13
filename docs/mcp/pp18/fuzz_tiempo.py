@@ -104,6 +104,11 @@ def casos(n: int) -> list[tuple[str, str]]:
 
 
 def main() -> None:
+    # Con la salida redirigida, Windows escribe en cp1252, que no tiene «❮» ni «ᐸ»: sin esto,
+    # un nombre con ellos entre los 15 peores acababa en UnicodeEncodeError y código 1, que
+    # parecía una regresión de coste (revisión independiente de la 0.5.1).
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
     p = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     p.add_argument("--n", type=int, default=32000)
     p.add_argument("--limite", type=float, default=2.0)

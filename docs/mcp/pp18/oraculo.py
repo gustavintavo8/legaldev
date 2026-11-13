@@ -205,6 +205,10 @@ def _mostrar(titulo: str, lista: list, n: int = 10) -> None:
 
 
 def main() -> None:
+    # Los casos que fallan se imprimen con repr(), que no escapa «❮» ni «ᐸ»: con la salida
+    # redirigida en Windows (cp1252), el script se caía justo cuando tenía algo que enseñar.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
     web = Path(sys.argv[1] if len(sys.argv) > 1 else "../legaldev-web").resolve()
     casos = [("carga", c["texto"]) for c in _pp18.cargas()] + _casos_saneado.todos()
     r = comprobar(casos, web)

@@ -152,6 +152,10 @@ def reducir(texto: str, web: Path) -> str:
 
 
 def main() -> None:
+    # Los casos que fallan se imprimen con repr(), que no escapa «❮» ni «ᐸ»: con la salida
+    # redirigida en Windows (cp1252), el script se caía justo cuando tenía algo que enseñar.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
     p = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     p.add_argument("modo", choices=sorted(MODOS))
     p.add_argument("--semilla", type=int, default=1)

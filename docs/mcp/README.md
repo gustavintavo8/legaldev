@@ -561,6 +561,14 @@ Decisiones:
   con ellos: con cobertura y el resto de la batería a la vez, ese pasaba de los 2 s que
   admite la prueba de coste, como el peor caso con `<`, que tampoco está en ella.
 
+  `fuzz_tiempo.py`, `fuzz.py` y `oraculo.py` escriben su salida en UTF-8. En Windows, con la
+  salida redirigida a un fichero o a una tubería, Python usa cp1252, que no tiene `❮`, `ᐸ` ni
+  `〈`. `fuzz_tiempo.py` se caía entonces con `UnicodeEncodeError` y código 1 cuando uno de
+  esos nombres salía entre los 15 peores, lo que dependía del ruido de las medidas y parecía
+  una regresión de coste; los otros dos, al imprimir un caso que fallaba. Lo encontró la
+  revisión independiente de la 0.5.1, y lo prueba `tests/test_pp18_consola.py`, que no
+  ejecuta los scripts.
+
   | Entrada | 62e858f (antes) | Ahora |
   |---|---|---|
   | `<nK:invoke>` con 20.000 nombres distintos, 200.000 caracteres (hallazgo 5) | 2,47 s | 0,18 s |
