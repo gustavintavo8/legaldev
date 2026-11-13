@@ -48,9 +48,12 @@ Qué hace, en este orden:
    paso 1 no lleva a ASCII (``_ANGULOS``: «‹›», «〈〉», «⟨⟩», «❮❯»…): la 0.5.0 entregaba
    la descripción al modelo con «‹» y «›», el modelo copió así una llamada y este paso no
    la reconocía (PP-18 repetida sobre la 0.5.0, 13/11/2026). Fuera de las llamadas esos
-   signos no cambian ni se escapan. Se repite hasta que el texto no cambia, porque quitar
-   algo puede formar otra (``<in<|x|>voke>``), como mucho ``MAX_PASADAS`` veces; si no
-   converge, todos los signos de apertura que quedan pasan a ``RESPALDO``.
+   signos no cambian ni se escapan. Los tokens especiales y los cierres sueltos se quitan sin
+   dejar nada, salvo un token escrito con un signo de un ángulo, que deja «(bloque
+   retirado)»: puede ser notación legítima («⟨|x|⟩»), y así se ve que falta algo (revisión
+   independiente de la 0.5.1). Se repite hasta que el texto no cambia, porque quitar algo
+   puede formar otra (``<in<|x|>voke>``), como mucho ``MAX_PASADAS`` veces; si no converge,
+   todos los signos de apertura que quedan pasan a ``RESPALDO``.
 3. **Codificación.** Se pone una barra invertida delante de cada «<», «[» y «@», del «&»
    que va delante de «#» o de una letra o cifra (el de una referencia de carácter), del «:»
    de «://», de la segunda barra de «//» y del punto de «www.» (sin distinguir mayúsculas),
@@ -572,6 +575,15 @@ def _herramientas(texto: str, c: Counter) -> str:
         c["bloques_herramienta"] += 1
         return ""
 
+    def _quitar_token(m: re.Match) -> str:
+        # Con «<» y «>» a los dos lados, el token se quita sin rastro. Con un signo de un
+        # ángulo puede ser notación legítima («⟨|x|⟩», el valor esperado del módulo), que no
+        # se distingue de «‹|start|›»: se retira igual, pero se deja constancia (revisión
+        # independiente de la 0.5.1, 13/11/2026).
+        c["bloques_herramienta"] += 1
+        token = m.group(0)
+        return "" if token[0] == "<" and token[-1] == ">" else BLOQUE_RETIRADO
+
     texto = _quitar_bloques(
         texto,
         _APERTURA_HERRAMIENTA_RE,
@@ -584,7 +596,7 @@ def _herramientas(texto: str, c: Counter) -> str:
     )
     texto = _CIERRE_SUELTO_RE.sub(_quitar, texto)
     texto = _HARMONY_RE.sub(_retirar, texto)
-    texto = _TOKEN_ESPECIAL_RE.sub(_quitar, texto)
+    texto = _TOKEN_ESPECIAL_RE.sub(_quitar_token, texto)
     texto = _marcas(texto, c)
     return _objetos_llamada(texto, c)
 

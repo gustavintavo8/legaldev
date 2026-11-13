@@ -609,6 +609,27 @@ def test_chat_template_tokens_with_an_escaped_closing_sign_are_removed(texto):
     assert _pp18.formas_ejecutables(salida) == []
 
 
+def test_tokens_written_with_angle_signs_leave_a_trace():
+    """Revisión independiente de la 0.5.1: un token especial escrito con signos de un ángulo
+    se quitaba sin dejar rastro, como uno escrito con «<» y «>», y eso borraba notación
+    legítima («⟨|x|⟩», el valor esperado del módulo) sin que el lector viera que faltaba
+    algo. Se sigue retirando, porque no se distingue de «‹|start|›», pero deja «(bloque
+    retirado)». Con «<» y «>» a los dos lados se quita como antes."""
+    assert _san("Producto escalar ⟨x, y⟩ y norma ⟨|x|⟩ en la sección 3.") == (
+        f"Producto escalar ⟨x, y⟩ y norma {BLOQUE_RETIRADO} en la sección 3.",
+        {"bloques_herramienta": 1},
+    )
+    assert _san("‹|start|›assistant") == (
+        f"{BLOQUE_RETIRADO}assistant",
+        {"bloques_herramienta": 1},
+    )
+    assert _san("<|x|›a ᐸ|y|> b") == (
+        f"{BLOQUE_RETIRADO}a {BLOQUE_RETIRADO} b",
+        {"bloques_herramienta": 2},
+    )
+    assert _san("<|start|>assistant") == ("assistant", {"bloques_herramienta": 1})
+
+
 def test_escaped_closing_sign_of_a_token_leaves_the_text_around_it():
     assert _san(f"<|im_start|{BS}>assistant") == (
         "assistant",

@@ -388,8 +388,10 @@ Lo que no trata de cómo se pinta el texto sigue como estaba:
   `[TOOL_CALLS]`, `[ARGS]` y `[CALL_ID]` de Mistral. También los objetos JSON con nombre y
   argumentos o con `tools/call` (también con las claves escritas con `\u…` o `\/`) y los
   bloques de código que se anuncian como llamada. Estos no son para el visor sino para el
-  asistente que lee el texto, y escapar no le impide leer una llamada. Es una heurística
-  para las formas conocidas, no una frontera: lo que no ve está en «Lo que no cubre». Con
+  asistente que lee el texto, y escapar no le impide leer una llamada. Los tokens
+  especiales y los cierres sueltos se quitan sin dejar nada (salvo un token escrito con un
+  signo de un ángulo; ver abajo). Es una heurística para las formas conocidas, no una
+  frontera: lo que no ve está en «Lo que no cubre». Con
   los dos arreglos de la comprobación:
   - los cierres se buscan una sola vez para todo el texto y se agrupan por nombre. Antes,
     cada nombre distinto (`<n1:invoke>`, `<n2:invoke>`…) compilaba una expresión que se
@@ -450,6 +452,11 @@ Lo que no trata de cómo se pinta el texto sigue como estaba:
   «invoke» o «tool_use» entre comillas (hay un caso así en `LEGITIMOS`); `《 》` y `⟪ ⟫` no
   se leen como un `<`. Tampoco están los signos de relación (`≺ ≻`) ni los triángulos. Fuera
   de las llamadas, todos esos signos no cambian ni se escapan: no son para la codificación.
+  Un token especial escrito con ellos se retira como los demás, pero deja «(bloque
+  retirado)»: puede ser notación legítima, como `⟨|x|⟩` (el valor esperado del módulo), que
+  no se distingue de `‹|start|›`, y así el lector ve que falta algo. Hasta la revisión
+  independiente de la 0.5.1 se quitaba sin dejar rastro, como uno escrito con `<` y `>`
+  (`test_tokens_written_with_angle_signs_leave_a_trace`).
   La apertura de una etiqueta acaba en el siguiente `>` o signo de cierre de la lista, y
   dentro de un token especial no puede haber otro signo de apertura ni de cierre, para que
   un anidamiento se quite de dentro afuera.
@@ -603,6 +610,15 @@ Decisiones:
     oráculo cuenta estos enlaces aparte (`enlaces_difusos`). En los fuzzers solo aparecen
     cuando la pieza es un dominio sin esquema: con un dominio único en esa pieza, todos los
     enlaces difusos llevan a él.
+  - **Notación legítima con signos de un ángulo** (gravedad baja). Como el paso de llamadas
+    los lee como `<` y `>`, retira también lo que con ellos tiene forma de llamada aunque no
+    lo sea. `⟨|x|⟩` o `‹|status|›` se retiran como tokens especiales y dejan «(bloque
+    retirado)». `el campo 〈parameter〉 del formulario…` o `‹function=› en la plantilla` se
+    retiran hasta el final del párrafo, como ya pasaba con `<parameter>`. En un informe
+    jurídico es poco probable. Además, miles de tokens de un ángulo seguidos alargan la
+    salida, porque cada uno deja 17 caracteres: con 32.000 caracteres de `‹||›`, la salida
+    tiene 136.000, en 0,04 s. Con la cola del peor caso conocido (`‹||›{"` en párrafos y una
+    clave de llamada), 0,37 s, por debajo de él (revisión independiente de la 0.5.1).
   - **Una lista con un bloque de código y líneas sin sangrar** (cosmético). Para CommonMark,
     la lista y el bloque acaban en la línea sin sangrar, y la valla de cierre abre otro
     bloque que llega al final, con las secciones que añade el código dentro. Se ven como
