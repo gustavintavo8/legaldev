@@ -4,6 +4,7 @@ import json
 import logging
 import re
 import time
+import unicodedata
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -50,6 +51,13 @@ def _with_disclaimer(report: str) -> str:
     return f"> {DISCLAIMER}\n\n{report}\n\n> {DISCLAIMER}"
 
 
+# Telemetría, no defensa. _detect_injection solo deja en el registro un evento
+# «suspected_injection» (sin el texto) para saber con qué frecuencia llegan descripciones que
+# intentan dar órdenes al modelo; no rechaza la petición ni cambia nada. Una lista de frases no
+# detiene a quien quiere saltársela: basta con otras palabras. Las defensas son otras: en la
+# entrada, que la descripción no pueda cerrar su delimitador (_neutralizar_delimitador) y la
+# regla del SYSTEM_PROMPT que declara no fiable lo que va dentro; en la salida, el saneado
+# (app/sanitize.py, RNF-20).
 _INJECTION_PATTERNS = [
     "</descripcion_usuario>",
     "ignore previous instructions",
@@ -60,17 +68,59 @@ _INJECTION_PATTERNS = [
     "new system prompt",
     "act as",
 ]
+# Patrones en español, sobre el texto sin tildes (_texto_comparable). Van atados a anular o
+# sustituir instrucciones: «actúa como» o «eres» sueltos son normales en una descripción
+# («plataforma que actúa como intermediario»).
+_INJECTION_PATTERNS_ES = [
+    re.compile(
+        r"\b(?:ignora|ignorad|ignore|ignoren|olvida|olvidad|olvide|olviden|descarta|omite)"
+        r"\b[^.\n]{0,40}?\b(?:instrucciones|instruccion|reglas|indicaciones|ordenes|normas"
+        r"|directrices)\b"
+    ),
+    re.compile(r"\bnuevas? (?:instrucciones|reglas|ordenes|directrices)\b"),
+    re.compile(r"\b(?:instrucciones|prompt) (?:del|de) sistema\b"),
+    re.compile(r"\ba partir de ahora (?:eres|seras|actua|actuas|actuaras|responde)\b"),
+    re.compile(
+        r"\bno (?:sigas|obedezcas|cumplas) (?:las |tus )?(?:instrucciones|reglas)\b"
+    ),
+]
+
+
+def _texto_comparable(text: str) -> str:
+    """Minúsculas, sin tildes y con las formas de compatibilidad resueltas (NFKC lleva «＜»
+    de ancho completo a «<»), para que los patrones no dependan de cómo se escriba."""
+    plano = unicodedata.normalize("NFKD", unicodedata.normalize("NFKC", text))
+    return "".join(c for c in plano if not unicodedata.combining(c)).lower()
 
 
 def _detect_injection(text: str) -> bool:
-    lowered = text.lower()
+    """¿Parece la descripción un intento de dar órdenes al modelo? Solo telemetría (ver
+    arriba): quien llama la registra, sin el texto, y sigue."""
+    lowered = _texto_comparable(text)
     for p in _INJECTION_PATTERNS:
         if p == "act as":
             if re.search(r"\bact as\b", lowered):
                 return True
         elif p.lower() in lowered:
             return True
-    return False
+    return any(patron.search(lowered) for patron in _INJECTION_PATTERNS_ES)
+
+
+# La descripción va entre <descripcion_usuario> y </descripcion_usuario>, y la última regla del
+# SYSTEM_PROMPT dice que lo que hay dentro no es fiable. Para que esa frontera valga, la
+# descripción no puede cerrar ni abrir la etiqueta: sus «<» y «>» pasan a «‹» y «›»
+# (U+2039 y U+203A), que se leen igual y no forman etiquetas. Así el mensaje tiene siempre
+# una sola apertura y un solo cierre. Solo en el mensaje al modelo: la búsqueda
+# (_build_query), la clave de la caché y la telemetría ven el texto original. El
+# SYSTEM_PROMPT no cambia. Residual: a la vista, «‹/descripcion_usuario›» o la forma de
+# ancho completo «＜/descripcion_usuario＞» se parecen al cierre; el modelo podría tomarlas
+# por él, pero no son la etiqueta, y la defensa de la salida (app/sanitize.py) no depende de
+# esto.
+_DELIMITADOR_NEUTRO = str.maketrans({"<": "\u2039", ">": "\u203a"})
+
+
+def _neutralizar_delimitador(texto: str) -> str:
+    return texto.translate(_DELIMITADOR_NEUTRO)
 
 
 @dataclass(frozen=True)
@@ -474,7 +524,8 @@ def _build_user_message(
     lines = [
         "## Contexto del proyecto",
         f"- Tipo: {input.tipo_proyecto}",
-        f"- Descripción: <descripcion_usuario>{input.descripcion_breve}</descripcion_usuario>",
+        "- Descripción: <descripcion_usuario>"
+        f"{_neutralizar_delimitador(input.descripcion_breve)}</descripcion_usuario>",
         f"- Usuarios registrados: {input.tiene_usuarios_registrados}",
         f"- Acceso público: {input.acceso_publico}",
         f"- Datos personales: {', '.join(input.tipos_datos_personales)}",

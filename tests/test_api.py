@@ -123,10 +123,14 @@ def test_analyze_prompt_injection_tag_in_descripcion(client, sample_input_dict):
     informe = data["respuesta_completa"].removeprefix(f"> {data['disclaimer']}\n\n")
     assert informe.startswith("Respuesta de prueba sobre RGPD")
 
-    # descripcion_breve is always sandboxed inside <descripcion_usuario> tags in the user message
+    # La descripción no sale del delimitador: el mensaje al modelo tiene una sola etiqueta de
+    # apertura y una de cierre, y la descripción va entre las dos con «<» y «>» neutralizados.
     messages = client.app.state.groq_client.invoke.call_args.args[0]
     user_content = messages[1].content
-    assert f"<descripcion_usuario>{malicious}</descripcion_usuario>" in user_content
+    assert user_content.count("<descripcion_usuario>") == 1
+    assert user_content.count("</descripcion_usuario>") == 1
+    neutralizada = malicious.replace("<", "\u2039").replace(">", "\u203a")
+    assert f"<descripcion_usuario>{neutralizada}</descripcion_usuario>" in user_content
 
 
 def test_normativas_returns_deduplicated_list(client):

@@ -9,8 +9,8 @@ Inspector y se midió la latencia en producción (ver «Despliegue en el Space d
 y «Latencia»). El modo stdio es local, para quien clona el repositorio. Ese código anunciaba
 todavía la versión 0.4.0. La 0.5.0 (`CHANGELOG.md`) es la primera versión publicada con el
 servidor MCP y añade los arreglos de la revisión externa del 13/11/2026 (`articulo` y
-`considerando`, y los textos de los fragmentos una sola vez); está pendiente de desplegar y
-de etiquetar. Lo que falta está en «Pendiente».
+`considerando`, los textos de los fragmentos una sola vez y la descripción que ya no puede
+cerrar su delimitador); está pendiente de desplegar y de etiquetar. Lo que falta está en «Pendiente».
 
 `POST /mcp` existe cuando `MCP_ENABLED=true` y hay claves (`MCP_API_KEYS` o, si está vacía,
 `API_KEYS`); sin claves no se monta aunque se active (RNF-15), y por defecto está desactivado.
@@ -170,6 +170,37 @@ sin `descripcion_breve`; progreso cada 5 s mientras se genera el informe si el c
 registro del pipeline y en `legaldev_analyze_requests_total`; saneado de la salida del modelo
 e instrucciones que dicen que los resultados son contenido y no órdenes (RNF-20, PP-18; ver
 «Salida segura»).
+
+### Entrada: la descripción y su delimitador
+
+La descripción libre del cuestionario llega al modelo entre `<descripcion_usuario>` y
+`</descripcion_usuario>`, y la última regla del `SYSTEM_PROMPT` dice que lo que va dentro no es
+fiable. Hasta la 0.4.0 la descripción se interpolaba tal cual, así que bastaba con escribir
+`</descripcion_usuario>` para cerrar la etiqueta y seguir fuera de ella (la carga P12 de PP-18
+lo hace), y dos pruebas con «sandboxed» en el nombre afirmaban justo eso. Desde la 0.5.0,
+`rag._build_user_message` cambia los «<» y «>» de la descripción por «‹» y «›» (U+2039 y
+U+203A): el mensaje tiene siempre una sola etiqueta de apertura y una de cierre, y toda la
+descripción queda entre las dos (`tests/test_rag.py`, con P12 entre los casos, y
+`tests/test_api.py`).
+
+- El `SYSTEM_PROMPT` no cambia (su resumen fijado en `test_system_prompt_snapshot` es el
+  mismo). Un delimitador con un valor aleatorio por petición también cerraría el paso, pero
+  cambiaría el prompt y obligaría a repetir PP-18 con el modelo real.
+- Solo cambia el mensaje al modelo. La búsqueda (`_build_query`), la clave de la caché y la
+  telemetría ven el texto original; una descripción sin «<» ni «>» llega igual que antes.
+- `_detect_injection` es **telemetría, no una defensa**: registra `suspected_injection` (sin
+  el texto) y la petición sigue. Desde la 0.5.0 tiene patrones en español, atados a anular o
+  sustituir instrucciones («ignora las reglas…», «nuevas instrucciones», «prompt del
+  sistema», «a partir de ahora eres…»), y compara sin tildes y con NFKC (la forma de ancho
+  completo `＜/descripcion_usuario＞` también cuenta). «Actúa como» o «eres» sueltos no
+  cuentan, porque son normales en una descripción; las pruebas de falsos positivos lo fijan.
+- Residual: a la vista, `‹/descripcion_usuario›` o la forma de ancho completo se parecen al
+  cierre, y el modelo podría tomarlas por él; no son la etiqueta. Las órdenes en lenguaje
+  natural dentro del delimitador siguen dependiendo de que el modelo respete la regla del
+  prompt. La defensa que no depende del modelo es la de la salida («Salida segura»).
+- Las mediciones de PP-18 con el modelo real (12 y 13/11/2026) son anteriores a esta
+  neutralización: P12 llegaba al modelo con la etiqueta cerrada. No se han repetido, porque
+  hacen falta llamadas a Groq.
 
 ### Tope diario por clave (`MCP_DAILY_LIMIT`)
 
@@ -1347,6 +1378,12 @@ salía de él, separándolo de lo que aportaba por su cuenta. Lo que señaló:
   `tools/servidor_mcp_prueba.py`. Este último es la API local con registro de la revisión que
   negocia cada cliente y, si se pide, el modelo simulado.
 
+- RNF-05 (inyección directa), 22-arquitectura (prompt) y el modelo de amenazas: hasta la
+  0.4.0 la descripción podía cerrar `</descripcion_usuario>` y salir del delimitador, y las
+  pruebas «sandboxed» lo fijaban; desde la 0.5.0 sus «<» y «>» se neutralizan y el mensaje
+  tiene una sola apertura y un solo cierre. Los «patrones registrados» de RNF-05 son
+  telemetría, no defensa, y ahora incluyen el español. PP-18 con el modelo real se midió
+  antes de este cambio (ver «Entrada: la descripción y su delimitador»).
 - Versión: el servidor se publica como 0.5.0 (`CHANGELOG.md`). Donde la memoria dé la
   versión que anuncia `server/discover`, o la del generador del ejemplo de evidencia
   (`lst:det-evidencia`, hoy «0.4.0»), tiene que decir 0.5.0 o aclarar que es un ejemplo. Las
@@ -1392,6 +1429,8 @@ Lo que falta del servidor MCP:
   «Latencia»).
 - **C-05:** el formato definitivo del marcado (D-4, art. 50.7), si hace falta una cabecera
   HTTP y el aviso de IA en la web (art. 50.1).
+- **PP-18 con la entrada neutralizada:** repetir `docs/mcp/pp18/medir.py` con la 0.5.0
+  (12 llamadas a Groq), porque P12 ya no cierra el delimitador.
 - **PP-18:** revisar a mano si los informes de P05 y P12 obedecen, sin copiarlas, las órdenes
   en lenguaje natural. Hace falta guardar el informe entero, porque `medir.py` solo guarda
   extractos.
