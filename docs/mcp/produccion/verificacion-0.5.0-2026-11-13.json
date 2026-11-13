@@ -1,0 +1,114 @@
+{
+ "fecha_utc": "2026-11-13T19:05:59Z",
+ "base": "https://gustavintavo8-legaldev.hf.space",
+ "get_raiz_version": "0.5.0",
+ "sin_clave": 401,
+ "clave_falsa": 403,
+ "discover": "ok",
+ "server_info": null,
+ "fragmentoref_campos": {
+  "analizar_proyecto": [
+   "articulo",
+   "considerando",
+   "identificador",
+   "normativa",
+   "pagina",
+   "texto"
+  ],
+  "listar_normativas": [],
+  "consultar_obligaciones": [
+   "articulo",
+   "considerando",
+   "identificador",
+   "normativa",
+   "pagina",
+   "texto"
+  ]
+ },
+ "consultas": [
+  {
+   "normativa": "LSSI",
+   "resultado": "ok",
+   "segundos": 8.86,
+   "localizadores": [
+    [
+     null,
+     null
+    ],
+    [
+     null,
+     null
+    ],
+    [
+     null,
+     null
+    ],
+    [
+     null,
+     null
+    ],
+    [
+     "12",
+     null
+    ],
+    [
+     null,
+     null
+    ]
+   ],
+   "lineas_art": [
+    "[1a28370a66c4] LSSI, p. 13, art. 12"
+   ],
+   "apariciones_del_texto_en_content": [
+    0,
+    1,
+    1,
+    0,
+    1,
+    0
+   ],
+   "caracteres_content": 4158
+  },
+  {
+   "normativa": "RGPD",
+   "resultado": "ok",
+   "segundos": 3.69,
+   "localizadores": [
+    [
+     null,
+     null
+    ],
+    [
+     null,
+     null
+    ],
+    [
+     null,
+     null
+    ],
+    [
+     null,
+     null
+    ],
+    [
+     null,
+     null
+    ],
+    [
+     null,
+     null
+    ]
+   ],
+   "lineas_art": [],
+   "apariciones_del_texto_en_content": [
+    1,
+    1,
+    0,
+    1,
+    1,
+    1
+   ],
+   "caracteres_content": 4277
+  }
+ ]
+}
