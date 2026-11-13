@@ -9,7 +9,7 @@ El índice guarda en ``metadata["article"]`` el encabezado con que empieza el fr
   artículos del RGPD en mayúsculas); «Artículo \\nN»: 1 (el salto de línea de pypdf entre la
   palabra y el número);
 - «Considerando N»: 90, todos de guías de la AEPD que citan considerandos del RGPD;
-- siete encabezados con el número pegado a una llamada de nota de la guía (46 fragmentos):
+- siete encabezados con el número pegado a una llamada de nota de la guía (44 fragmentos):
   «Artículo 2918» es el «Artículo 29» de la nota 18, «Considerando 49127» es el 49 de la
   nota 127. Ninguna norma del corpus pasa de 999 artículos ni considerandos (el máximo real
   del índice es 203 y 149), así que un número de cuatro o más cifras no localiza nada.

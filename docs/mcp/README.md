@@ -58,7 +58,7 @@ son los mismos. Formas del metadato en una copia del índice (13/11/2026, 1.422 
 | «ARTÍCULO N» (la guía de privacidad desde el diseño copia artículos del RGPD) | 23 | `articulo` |
 | «Artículo», salto de línea y «N» (pypdf) | 1 | `articulo` |
 | «Considerando N» | 90 | `considerando` |
-| Número de 4 o 5 cifras: «Artículo 2918», «Considerando 49127» y otros cinco, que son el número pegado a una llamada de nota de dos guías de la AEPD | 46 de los anteriores | nulos |
+| Número de 4 o 5 cifras: «Artículo 2918», «Considerando 49127» y otros cinco, que son el número pegado a una llamada de nota de dos guías de la AEPD | 44 de los anteriores | nulos |
 
 Ninguna norma del corpus pasa de 999 artículos ni considerandos (el mayor del índice es el
 artículo 203 y el considerando 149); un número más largo no localiza nada, y un localizador
