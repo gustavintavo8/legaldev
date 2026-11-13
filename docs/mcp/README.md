@@ -608,9 +608,16 @@ Decisiones:
 - el escape del delimitador `</descripcion_usuario>` con un autoenlace.
 
 Cada carga va en la descripción y en un fragmento envenenado, con el modelo simulado que la
-repite (40 casos). En ninguno llega una forma ejecutable a la API REST ni al asistente, ni en
-el texto ni en `structuredContent`. Las cargas de llamadas y de caracteres dejan constancia en
-`saneado`; las demás se codifican. Lo comprueba un oráculo escrito aparte del saneado
+repite (40 casos). Desde la 0.5.1 la repite dos veces: en bruto y tal como la recibe, es decir,
+la descripción como va en el mensaje de usuario que construye `rag._build_user_message` (con
+`<` y `>` neutralizados) y el fragmento como llega en el contexto, debajo de su cabecera
+`### Fuente N`. Hasta entonces solo la repetía en bruto, y no vio que la 0.5.0 entregaba P06
+al modelo con `‹` y `›`. Con `bd228c6` esta prueba falla en P06 por la descripción, y con
+el oráculo de la 0.5.1, que lee los signos de un ángulo, también en P08 y P13, cuyos
+`‹|start|›` y `‹tool_call›` quedaban en el informe (el modelo real no las reprodujo). En
+ninguno llega una forma ejecutable a la API REST ni al asistente, ni en el texto ni en
+`structuredContent`. Las cargas de llamadas y de caracteres dejan constancia en `saneado`;
+las demás se codifican. Lo comprueba un oráculo escrito aparte del saneado
 (`tests/_pp18.py`). Ya no aproxima con expresiones regulares lo que pinta un visor (el de
 antes se equivocaba como el saneado y compartía sus huecos): pinta con markdown-it-py en modo
 CommonMark, con tablas, tachado y linkify. Busca imágenes, HTML en bruto y enlaces que llevan

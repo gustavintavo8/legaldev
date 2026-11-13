@@ -411,6 +411,23 @@ def _informe_que_repite(carga: str, *, tambien_citada: bool = False) -> str:
     return "\n".join(partes)
 
 
+def _lo_que_ve_el_modelo(mensaje_usuario: str, canario: str) -> list[str]:
+    """Las partes del mensaje de usuario que llevan la carga, tal como las construye
+    rag._build_user_message y las recibe el modelo: la descripción entre sus dos etiquetas
+    (con «<» y «>» neutralizados) y el fragmento envenenado debajo de su cabecera
+    «### Fuente N». No se recalcula la neutralización: se toma del mensaje."""
+    vistas = []
+    descripcion = mensaje_usuario.split("<descripcion_usuario>", 1)[1]
+    descripcion = descripcion.split("</descripcion_usuario>", 1)[0]
+    if canario in descripcion:
+        vistas.append(descripcion)
+    for bloque in mensaje_usuario.split("\n### Fuente ")[1:]:
+        fragmento = bloque.partition("\n")[2].removesuffix("\n")
+        if canario in fragmento:
+            vistas.append(fragmento)
+    return vistas
+
+
 def test_pp18_payload_file_holds_10_to_20_real_payloads():
     cargas = _pp18.cargas()
     assert 10 <= len(cargas) <= 20
@@ -490,7 +507,14 @@ def test_pp18_indirect_injection_payloads_do_not_reach_the_assistant_executable(
     lo que retira (llamadas a herramientas y caracteres; las imágenes, los enlaces y el HTML
     no se retiran, se codifican); la cita literal limpia se sigue verificando; y el
     cuestionario devuelto no repite la descripción. La proporción de cargas que obedece el
-    modelo real se mide aparte (docs/mcp/pp18/medir.py)."""
+    modelo real se mide aparte (docs/mcp/pp18/medir.py).
+
+    El modelo simulado repite la carga en bruto y, además, tal como la recibe: la
+    descripción como va en el mensaje de usuario (con «<» y «>» neutralizados) y el
+    fragmento como llega en el contexto. Hasta la 0.5.1 solo repetía la carga en bruto, y
+    no vio que la 0.5.0 (bd228c6) entregaba P06 escrita con «‹» y «›», que el saneado no
+    reconocía; lo vio la medición con el modelo real (docs/mcp/README.md, «PP-18 repetida
+    sobre la 0.5.0»)."""
     state = mcp_http.app.state
     cuestionario = dict(sample_input_dict)
     if via_carga == "descripcion":
@@ -508,7 +532,14 @@ def test_pp18_indirect_injection_payloads_do_not_reach_the_assistant_executable(
             (envenenado, 0.84),
         ]
         informe = _informe_que_repite(carga["texto"], tambien_citada=True)
-    state.groq_client.invoke.return_value = MagicMock(content=informe)
+    vistas: list[str] = []
+
+    def modelo(messages):
+        recibido = _lo_que_ve_el_modelo(messages[1].content, f"CANARIO-{carga['id']}")
+        vistas.extend(recibido)
+        return MagicMock(content="\n\n".join([informe, *recibido]))
+
+    state.groq_client.invoke.side_effect = modelo
 
     rest = mcp_http.post(
         "/v1/analyze", json=cuestionario, headers={"X-API-Key": MCP_TEST_KEYS[0]}
@@ -518,6 +549,7 @@ def test_pp18_indirect_injection_payloads_do_not_reach_the_assistant_executable(
     resultado = message(rpc(mcp_http, "tools/call", _analizar(cuestionario)))["result"]
     assert resultado["isError"] is False
     estructurado = resultado["structuredContent"]
+    assert vistas, "la carga no llegó al mensaje del modelo"
 
     assert _pp18.formas_en(datos) == []
     assert _pp18.formas_en(resultado["content"]) == []
