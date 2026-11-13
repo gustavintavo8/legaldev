@@ -171,11 +171,25 @@ def test_cu07_analyze_counts_requests_by_access_path(client, sample_input_dict):
 
 def test_fragmentos_follow_llm_order_and_have_no_text(sample_input, mock_reranker):
     docs = [
-        _doc("Artículo 6. Licitud del tratamiento.", "RGPD.pdf", page=35, article="6"),
+        # Metadatos como los guarda el índice: el encabezado, no el número.
         _doc(
-            "Artículo 22. Cookies y comunicaciones.", "LSSI.pdf", page=16, article="22"
+            "Artículo 6. Licitud del tratamiento.",
+            "RGPD.pdf",
+            page=35,
+            article="Artículo 6",
         ),
-        _doc("Considerando 32. Consentimiento.", "RGPD.pdf", page=5),
+        _doc(
+            "Artículo 22. Cookies y comunicaciones.",
+            "LSSI.pdf",
+            page=16,
+            article="Artículo 22",
+        ),
+        _doc(
+            "Considerando 32. Consentimiento.",
+            "RGPD.pdf",
+            page=5,
+            article="Considerando 32",
+        ),
     ]
     state = MagicMock()
     state.vectorstore.similarity_search_with_relevance_scores.return_value = [
@@ -205,7 +219,7 @@ def test_fragmentos_follow_llm_order_and_have_no_text(sample_input, mock_reranke
     art6 = next(f for f in fragmentos if f.articulo == "6")
     assert (art6.normativa, art6.pagina) == ("RGPD", 36)
     considerando = next(f for f in fragmentos if f.pagina == 6)
-    assert considerando.articulo is None
+    assert (considerando.articulo, considerando.considerando) == (None, "32")
 
 
 def test_rf24_list_normativas_returns_id_type_pages_and_corpus_version():
@@ -279,8 +293,13 @@ def test_rf25_consultar_obligaciones_is_deterministic_and_does_not_call_the_llm(
     sentinel = "CONTEXTO-CENTINELA-7f3a"
     state = _index_state(
         [
-            _doc("Artículo 22. Cookies.", "LSSI.pdf", page=16, article="22"),
-            _doc("Artículo 21. Comunicaciones.", "LSSI.pdf", page=15, article="21"),
+            _doc("Artículo 22. Cookies.", "LSSI.pdf", page=16, article="Artículo 22"),
+            _doc(
+                "Artículo 21. Comunicaciones.",
+                "LSSI.pdf",
+                page=15,
+                article="Artículo 21",
+            ),
         ]
     )
 

@@ -42,7 +42,8 @@ FUENTES = (
 POOL = [
     Document(
         page_content=f"{fuente}, artículo {n}: obligación número {n} de {fuente}.",
-        metadata={"source": f"{fuente}.pdf", "page": n * 3, "article": str(n)},
+        # El encabezado, como lo guarda el índice real (app/legal_splitter.py).
+        metadata={"source": f"{fuente}.pdf", "page": n * 3, "article": f"Artículo {n}"},
     )
     for fuente in FUENTES
     for n in range(1, 7)

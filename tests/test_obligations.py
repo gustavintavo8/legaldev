@@ -31,11 +31,25 @@ def test_rf18_locate_citations_agrees_with_verify_citations():
     """Mismo recuento de verificadas que CitationStats para los casos de test_citations.py."""
 
 
-@pytest.mark.skip(
-    reason="TODO(PT3/RF-26): parse_article_number admite '(cont.)' y rechaza considerandos"
+@pytest.mark.parametrize(
+    "encabezado,numero",
+    [
+        ("Artículo 13", "13"),
+        ("Artículo 35 (cont.)", "35"),
+        ("ARTÍCULO 5", "5"),
+        ("Considerando 4", None),  # un considerando no es un artículo
+        ("Artículo 2918", None),  # número pegado a una llamada de nota
+        (None, None),
+    ],
 )
-def test_rf26_parse_article_number():
-    """'Artículo 13' -> '13'; 'Artículo 35 (cont.)' -> '35'; 'Considerando 4' -> None."""
+def test_rf26_parse_article_number(encabezado, numero):
+    """'Artículo 13' -> '13'; 'Artículo 35 (cont.)' -> '35'; 'Considerando 4' -> None.
+
+    Es el mismo analizador que da ``FragmentoRef.articulo`` (``app.fragments.localizador``):
+    la clave de la tipificación y el campo de las herramientas no pueden divergir."""
+    from app.obligations import parse_article_number
+
+    assert parse_article_number(encabezado) == numero
 
 
 @pytest.mark.skip(

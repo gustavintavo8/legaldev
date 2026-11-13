@@ -363,6 +363,16 @@ def _structured_result(texto: str, estructurado: BaseModel) -> CallToolResult:
     )
 
 
+def _donde(f: FragmentoRef) -> str:
+    """Localización legible de un fragmento: «p. 17, art. 22», «p. 5, considerando 32» o
+    solo la página si no tiene ni artículo ni considerando."""
+    if f.articulo:
+        return f"p. {f.pagina}, art. {f.articulo}"
+    if f.considerando:
+        return f"p. {f.pagina}, considerando {f.considerando}"
+    return f"p. {f.pagina}"
+
+
 _TIPO_IA_OBLIGATORIO: Final = "obligatorio cuando usa_ia es verdadero"
 
 
@@ -581,8 +591,9 @@ def build_mcp_server(state, *, version: str = "0.0.0") -> MCPServer:
             f"Fragmentos de {consulta.normativa} (orden de pertinencia). {AVISO}",
         ]
         for f in consulta.fragmentos:
-            donde = f"p. {f.pagina}" + (f", art. {f.articulo}" if f.articulo else "")
-            lineas.append(f"\n[{f.identificador}] {f.normativa}, {donde}\n{f.texto}")
+            lineas.append(
+                f"\n[{f.identificador}] {f.normativa}, {_donde(f)}\n{f.texto}"
+            )
         return _structured_result(
             "\n".join(lineas), ConsultaObligaciones(**consulta.model_dump())
         )

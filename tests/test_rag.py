@@ -178,6 +178,18 @@ def test_build_user_message_includes_article_when_present():
     assert "Fuente 1: RGPD.pdf, Artículo 5, p. 36" in result
 
 
+@pytest.mark.parametrize("encabezado", ["Considerando 32", "ARTÍCULO 5", "Art. 5"])
+def test_build_user_message_keeps_the_index_heading_verbatim(encabezado):
+    """El modelo recibe el encabezado tal como lo guarda el índice: la normalización a número
+    de FragmentoRef (articulo/considerando) es solo de la salida de las herramientas y no
+    cambia el prompt ni, por tanto, los informes."""
+    doc = _make_mock_doc("Guía.pdf")
+    doc.metadata["article"] = encabezado
+    doc.metadata["page"] = 4
+    result = _build_user_message(_make_input(), [doc], [])
+    assert f"Fuente 1: Guía.pdf, {encabezado}, p. 5" in result
+
+
 def test_build_user_message_omits_page_when_missing():
     doc = _make_mock_doc("RGPD.pdf")
     doc.metadata.pop("page", None)

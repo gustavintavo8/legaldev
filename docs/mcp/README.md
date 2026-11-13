@@ -31,12 +31,38 @@ script de latencia (RNF-19) y la comprobación con MCP Inspector. Lo que falta e
 |---|---|---|---|---|
 | `analizar_proyecto` | RF-23 | El cuestionario de `POST /v1/analyze` (esquema posprocesado de `QuestionnaireInput`) | Informe en Markdown y contenido estructurado: cuestionario interpretado, normativas, fragmentos, modelo, versión del corpus, citas y, con OE2, obligaciones y sin tipificar | `readOnlyHint` |
 | `listar_normativas` | RF-24 | Ninguna | Documentos indexados (identificador, tipo, páginas) y versión del corpus | `readOnlyHint`, `openWorldHint: false` |
-| `consultar_obligaciones` | RF-25 | `normativa`, `contexto` (máx. 500 caracteres) | Fragmentos de esa normativa (identificador, página, artículo, texto), en el orden del reordenador, sin llamar al modelo | `readOnlyHint`, `openWorldHint: false` |
+| `consultar_obligaciones` | RF-25 | `normativa`, `contexto` (máx. 500 caracteres) | Fragmentos de esa normativa (identificador, página, artículo o considerando, texto), en el orden del reordenador, sin llamar al modelo | `readOnlyHint`, `openWorldHint: false` |
 
 Identificadores comunes: la normativa es la raíz del nombre de fichero (`RGPD`); el fragmento,
-los 12 primeros hexadecimales del MD5 de su texto (`app/fragments.py`); el artículo, el
-número como cadena (nulo si el fragmento no lo tiene, como todos los del RGPD con el índice
-actual); la página, en base 1.
+los 12 primeros hexadecimales del MD5 de su texto (`app/fragments.py`); la página, en base 1.
+La localización dentro de la norma va en dos campos que nunca van juntos: `articulo`, el
+número del artículo como cadena (`"22"`), y `considerando`, el del considerando (`"32"`,
+añadido en la 0.5.0). Los dos son nulos si el fragmento no empieza por un encabezado
+reconocible, como todos los del RGPD con el índice actual.
+
+El índice guarda en `metadata["article"]` el encabezado entero («Artículo 22», «Considerando
+32», «ARTÍCULO 5»), y hasta la 0.4.0 `articulo` lo copiaba tal cual: el texto de
+`consultar_obligaciones` decía «art. Artículo 22» y «art. Considerando 32». Desde la 0.5.0,
+`app.fragments.localizador` saca el número y el texto dice «art. 22» o «considerando 32». El
+prompt no cambia: el modelo sigue recibiendo el encabezado del índice, así que los informes
+son los mismos. Formas del metadato en una copia del índice (13/11/2026, 1.422 fragmentos con
+`article`), todas cubiertas por `tests/test_fragments.py`:
+
+| Forma | Fragmentos | Resultado |
+|---|---|---|
+| «Artículo N» | 1.308 | `articulo` |
+| «ARTÍCULO N» (la guía de privacidad desde el diseño copia artículos del RGPD) | 23 | `articulo` |
+| «Artículo», salto de línea y «N» (pypdf) | 1 | `articulo` |
+| «Considerando N» | 90 | `considerando` |
+| Número de 4 o 5 cifras: «Artículo 2918», «Considerando 49127» y otros cinco, que son el número pegado a una llamada de nota de dos guías de la AEPD | 46 de los anteriores | nulos |
+
+Ninguna norma del corpus pasa de 999 artículos ni considerandos (el mayor del índice es el
+artículo 203 y el considerando 149); un número más largo no localiza nada, y un localizador
+falso es peor que ninguno. El metadato nunca lleva «(cont.)», que va en el texto de los
+sub-fragmentos; se acepta igual. Queda un residual que no se arregla aquí (ver «Pendiente»):
+en las guías de la AEPD, el encabezado es casi siempre una mención a otra norma con la que
+empieza el fragmento («ARTÍCULO 5» es el art. 5 del RGPD copiado en la guía; los 90
+considerandos son del RGPD), así que `articulo` no es un artículo de la guía.
 
 ## Lo que exige la revisión 2026-07-28
 
@@ -1268,8 +1294,17 @@ salía de él, separándolo de lo que aportaba por su cuenta. Lo que señaló:
   `tools/servidor_mcp_prueba.py`. Este último es la API local con registro de la revisión que
   negocia cada cliente y, si se pide, el modelo simulado.
 
+- tab:det-mcp-herramientas, 23-detalle («Herramientas, identificadores y resultado») y
+  31-manual-usuario: `articulo` es el número del artículo como cadena («22») y no el
+  encabezado del índice, y el campo nuevo `considerando` lleva el número del considerando
+  (0.5.0). El texto de `consultar_obligaciones` dice «art. 22» o «considerando 32». Los
+  números de más de tres cifras del índice son llamadas de nota y dan nulos (ver «Diseño
+  resumido»).
+
 Siguen abiertas, como estaban: tipificación de las guías de la AEPD sin articulado y forma de
-`sin_mapeo` en la evidencia (OE2).
+`sin_mapeo` en la evidencia (OE2). En las guías, además, el encabezado que da `articulo` o
+`considerando` es una mención al RGPD (ver «Diseño resumido»), así que la tipificación no
+puede tomar el par (guía, artículo) por bueno.
 
 ## Pendiente (13/11/2026)
 
@@ -1309,6 +1344,11 @@ Lo que falta del servidor MCP:
     nuevos de `tools/`;
   - `docs/tfg/casos-de-prueba.md` tiene las cifras de `832ac33`;
   - lo de «Cambios que necesita la memoria» está por llevar a la memoria.
+- **Localizador en las guías de la AEPD** (PT10, segmentador v3): el encabezado de sus
+  fragmentos suele ser una mención a otra norma («ARTÍCULO 5» es el art. 5 del RGPD), y
+  `articulo` o `considerando` lo repiten como si fuera de la guía. Haría falta que el
+  segmentador distinga un encabezado de una mención, o no dar localizador en los documentos
+  que no se articulan.
 - **Fuera de PT2:** las dos cuestiones de OE2 de arriba y la acción de CI (PT6, abajo).
 
 ## Acción de integración continua

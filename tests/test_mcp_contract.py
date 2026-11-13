@@ -293,6 +293,7 @@ def test_pp03_analizar_proyecto_returns_report_and_structured_content(
             "pagina": 0,
             "articulo": None,
             "texto": None,
+            "considerando": None,
         }
     ]
     assert data["corpus_version"] == "abc123def456"
@@ -397,12 +398,90 @@ def test_rf25_consultar_obligaciones_returns_located_fragments_without_llm(
             "pagina": 0,
             "articulo": None,
             "texto": mock_doc.page_content,
+            "considerando": None,
         }
     ]
     client.app.state.groq_client.invoke.assert_not_called()
     assert mock_doc.page_content in text_of(result)
     # El aviso va también en structuredContent: hay clientes que solo leen ese contenido.
     assert data["aviso"] == mcp_server.AVISO
+
+
+def test_rf25_consultar_obligaciones_localiza_por_numero_de_articulo_o_considerando(
+    client,
+):
+    """Con los metadatos que guarda el índice real («Artículo 22», «Considerando 32»,
+    «ARTÍCULO 5»), ``articulo`` y ``considerando`` son el número como cadena y el texto dice
+    «art. 22» o «considerando 32», nunca «art. Artículo 22» ni «art. Considerando 32»."""
+    from langchain_core.documents import Document
+
+    docs = [
+        Document(
+            page_content="Artículo 22. Derechos de los usuarios.",
+            metadata={"source": "LOPDGDD.pdf", "page": 16, "article": "Artículo 22"},
+        ),
+        Document(
+            page_content="Considerando 32 del RGPD: el consentimiento.",
+            metadata={"source": "LOPDGDD.pdf", "page": 4, "article": "Considerando 32"},
+        ),
+        Document(
+            page_content="ARTÍCULO 5 PRINCIPIOS RELATIVOS AL TRATAMIENTO",
+            metadata={"source": "LOPDGDD.pdf", "page": 47, "article": "ARTÍCULO 5"},
+        ),
+        Document(
+            page_content="Considerando 7882, el principio de transparencia.",
+            metadata={
+                "source": "LOPDGDD.pdf",
+                "page": 31,
+                "article": "Considerando 7882",
+            },
+        ),
+        Document(
+            page_content="Texto sin encabezado reconocible.",
+            metadata={"source": "LOPDGDD.pdf", "page": 0},
+        ),
+    ]
+    client.app.state.vectorstore.similarity_search_with_relevance_scores.return_value = [
+        (d, 0.9) for d in docs
+    ]
+
+    result = call_in_process(
+        client.app.state,
+        "consultar_obligaciones",
+        {"normativa": "LOPDGDD", "contexto": "derechos de los usuarios"},
+    )
+
+    assert result.is_error is False
+    fragmentos = result.structured_content["fragmentos"]
+    assert [(f["articulo"], f["considerando"]) for f in fragmentos] == [
+        ("22", None),
+        (None, "32"),
+        ("5", None),
+        (None, None),
+        (None, None),
+    ]
+    texto = text_of(result)
+    assert "LOPDGDD, p. 17, art. 22\n" in texto
+    assert "LOPDGDD, p. 5, considerando 32\n" in texto
+    assert "LOPDGDD, p. 48, art. 5\n" in texto
+    assert "LOPDGDD, p. 32\n" in texto
+    assert "LOPDGDD, p. 1\n" in texto
+    assert "art. Artículo" not in texto
+    assert "art. Considerando" not in texto
+    assert "7882\n" not in texto
+
+
+@pytest.mark.parametrize("herramienta", ["analizar_proyecto", "consultar_obligaciones"])
+def test_outputschema_declara_considerando_como_campo_opcional(client, herramienta):
+    """Campo añadido al contrato: está en el esquema del fragmento, no es obligatorio y
+    describe lo que contiene, como ``articulo``."""
+    tools = {t.name: t for t in list_tools_in_process(client.app.state)}
+    esquema = tools[herramienta].output_schema
+    fragmento = esquema["$defs"]["FragmentoRef"]
+    assert {"articulo", "considerando"} <= set(fragmento["properties"])
+    assert not {"articulo", "considerando"} & set(fragmento["required"])
+    assert "número" in fragmento["properties"]["articulo"]["description"].lower()
+    assert "considerando" in fragmento["properties"]["considerando"]["description"]
 
 
 def test_rf23_no_coverage_is_tool_result_not_http_404(

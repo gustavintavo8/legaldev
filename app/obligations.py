@@ -7,9 +7,12 @@ La clave de una obligación no puede ser su redacción, que el LLM cambia entre 
 (22-arquitectura, «Tipificación de las obligaciones y mapeo a controles»). El tipo es el par
 (normativa, artículo) del fragmento que contiene la cita verificada: la raíz de
 ``metadata["source"]`` («RGPD», el identificador canónico de 23-detalle, «Herramientas,
-identificadores y resultado») y el número de ``metadata["article"]`` como cadena («13»). Una
-obligación cuya cita no se verifica, cuya cita se reparte entre varios fragmentos o cuyo
-fragmento no tiene artículo queda «sin tipificar» y no recibe controles.
+identificadores y resultado») y el número del artículo como cadena («13»). El índice guarda en
+``metadata["article"]`` el encabezado («Artículo 13», «Considerando 4»); el número lo saca
+``parse_article_number`` con el mismo analizador que da ``FragmentoRef.articulo``
+(``app.fragments.localizador``). Una obligación cuya cita no se verifica, cuya cita se reparte
+entre varios fragmentos o cuyo fragmento no tiene artículo (también los considerandos) queda
+«sin tipificar» y no recibe controles.
 
 Hallazgo medido (índice de 9f173ce): solo 1 422 de 13 756 fragmentos llevan
 ``metadata["article"]`` (10,3 %). En el RGPD es el 0 % (0 de 962), igual que en otras ocho
@@ -20,11 +23,18 @@ ninguna obligación del RGPD podría tipificarse; ver la prueba xfail de
 implementado en parte») y la corrige el paquete PT10 (segmentador v3), del que depende PT3;
 PT10 incluye también la localización de cada cita en su fragmento (``locate_citations``).
 
+Segundo hallazgo (copia del índice, 13/11/2026): en las guías de la AEPD el encabezado es casi
+siempre una mención a otra norma con la que empieza el fragmento. «ARTÍCULO 5» en la guía de
+privacidad desde el diseño es el art. 5 del RGPD copiado, y los 90 «Considerando N» del índice
+son considerandos del RGPD citados por dos guías. El par (guía, «5») no es un artículo de la
+guía, así que ``tipificar`` no puede fiarse solo de que haya número: las guías tienen que
+seguir «sin tipificar» mientras no se decida su clave (TODO de ``ObligacionTipificada``).
+
 Reparto entre módulos: la memoria (fig:det-mcp-clases) pone el analizador de bloques y la
 tipificación en ``controls.py`` y ``locate_citations`` en ``citations.py``. Aquí se separan
 en este módulo para que ``controls.py`` sea una consulta pura de la tabla y
 ``citations.py`` (producción) no cambie hasta PT10. Módulo puro: no importa FastAPI, la
-biblioteca MCP ni LangChain.
+biblioteca MCP ni LangChain (``app.fragments`` tampoco).
 """
 
 from __future__ import annotations
@@ -32,6 +42,8 @@ from __future__ import annotations
 from typing import Literal
 
 from pydantic import BaseModel
+
+from app.fragments import localizador
 
 
 class Obligacion(BaseModel):
@@ -58,7 +70,8 @@ class CitaLocalizada(BaseModel):
     chunk_index: int | None = None
     # Metadatos de ese fragmento, tal como los guarda el índice.
     source: str | None = None
-    # Encabezado tal como lo guarda el segmentador, p. ej. "Artículo 13 (cont.)".
+    # Encabezado tal como lo guarda el segmentador, p. ej. "Artículo 13" o "Considerando 4"
+    # («(cont.)» va en el texto de los sub-fragmentos, no en el metadato).
     article: str | None = None
     page: int | None = None  # metadata["page"], base 0 como lo guarda pypdf
 
@@ -122,9 +135,11 @@ def locate_citations(citas: list[str], docs: list) -> list[CitaLocalizada]:
 
 
 def parse_article_number(heading: str | None) -> str | None:
-    """``"Artículo 13"`` -> ``"13"``; ``"Artículo 35 (cont.)"`` -> ``"35"``; sin número -> ``None``."""
-    # TODO(PT3/RF-26): implementar; los considerandos no son artículos (devuelven None).
-    raise NotImplementedError
+    """``"Artículo 13"`` -> ``"13"``; ``"Artículo 35 (cont.)"`` -> ``"35"``; sin número -> ``None``.
+
+    Los considerandos no son artículos (devuelven ``None``), ni los números de más de tres
+    cifras, que en el índice son llamadas de nota pegadas al número (``app.fragments``)."""
+    return localizador(heading)[0]
 
 
 def tipificar(
