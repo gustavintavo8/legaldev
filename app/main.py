@@ -189,7 +189,7 @@ async def lifespan(app: FastAPI):
 # Versión de LegalDev: la de pyproject.toml y la última sección fechada del CHANGELOG
 # (tests/test_version.py). La anuncian «/», el OpenAPI y el servidor MCP (server/discover e
 # initialize, por HTTP y por stdio).
-VERSION = "0.5.0"
+VERSION = "0.5.1"
 
 app = FastAPI(
     title="LegalDev",

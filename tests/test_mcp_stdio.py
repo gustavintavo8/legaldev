@@ -129,7 +129,7 @@ def test_load_state_loads_the_engine_like_the_lifespan(mock_doc):
     assert state.corpus_version == "abc123def456"
     assert state.groq_client is not None
     assert state.groq_model_available is True
-    assert version == "0.5.0"  # app.main.VERSION (tests/test_version.py)
+    assert version == "0.5.1"  # app.main.VERSION (tests/test_version.py)
 
 
 def test_load_state_aborts_on_an_empty_index(mock_doc):

@@ -22,7 +22,7 @@ def test_version_is_the_same_in_pyproject_changelog_and_api(client):
     changelog = (RAIZ / "CHANGELOG.md").read_text(encoding="utf-8")
     ultima = re.search(r"^## \[(\d+\.\d+\.\d+)\] - \d{4}-\d{2}-\d{2}$", changelog, re.M)
 
-    assert VERSION == "0.5.0"
+    assert VERSION == "0.5.1"
     assert proyecto["project"]["version"] == VERSION
     assert ultima is not None and ultima.group(1) == VERSION
     assert app.version == VERSION
