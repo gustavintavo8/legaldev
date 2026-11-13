@@ -34,7 +34,8 @@ de entregar la petición al SDK; las dos últimas, el SDK:
 Es el reparto de 23-detalle («Capa de servicio y traducción de errores»). 22-arquitectura y
 CU-07 ponían las cabeceras y la versión antes que la clave; con el SDK no es posible sin
 duplicar su validación, y que un cliente sin clave reciba 401 antes que un error de protocolo
-no revela nada. La memoria debe unificarse con este orden.
+no revela nada. Este es el orden que rige; el cambio que necesita la memoria está anotado en
+``docs/mcp/README.md``, «Cambios que necesita la memoria».
 
 Antes del límite, la guarda exige un único objeto JSON-RPC legible (sin lotes ni claves
 duplicadas): lo que no puede leer no lo deja pasar. Los argumentos los valida cada

@@ -157,9 +157,13 @@ TOOL_ANNOTATIONS: Final[dict[str, dict[str, bool]]] = {
     "consultar_obligaciones": {"readOnlyHint": True, "openWorldHint": False},
 }
 
-# tools/list no depende de quién pregunta y solo cambia con una versión nueva o un índice
-# nuevo (la enumeración de normativas): una hora, como la caché de respuestas. «public» es
-# aceptable aunque /mcp exija clave: la lista no contiene nada propio del cliente.
+# tools/list no depende de quién pregunta y solo cambia al desplegar: con el código (los
+# esquemas, como el outputSchema que ganó saneado y generado_por_ia el 12/11/2026 sin cambiar
+# de versión) o con el índice (la enumeración de normativas). Una hora, como la caché de
+# respuestas: tras un despliegue, un cliente puede ver la lista anterior hasta una hora. Por
+# eso, un cambio de contrato tiene que subir la versión que anuncia server/discover
+# (app.main.VERSION), que es por la que un cliente distingue una lista de otra.
+# «public» es aceptable aunque /mcp exija clave: la lista no contiene nada propio del cliente.
 TOOLS_LIST_TTL_MS: Final = 3_600_000
 TOOLS_LIST_CACHE_SCOPE: Final[CacheScope] = "public"
 

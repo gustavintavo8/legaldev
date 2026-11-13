@@ -74,7 +74,8 @@ class Via(StrEnum):
     MCP = "mcp"
     # TODO(PT6/RF-28): la acción de CI llama a la API REST, así que para etiquetarla hace
     # falta una señal propia de la petición (p. ej. una cabecera o el User-Agent que envíe la
-    # acción); ver mcp_guard.request_via. Solo se usa si PT6 se ejecuta.
+    # acción), que leería el manejador de POST /v1/analyze en app/main.py. Solo se usa si PT6
+    # se ejecuta.
     CI = "ci"
 
 

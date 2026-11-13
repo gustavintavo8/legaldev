@@ -180,14 +180,20 @@ async def lifespan(app: FastAPI):
         if settings.trust_proxy_headers
         else "direct connection IP (TRUST_PROXY_HEADERS=false)",
     )
-    # Servidor MCP en /mcp, solo si la ruta está montada (MCP_ENABLED y API_KEYS).
+    # Servidor MCP en /mcp, solo si la ruta está montada (MCP_ENABLED y claves: MCP_API_KEYS
+    # o, si está vacía, API_KEYS).
     async with _mcp_server.serve(app, version=app.version):
         yield
 
 
+# Versión de LegalDev: la de pyproject.toml y la última sección fechada del CHANGELOG
+# (tests/test_version.py). La anuncian «/», el OpenAPI y el servidor MCP (server/discover e
+# initialize, por HTTP y por stdio).
+VERSION = "0.5.0"
+
 app = FastAPI(
     title="LegalDev",
-    version="0.4.0",
+    version=VERSION,
     description="Asistente RAG de normativa legal para developers en España",
     lifespan=lifespan,
 )
@@ -229,7 +235,7 @@ def _normativas_handler(request: Request) -> dict:
 def root():
     return {
         "name": "LegalDev",
-        "version": "0.4.0",
+        "version": app.version,
         "description": "Asistente RAG de normativa legal para developers en España",
     }
 
@@ -314,5 +320,5 @@ def feedback_v1(input: FeedbackInput, request: Request):
 
 app.include_router(v1)
 
-# Servidor MCP en POST /mcp: solo con MCP_ENABLED y API_KEYS (RNF-15).
+# Servidor MCP en POST /mcp: solo con MCP_ENABLED y claves (MCP_API_KEYS o API_KEYS; RNF-15).
 _mcp_server.mount_if_enabled(app)

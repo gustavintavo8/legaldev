@@ -1,18 +1,22 @@
 # Servidor MCP de LegalDev
 
-**Estado: implementado, desactivado por defecto.** `POST /mcp` existe cuando
-`MCP_ENABLED=true` y hay claves (`MCP_API_KEYS` o, si está vacía, `API_KEYS`); sin claves no
-se monta aunque se active
-(RNF-15). En local, el mismo servidor funciona también por stdio
-(`python -m app.mcp_stdio`, ver «Modo stdio»). Requisitos RF-22 a RF-25, RNF-15, RNF-16 y
-RNF-18 a RNF-21; caso de uso CU-07;
-pruebas PP-01 a PP-08 y PP-13 a PP-18; criterio CA-09; paquete de trabajo PT2. Desplegado en
-el Space de Hugging Face desde el 06/11/2026 (`https://gustavintavo8-legaldev.hf.space/mcp`,
-con `MCP_API_KEYS` propias; la API REST sigue abierta para la web). Lo añadido el 12/11/2026
-está en la rama `feat/mcp-server` y todavía no en el Space: el modo stdio, el tope diario por
-clave, el saneado de la salida (RNF-20), el marcado del contenido generado por IA (C-05), el
-script de latencia (RNF-19) y la comprobación con MCP Inspector. Lo que falta está en
-«Pendiente».
+**Estado (13/11/2026).** En producción en el Space de Hugging Face
+(`https://gustavintavo8-legaldev.hf.space/mcp`) desde el 06/11/2026, con `MCP_API_KEYS`
+propias y la API REST abierta para la web. El despliegue del 13/11/2026 (`main@ab3e3a3`) llevó
+todo lo del 12/11/2026: el saneado de la salida (RNF-20), el marcado del contenido generado por
+IA (C-05) y el tope diario por clave (`MCP_DAILY_LIMIT=200/day`); se comprobó con MCP
+Inspector y se midió la latencia en producción (ver «Despliegue en el Space de Hugging Face»
+y «Latencia»). El modo stdio es local, para quien clona el repositorio. Ese código anunciaba
+todavía la versión 0.4.0. La 0.5.0 (`CHANGELOG.md`) es la primera versión publicada con el
+servidor MCP y añade los arreglos de la revisión externa del 13/11/2026 (`articulo` y
+`considerando`, y los textos de los fragmentos una sola vez); está pendiente de desplegar y
+de etiquetar. Lo que falta está en «Pendiente».
+
+`POST /mcp` existe cuando `MCP_ENABLED=true` y hay claves (`MCP_API_KEYS` o, si está vacía,
+`API_KEYS`); sin claves no se monta aunque se active (RNF-15), y por defecto está desactivado.
+En local, el mismo servidor funciona también por stdio (`python -m app.mcp_stdio`, ver «Modo
+stdio»). Requisitos RF-22 a RF-25, RNF-15, RNF-16 y RNF-18 a RNF-21; caso de uso CU-07;
+pruebas PP-01 a PP-08 y PP-13 a PP-18; criterio CA-09; paquete de trabajo PT2.
 
 ## Diseño resumido
 
@@ -871,8 +875,9 @@ Observaciones para quien lo repita:
   format»).
 - En la era nueva abre también `subscriptions/listen`, el flujo de notificaciones de la
   2026-07-28. El SDK lo atiende y LegalDev no envía ninguna.
-- Contra el Space no se ha ejecutado (no está desplegado lo de esta rama). Después de
-  desplegar: `LEGALDEV_URL=https://gustavintavo8-legaldev.hf.space make mcp-inspect`.
+- Contra el Space se ejecutó el 13/11/2026, después del despliegue, a mano con las órdenes
+  de `LEGALDEV_URL=https://gustavintavo8-legaldev.hf.space make mcp-inspect` (en Windows no
+  hay `make`); resultado en «Despliegue en el Space de Hugging Face».
 
 ## Modo stdio (servidor local)
 
@@ -1065,8 +1070,9 @@ LEGALDEV_URL=https://gustavintavo8-legaldev.hf.space LEGALDEV_API_KEY=<clave> \
 ```
 
 Para medir el arranque del Space dormido, se espera a que se duerma (unas horas sin uso) y
-se mira `despertar.health_s`. Contra un servidor anterior a esta rama, sin `generado_por_ia`,
-las llamadas en caliente no se pueden verificar y se anotan como `cache_no_verificable`.
+se mira `despertar.health_s`. Contra un servidor sin `generado_por_ia` (anterior al
+despliegue del 13/11/2026), las llamadas en caliente no se pueden verificar y se anotan como
+`cache_no_verificable`.
 
 **Comprobado el 12/11/2026, sin Groq:**
 
@@ -1335,11 +1341,17 @@ salía de él, separándolo de lo que aportaba por su cuenta. Lo que señaló:
   siempre, y Claude Code 2.1.268 espera a una herramienta unas 28 horas en total y 5 minutos
   sin actividad por HTTP (leído en su binario). La cifra útil es el p95 de
   `analizar_frio` con el Space despierto, comparado con una espera que la memoria tiene que
-  fijar. La medición en el Space queda para después del despliegue (PT2-latencia).
+  fijar. La medición en el Space despierto se hizo el 13/11/2026 (ver «Latencia»); falta la
+  del arranque del Space dormido (PT2-latencia).
 - 23-detalle o el anexo de herramientas: `tools/medir_latencia_mcp.py` (latencia) y
   `tools/servidor_mcp_prueba.py`. Este último es la API local con registro de la revisión que
   negocia cada cliente y, si se pide, el modelo simulado.
 
+- Versión: el servidor se publica como 0.5.0 (`CHANGELOG.md`). Donde la memoria dé la
+  versión que anuncia `server/discover`, o la del generador del ejemplo de evidencia
+  (`lst:det-evidencia`, hoy «0.4.0»), tiene que decir 0.5.0 o aclarar que es un ejemplo. Las
+  cifras de latencia en producción del 13/11/2026 se midieron con el servidor que anunciaba la
+  0.4.0 (`ab3e3a3`).
 - 23-detalle (resultado de las herramientas): el bloque de texto de `content` es el texto
   legible más la serialización JSON del contenido estructurado, como recomienda la revisión
   2026-07-28, con cada dato una sola vez y sin nulos; en `consultar_obligaciones` la parte
@@ -1367,6 +1379,8 @@ y M3 (latencia, MCP Inspector y clientes):
 - La comprobación del Space y el MCP Inspector (ver «Despliegue en el Space de Hugging Face»).
 - La latencia en producción (ver «Latencia»).
 - La PP-18 repetida con la codificación (ver «Salida segura»).
+- La versión 0.5.0, con los arreglos de la revisión externa del 13/11/2026 (sin desplegar; ver
+  `CHANGELOG.md`).
 
 Lo que falta del servidor MCP:
 
@@ -1400,6 +1414,13 @@ Lo que falta del servidor MCP:
   `articulo` o `considerando` lo repiten como si fuera de la guía. Haría falta que el
   segmentador distinga un encabezado de una mención, o no dar localizador en los documentos
   que no se articulan.
+- **Desplegar la 0.5.0 y etiquetarla** (lo hace el autor): el Space ejecuta `ab3e3a3`, que
+  anuncia la 0.4.0. Después, repetir la comprobación de `docs/mcp/produccion/` (la
+  `version_servidor` que anota `tools/medir_latencia_mcp.py` pasará a 0.5.0).
+- **Partir este README** (mejora propuesta por la revisión externa del 13/11/2026): uno corto
+  con el estado, el arranque rápido, las herramientas, el modelo de seguridad y lo pendiente,
+  y aparte las decisiones, las mediciones por fecha y los cambios que necesita la memoria. Se
+  deja para después de la memoria, que cita secciones de este fichero por su título.
 - **Fuera de PT2:** las dos cuestiones de OE2 de arriba y la acción de CI (PT6, abajo).
 
 ## Acción de integración continua
