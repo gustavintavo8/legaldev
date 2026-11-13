@@ -5,8 +5,10 @@ Uso, desde un directorio sin ``.env`` y con los modelos ya descargados::
     HF_HUB_OFFLINE=1 python docs/mcp/tamano/medir.py <repositorio> <copia de chroma_db> <salida.json>
 
 Llama en proceso, con el cliente del SDK, a ``consultar_obligaciones`` con las 8 consultas de
-``tools/medir_latencia_mcp.py`` y a ``analizar_proyecto`` con su cuestionario de IA generativa
-y un modelo simulado (el informe no cuenta para el JSON del texto). Cuenta los caracteres del
+``tools/medir_latencia_mcp.py`` y a ``analizar_proyecto`` con un cuestionario propio de IA
+generativa (``CUESTIONARIO``, un SaaS con datos personales, cookies y acceso público; no es
+ninguno de los de ese script) y un modelo simulado (el informe no cuenta para el JSON del
+texto). Cuenta los caracteres del
 texto de ``content`` y del ``structuredContent``, y cuántas veces aparece en ``content`` el
 texto de cada fragmento (en crudo o escapado como cadena JSON). Se ejecutó con el código de
 ``44039c8`` (0.4.0, ``resultado-0.4.0.json``) y con el arreglo (``resultado-0.5.0.json``).

@@ -97,9 +97,10 @@ resultado. Un cliente que solo lea el texto sigue teniéndolo todo.
 `resultado-0.4.0.json` y `resultado-0.5.0.json` de esa carpeta): en proceso, sin red, con una
 copia del índice (corpus
 `7a2029a4dfd8`), el reordenador real, las 8 consultas de `CONSULTAS` de
-`tools/medir_latencia_mcp.py` (6 fragmentos cada una) y, para `analizar_proyecto`, el
-cuestionario de IA generativa de ese script con el modelo simulado (el informe no entra en la
-medida del JSON). Caracteres por llamada:
+`tools/medir_latencia_mcp.py` (6 fragmentos cada una) y, para `analizar_proyecto`, un
+cuestionario de IA generativa (`CUESTIONARIO` en `medir.py`: un SaaS con datos personales,
+cookies y acceso público) con el modelo simulado (el informe no entra en la medida del JSON).
+Caracteres por llamada:
 
 | Resultado | 0.4.0 | 0.5.0 |
 |---|---|---|
