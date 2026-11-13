@@ -169,6 +169,7 @@ huecos:
 | Revisión del saneado | 10 | corchetes y paréntesis anidados a dos niveles con destino `//otro`; definiciones de referencia en listas; URL detrás de una letra; vallas falsas; CRLF; coste cuadrático (51 s) |
 | Revisión de los arreglos | 19 | `<spacer style=…>` y otras etiquetas que deja DOMPurify; un espacio Unicode en el destino (`[BOE](https://www.boe.es<NBSP>"@otro/…")`); URL oficial seguida de `'@otro`; vallas que solo cierra marked (```` ```~ ````); acentos graves que marked empareja de otra forma; la regla de `]:` borraba texto legítimo; coste (9,5 s con el bucle de eventos parado) |
 | Comprobación de esos arreglos | 7 | vallas detrás de un guion de lista; el código con el que se neutralizaba una URL, roto por un tachado; un bloque HTML de tipo 7 que esconde una valla; caché sin límite y coste cuadrático; nombres de `<function=…>` con espacio de nombres |
+| Revisión de la codificación (13/11/2026) | 7 | ya con la codificación, casi todos de antes de ella: llamadas escritas con `&lt;` o `＜`; aperturas de llamada sin `>`; vallas de llamada en listas y citas; JSON de llamada con una línea en blanco o en otra caja; invisibles escritos como referencias; las casillas de tareas; cifras de tiempo que no eran una cota. Arreglos abajo, en esta sección |
 
 Cada arreglo abría otros huecos, y el módulo llegó a 1.355 líneas: no convergía. Además,
 solo protegía frente a marked, mientras que los asistentes que reciben el informe por MCP
@@ -177,9 +178,19 @@ salían de lo mismo: lo que el saneado tomaba por código, por un enlace oficial
 de una URL no era lo que leía el visor.
 
 **El principio de ahora: codificar la salida, no detectar lo peligroso** (el de OWASP para la
-salida). No se busca ninguna de esas construcciones. Se escapan, en todo el texto del modelo y
-sin excepción para el código, los caracteres que las abren:
+salida). No se busca ninguna de esas construcciones. Antes de nada, el texto se lleva a una
+sola forma, la que leen el visor y el asistente (OWASP pide lo mismo: canonicalizar antes de
+validar). Después se escapan, en todo el texto del modelo y sin excepción para el código, los
+caracteres que abren esas construcciones:
 
+- **Una sola forma.** Las formas de compatibilidad de ASCII (ancho completo `＜`, formas
+  pequeñas `﹤` y verticales) pasan al carácter ASCII que les da NFKC, y las referencias de
+  carácter (`&lt;`, `&#60;`, `&#x202E;`, `&ZeroWidthSpace;`…) se resuelven una vez, como
+  hace el visor: con nombre de la tabla de HTML5, decimales y hexadecimales con cualquier
+  número de cifras (marked deja pasar al navegador las que CommonMark no admite), y sin
+  tocar las escapadas (`\&lt;`). Lo que dan pasa por todo lo demás: un invisible se quita y
+  cuenta, y `<` se escapa. Fuera del código el texto se ve igual que antes (`R&amp;D` se veía
+  y se ve `R&D`). El índice no tiene ninguna de las dos cosas.
 - **«<» y «[».** En cualquier intérprete que siga CommonMark, el HTML en bruto (los siete
   tipos de bloque y el HTML en línea), los autoenlaces, los enlaces en línea y por
   referencia, las imágenes y las definiciones de referencia empiezan por uno de los dos.
@@ -193,16 +204,25 @@ sin excepción para el código, los caracteres que las abren:
   empezaría justo detrás de un escape. Comprobado con markdown-it-py 4.2.0, la versión del
   oráculo: `https\:/\/evil.com/?d=X`, `www\.evil.com/x` y `a\@evil.co.uk` se
   pintan como texto.
+- **El «&» de una referencia de carácter**, es decir, delante de `#`, de una letra o de una
+  cifra (`\&`). Así ningún visor resuelve una referencia que quede: ni las de dos niveles
+  (`&amp;#x202E;` queda como `&#x202E;` tras resolver una vez), ni las de nombre
+  desconocido. `&&` y `a & b` no cambian.
 - **Solo si no va ya escapado.** La barra se añade cuando el carácter va detrás de un número
   par de barras invertidas. Se pensó duplicar antes todas las barras («\» → «\\»). Con
   marked 18.1.2 eso convierte el `\|` de una celda de tabla en un separador de columnas y el
   `\*` del modelo en un énfasis, así que se descartó. Con la paridad, todo lo que hay que
   escapar queda escapado igual, las barras del modelo no cambian y la codificación es
   idempotente.
-- **Cómo se ve.** Fuera del código, igual que antes: los escapes no se ven. Dentro del código,
-  en línea o en bloque, se ven las barras (`` `a\[0]` ``, `https\:/\/…`). Es cosmético, y es
-  justo de donde salían las diferencias. Un cliente que muestre el texto sin pintarlo también
-  las ve.
+- **Cómo se ve.** Fuera del código, igual que antes: los escapes no se ven. Hay una
+  excepción aceptada: las casillas de las listas de tareas (`- [ ]`, `- [x]`) se ven como
+  `[ ]` y `[x]`, porque su `[` se escapa como cualquier otro. Recuperarlas exigiría reconocer
+  los marcadores de lista, que es volver a reproducir la gramática de un visor; no hay listas
+  de tareas en las salidas guardadas y el prompt pide viñetas. Dentro del código, en línea o
+  en bloque, se ven las barras (`` `a\[0]` ``, `https\:/\/…`, `` `a\&b` ``) y las
+  referencias de carácter salen resueltas (`` `&lt;` `` pasa a `` `\<` ``). Es cosmético, y
+  es justo de donde salían las diferencias. Un cliente que muestre el texto sin pintarlo
+  también ve las barras.
 
 Lo que no trata de cómo se pinta el texto sigue como estaba:
 
@@ -216,8 +236,9 @@ Lo que no trata de cómo se pinta el texto sigue como estaba:
   `[TOOL_CALLS]`, `[ARGS]` y `[CALL_ID]` de Mistral. También los objetos JSON con nombre y
   argumentos o con `tools/call` (también con las claves escritas con `\u…` o `\/`) y los
   bloques de código que se anuncian como llamada. Estos no son para el visor sino para el
-  asistente que lee el texto, y escapar no le impide leer una llamada. Con los dos arreglos
-  de la comprobación:
+  asistente que lee el texto, y escapar no le impide leer una llamada. Es una heurística
+  para las formas conocidas, no una frontera: lo que no ve está en «Lo que no cubre». Con
+  los dos arreglos de la comprobación:
   - los cierres se buscan una sola vez para todo el texto y se agrupan por nombre. Antes,
     cada nombre distinto (`<n1:invoke>`, `<n2:invoke>`…) compilaba una expresión que se
     guardaba en una caché sin límite. El coste era cuadrático y la memoria del proceso
@@ -225,6 +246,34 @@ Lo que no trata de cómo se pinta el texto sigue como estaba:
   - `<function=…>` admite cualquier nombre hasta el `>`. Con un espacio de nombres
     (`github/create_issue`, `fs:borrar`) o entre comillas, el bloque llegaba entero al
     asistente.
+
+  Y con los de la revisión de la codificación (13/11/2026):
+  - una llamada escrita con referencias de carácter (`&lt;function_calls&gt;`, `&#60;`) o
+    con formas de ancho completo (`＜invoke＞`) llegaba entera al asistente, y la web la
+    pintaba como texto visible. Ahora la ve, porque el texto se lleva antes a una sola forma;
+  - una apertura sin ningún `>` detrás no se quitaba, ni las siguientes: bastaba con poner
+    la llamada al final del informe. Ahora llega hasta el final de su párrafo, y los cierres
+    sueltos se quitan aunque les falte el `>`;
+  - un bloque que se anuncia como llamada detrás de un marcador de lista o de cita
+    (`- ```tool_code`, `> ```tool_call`) o con más sangría (la continuación de una lista
+    anidada) se pinta igual que uno de nivel superior y no se veía. Se retira hasta su valla
+    de cierre o, sin ella, hasta el final, y se conserva el marcador;
+  - dentro de un bloque de código, el cierre de un objeto JSON se busca hasta el final del
+    bloque y no del párrafo, y las claves se reconocen en cualquier caja (`"Name"`,
+    `"Arguments"`). Se añadió también la marca `[TOOL_CONTENT]` de Mistral.
+
+  Y con lo que encontraron después los fuzzers con piezas nuevas (referencias, ancho
+  completo, etiquetas y vallas de llamada), con los dos intérpretes:
+  - una valla de llamada que el saneado tomaba por contenido de otro bloque (abierto, por
+    ejemplo, con `~~~` dentro de una lista) y para el visor era un bloque propio. Las vallas
+    de llamada se buscan ahora en todas las líneas, antes y sin depender de qué bloques ve
+    el saneado; si una está de verdad dentro de otro bloque, se retira de más, que es el
+    lado seguro;
+  - `</invoke_[r]`: con `\b` detrás del nombre no era un cierre, pero si el `_` cierra un
+    énfasis el visor lo quita y se ve `</invoke`. Detrás del nombre basta ahora con que no
+    haya una letra ni una cifra;
+  - `<\|…|>` y `<\/invoke>`: el visor quita la barra del escape y se ven un token especial y
+    un cierre. El `|` de un token y la `/` de un cierre se reconocen también escapados.
 
   Se repite hasta que el texto no cambia, porque quitar algo puede formar otra llamada
   (`<in<|x|>voke>`), como mucho 20 veces. Si no converge, los `<` que quedan pasan a `‹`.
@@ -273,8 +322,9 @@ Decisiones:
   caracteres invisibles, marcado sin escapar).
 - **Las citas literales siguen verificándose.** `docs/mcp/pp18/corpus_identidad.py` (solo
   lectura) sanea los 13.756 fragmentos del índice real (corpus `7a2029a4dfd8`). El
-  12/11/2026, 1.143 cambian en el texto: 900 solo por la codificación, y los demás porque
-  pierden además el guion blando. Ninguno es distinto tras `normalize`. Una cita literal de
+  13/11/2026, 1.151 cambian en el texto: 908 solo por la codificación (8 más que el día
+  anterior, por el `&` de las URL con parámetros, `Warren&Brandeis` o `S&P 500`), y los
+  demás porque pierden además el guion blando. Ninguno es distinto tras `normalize`. Una cita literal de
   un fragmento real no puede dejar de verificarse por el saneado. Una cita de un fragmento
   que trae marcado ahora sí se verifica: el marcado se ve como texto, así que la cita es
   literal.
@@ -282,10 +332,26 @@ Decisiones:
   llama con `asyncio.to_thread`, pero una llamada a una expresión regular no suelta el GIL,
   así que cada una tiene que ser lineal. La codificación es una sola expresión, que solo
   empieza en el principio de cada tira de barras invertidas: si no, una tira larga sin nada
-  que escapar detrás se volvía a recorrer desde cada barra. `docs/mcp/pp18/fuzz_tiempo.py`
-  midió el 12/11/2026, en el portátil de desarrollo, 1.366 textos de 32.000 caracteres
-  (repeticiones, mezclas y texto aleatorio). El peor tardó 0,12 s; con 200.000 caracteres,
-  0,38 s. Las pruebas comparan 4.000 con 32.000 caracteres y miden el bucle.
+  que escapar detrás se volvía a recorrer desde cada barra. Lo que más cuesta son las
+  pasadas del paso 2: un anidamiento de unos 100 caracteres (`<|<|…x|>|>`) obliga a hacer
+  las 20 y la de respaldo, y en cada una se recorren en Python las líneas (vallas) y los
+  objetos JSON. Las cifras que se daban el 12/11/2026 (el peor, 0,12 s con 32.000
+  caracteres y 0,38 s con 200.000) eran el peor de los textos de `fuzz_tiempo.py`, que no
+  juntaba las 21 pasadas con una cola cara, no una cota (revisión de la codificación).
+  `fuzz_tiempo.py` las junta ahora. El 13/11/2026, en el portátil de desarrollo y sin otra
+  carga, el peor caso conocido es ese anidamiento seguido de miles de párrafos `{"` (sueltos
+  o dentro de un bloque sin cerrar) y una clave de llamada: unos 0,56 s con 32.000
+  caracteres (lo que cabe más o menos en `GROQ_MAX_TOKENS=8000`) y unos 3,5 s con 200.000.
+  Con la máquina ocupada (los fuzzers en paralelo) se mide el doble. `5e718bc` tardaba
+  0,64 s y 4,0 s con la misma entrada. El coste sigue siendo lineal, y el bucle de eventos
+  no se para: mientras otro hilo sanea esa entrada, el mayor hueco entre dos latidos de
+  10 ms es de unos 0,05 s, porque los bucles en Python sueltan el GIL. No se sacan las vallas del bucle de pasadas
+  para ahorrar: quitar un bloque vacío puede juntar `<` con `invoke` a través de un salto de
+  línea. Lo que sí se hizo: mirar una línea como valla solo si tiene tres acentos o tildes,
+  no recorrer los objetos JSON si el texto no tiene ninguna clave de llamada, y buscar el
+  JSON hasta el final de los bloques de código solo una vez, fuera de las pasadas. Las
+  pruebas comparan 4.000 con 32.000 caracteres y miden el bucle, también con el peor caso
+  conocido.
 
   | Entrada | 62e858f (antes) | Ahora |
   |---|---|---|
@@ -307,6 +373,19 @@ Decisiones:
     en lugar de quitarse.
   - No se impide que el modelo imite las secciones que añade el código, como una
     «Verificación de citas» falsa.
+  - **Llamadas escritas de otra forma.** El paso 2 ve las formas conocidas, después de
+    llevar el texto a una sola forma. No ve, y no puede ver sin entender el texto, una
+    llamada escrita con signos que se parecen a `<` pero que NFKC no cambia (`‹invoke›`,
+    `〈invoke〉`), con dos niveles de referencias (`&amp;lt;invoke&amp;gt;`, que la web pinta
+    como `&lt;invoke&gt;`), partida por el marcado (`<**invoke**>`) o por un escape dentro
+    del nombre (`<function\_calls>`, que el visor pinta sin la barra), en base64 o letra a
+    letra. Tampoco un objeto JSON de llamada partido por una línea en blanco fuera de un
+    bloque de código: el cierre de un objeto se busca dentro de su párrafo, porque buscarlo
+    en todo el texto hacía cuadrático el coste (dentro de un bloque de código se busca hasta
+    el final del bloque). Ya estaba así en `62e858f` y la reescritura del README lo había
+    perdido. Para el asistente, todo esto es de la misma clase que una orden en lenguaje
+    natural: los visores no ejecutan nada, y lo mitigan las instrucciones y el aviso. Las
+    pruebas fijan el caso del JSON (`RESIDUALES_LLAMADA` de `tests/_casos_saneado.py`).
   - **Dominios sin esquema, con linkify en modo difuso** (gravedad baja). Un visor con
     linkify en modo difuso convierte en enlace (`http://…`) un dominio que el modelo escribe
     sin esquema, sin `www.` y sin `@` (`evil.com/?d=DATOS`, `datos.evil.com`). Lo hace
@@ -322,9 +401,13 @@ Decisiones:
     enlaces difusos llevan a él.
   - **Una lista con un bloque de código y líneas sin sangrar** (cosmético). Para CommonMark,
     la lista y el bloque acaban en la línea sin sangrar, y la valla de cierre abre otro
-    bloque que llega al final, con las secciones que añade el código dentro. marked no lo
-    hace. Se ven como código y no se ejecuta nada. La versión anterior sangraba esas líneas,
-    y eso estropeaba listas legítimas.
+    bloque que llega al final, con las secciones que añade el código dentro. Se ven como
+    código y no se ejecuta nada. La versión anterior sangraba esas líneas, y eso estropeaba
+    listas legítimas. marked lo hace también en un caso que encontraron los fuzzers: una
+    valla que el saneado toma por la apertura de un bloque y para marked es contenido del
+    bloque de una lista, así que la valla que el saneado añade para cerrarlo abre otro. Los
+    casos conocidos están en `COSMETICOS` de `tests/_casos_saneado.py`, y las pruebas
+    comprueban que no aparece ninguno más.
   - La protección supone un intérprete que trate los escapes como CommonMark (marked,
     markdown-it, cmark-gfm y los que derivan de ellos).
 
@@ -335,8 +418,9 @@ Decisiones:
   sitio. Y ganchos de DOMPurify (`uponSanitizeAttribute`) que quiten `style` y los `href` o
   `src` que no sean de la lista de dominios oficiales.
 - Quitar también «\» en el `normalize` de `src/lib/citations.ts`, que repite las reglas de
-  `citations.normalize`. Hasta entonces, si una cita no verificada lleva `[`, `<`, `@`, `//`
-  o `www.`, la web no la encuentra en la página y no marca ninguna cita. Es su
+  `citations.normalize`. Hasta entonces, si una cita no verificada lleva `[`, `<`, `@`, `//`,
+  `www.` o un `&` delante de una letra, la web no la encuentra en la página y no marca
+  ninguna cita. Es su
   comportamiento seguro: no dice que se ha comprobado una cita si no sabe cuál es.
 
 **PP-18 automática** (`tests/test_mcp_security.py`). Usa 20 cargas reales
@@ -376,17 +460,29 @@ Un caso falla si después del saneado alguno de los dos pinta una imagen, un ele
 algo solo (con `style`, `src`, `srcset`, `poster` o `background`; en markdown-it, cualquier
 HTML en bruto, porque no lleva DOMPurify) o un enlace cuyo destino, absoluto o relativo al
 protocolo, lleva a un host que no es un dominio oficial. Los destinos relativos no cuentan.
-Comprueba también que una línea puesta detrás del texto saneado (como las secciones que
-añade el código) queda fuera de los bloques de código. Y comprueba que los informes
-legítimos conservan su estructura con los dos intérpretes (las mismas etiquetas, sin contar
-los enlaces): `LEGITIMOS` de `tests/_casos_saneado.py` y el informe de ejemplo de la web.
+Desde la revisión de la codificación, también si en lo que pinta cada uno (cada nodo de
+texto, con las referencias de carácter ya resueltas y pasado por NFKC) se ve una llamada a
+una herramienta, si un bloque de código se anuncia como llamada (la clase `language-…` en
+marked, la información de la valla en markdown-it) o si aparece un carácter invisible o de
+control. Comprueba también que una línea puesta detrás del texto saneado (como las
+secciones que añade el código) queda fuera de los bloques de código. Y comprueba que los
+informes legítimos conservan su estructura con los dos intérpretes (las mismas etiquetas,
+sin contar los enlaces ni las casillas de las listas de tareas): `LEGITIMOS` de
+`tests/_casos_saneado.py` y el informe de ejemplo de la web.
 
-Los casos son las 20 cargas de PP-18 y las 238 entradas de `tests/_casos_saneado.py`, que
+Los casos son las 20 cargas de PP-18 y las 282 entradas de `tests/_casos_saneado.py`, que
 usan también las pruebas:
 
 - 19 de la primera revisión;
 - 40 de la segunda;
 - 14 de la comprobación;
+- 44 de la revisión de la codificación: las reproducciones de sus hallazgos (llamadas con
+  referencias de carácter o ancho completo, aperturas sin `>`, vallas en listas y citas,
+  JSON en bloques y en otra caja, invisibles escritos como referencias), 7 de lo que
+  encontraron los fuzzers con las piezas nuevas (6 reducidos y el cierre con la «/»
+  escapada, de la misma clase; arriba, «Bloques que imitan llamadas») y 5 que ya eran
+  inocuos y comprueban que resolver las referencias no abre nada. Con el saneado anterior
+  (`5e718bc`), 39 de las 44 fallan con los dos intérpretes; las otras 5 son las inocuas;
 - 20 variantes con dominios `.com` y `.co.uk`: linkify no enlaza los canarios `.example` en
   modo difuso, así que sin ellas el oráculo no vería un enlace que se formara detrás de un
   escape;
@@ -395,15 +491,18 @@ usan también las pruebas:
   mecánica: se ejecutaron esas pruebas con el saneado de entonces, se apuntó cada entrada y
   no falta ninguna (las de coste están en las pruebas de tiempo).
 
-Resultado del 12/11/2026:
+Resultado del 13/11/2026:
 
 | | marked + DOMPurify | markdown-it |
 |---|---|---|
-| Casos que pintan algo peligroso sin sanear | 185 de 258 | 179 de 258 |
+| Casos que pintan algo peligroso sin sanear | 245 de 302 | 236 de 302 |
 | Después del saneado | 0 | 0 |
-| Secciones del código dentro de un bloque | 0 | 1 (el residual cosmético de arriba) |
+| Secciones del código dentro de un bloque | 1 | 2 (el residual cosmético de las listas) |
 | Enlaces difusos (residual) | — | 0 |
-| Informes legítimos (15) que cambian de estructura | 0 | 0 |
+| Informes legítimos (17) que cambian de estructura | 0 | 0 |
+
+El 12/11/2026 (con el saneado de `5e718bc` y el oráculo de entonces, que no miraba las
+llamadas ni los invisibles en lo que se pinta) eran 185 y 179 de 258, y 0 después.
 
 Con el saneado anterior, la misma comprobación con solo marked daba 0 en los 79 casos de las
 dos primeras revisiones, pero la comprobación posterior encontró 7 huecos más.
@@ -422,9 +521,22 @@ dominios que linkify enlaza. Tienen tres modos:
 
 Cada uno se pinta con los dos intérpretes. El 12/11/2026, con 3 semillas por modo y unos 6.000
 casos por tanda (54.000 en total), sin sanear pintaban algo entre 4.296 y 5.465 casos por
-tanda, y después del saneado ninguno, con ninguno de los dos. Los enlaces difusos (de 536 a
-747 por tanda) salen todos de la pieza de dominio sin esquema. `--reducir` reduce un fallo al
+tanda, y después del saneado ninguno, con ninguno de los dos. `--reducir` reduce un fallo al
 texto más corto que sigue fallando.
+
+El 13/11/2026, con piezas nuevas (referencias de carácter, ancho completo, etiquetas y
+vallas de llamada) y el oráculo que mira también las llamadas, las vallas anunciadas y los
+invisibles en lo que se pinta, encontraron primero tres formas que el saneado no retiraba
+(las de «Bloques que imitan llamadas», arriba: vallas de llamada dentro de lo que el saneado
+tomaba por otro bloque, un `_` de énfasis pegado al nombre de una etiqueta y un token con el
+`|` escapado) y ruido del propio oráculo, que marcaba medias marcas (`|>`, `[tool_code`) y
+juntaba nodos de texto vecinos; eso se corrigió en el oráculo (`formas_pintadas` de
+`tests/_pp18.py`). Arregladas, se repitieron con 7 semillas por modo
+(1, 2 y 3 con 4.000 casos; 11, 12, 13 y 31 con 6.000), 108.000 casos en total: sin sanear
+pintaban algo entre 2.743 y 3.693 casos en las tandas de 4.000 y entre 4.165 y 5.526 en las
+de 6.000, y después del saneado ninguno, con ninguno de los dos intérpretes. Los enlaces
+difusos (de 244 a 536 por tanda) salen todos de la pieza de dominio sin esquema: con un
+dominio único en esa pieza, todos llevan a él.
 
 **PP-18 con el modelo real (12/11/2026).** Lo hizo `docs/mcp/pp18/medir.py`. El script
 arrancó la API de este repositorio en local, en el commit `ea4433c` y con el corpus

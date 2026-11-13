@@ -66,9 +66,11 @@ POST /v1/analyze (QuestionnaireInput)
           │      → fallback: openai/gpt-oss-20b si el principal falla (modelo retirado, 429, 5xx)
           │
           ├─ 4. Saneado de la salida (app/sanitize.py, RNF-20)
-          │      codifica «<», «[», «@», «://», «//» y «www.» (las imágenes, enlaces y HTML
-          │      del modelo se ven como texto) y retira bloques que imitan llamadas a
-          │      herramientas y caracteres invisibles o de control
+          │      resuelve las referencias de carácter y las formas de ancho completo,
+          │      codifica «<», «[», «@», el «&» de una referencia, «://», «//» y «www.»
+          │      (las imágenes, enlaces y HTML del modelo se ven como texto) y retira
+          │      bloques que imitan llamadas a herramientas y caracteres invisibles o de
+          │      control
           │
           ├─ 5. Verificación de citas (app/citations.py)
           │      cada cita del informe saneado se busca literalmente (normalizada, ±10 % en los
