@@ -50,15 +50,18 @@ El índice guarda en `metadata["article"]` el encabezado entero («Artículo 22�
 `app.fragments.localizador` saca el número y el texto dice «art. 22» o «considerando 32». El
 prompt no cambia: el modelo sigue recibiendo el encabezado del índice, así que los informes
 son los mismos. Formas del metadato en una copia del índice (13/11/2026, 1.422 fragmentos con
-`article`), todas cubiertas por `tests/test_fragments.py`:
+`article`), todas cubiertas por `tests/test_fragments.py`, que además comprueba estas cifras
+contra `chroma_db` en solo lectura (sin Git LFS, como en la CI, se omite):
 
 | Forma | Fragmentos | Resultado |
 |---|---|---|
 | «Artículo N» | 1.308 | `articulo` |
 | «ARTÍCULO N» (la guía de privacidad desde el diseño copia artículos del RGPD) | 23 | `articulo` |
 | «Artículo», salto de línea y «N» (pypdf) | 1 | `articulo` |
-| «Considerando N» | 90 | `considerando` |
-| Número de 4 o 5 cifras: «Artículo 2918», «Considerando 49127» y otros cinco, que son el número pegado a una llamada de nota de dos guías de la AEPD | 44 de los anteriores | nulos |
+| «Considerando N»: menciones a considerandos del RGPD en cuatro guías de la AEPD (45 en la de análisis de riesgos, 42 en la de adecuación de la IA, 2 en la de privacidad desde el diseño y 1 en la de IA agéntica) | 90 | `considerando` |
+| Número de 4 o 5 cifras: «Artículo 2918», «Considerando 49127» y otros cinco, que son el número pegado a una llamada de nota de dos guías de la AEPD (28 fragmentos en la de análisis de riesgos y 16 en la de adecuación de la IA; 7 «Artículo» y 37 «Considerando») | 44 de los anteriores | nulos |
+
+Resultado: 1.325 `articulo`, 53 `considerando` y 44 nulos.
 
 Ninguna norma del corpus pasa de 999 artículos ni considerandos (el mayor del índice es el
 artículo 203 y el considerando 149); un número más largo no localiza nada, y un localizador
@@ -66,7 +69,8 @@ falso es peor que ninguno. El metadato nunca lleva «(cont.)», que va en el tex
 sub-fragmentos; se acepta igual. Queda un residual que no se arregla aquí (ver «Pendiente»):
 en las guías de la AEPD, el encabezado es casi siempre una mención a otra norma con la que
 empieza el fragmento («ARTÍCULO 5» es el art. 5 del RGPD copiado en la guía; los 90
-considerandos son del RGPD), así que `articulo` no es un artículo de la guía.
+«Considerando N» son considerandos del RGPD que citan cuatro guías), así que `articulo` no es
+un artículo de la guía ni `considerando` un considerando suyo.
 
 ### Texto y contenido estructurado de los resultados
 

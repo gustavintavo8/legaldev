@@ -8,15 +8,26 @@ El índice guarda en ``metadata["article"]`` el encabezado con que empieza el fr
 - «Artículo N»: 1.308; «ARTÍCULO N»: 23 (la guía de privacidad desde el diseño copia los
   artículos del RGPD en mayúsculas); «Artículo \\nN»: 1 (el salto de línea de pypdf entre la
   palabra y el número);
-- «Considerando N»: 90, todos de guías de la AEPD que citan considerandos del RGPD;
-- siete encabezados con el número pegado a una llamada de nota de la guía (44 fragmentos):
-  «Artículo 2918» es el «Artículo 29» de la nota 18, «Considerando 49127» es el 49 de la
-  nota 127. Ninguna norma del corpus pasa de 999 artículos ni considerandos (el máximo real
-  del índice es 203 y 149), así que un número de cuatro o más cifras no localiza nada.
+- «Considerando N»: 90, menciones a considerandos del RGPD en cuatro guías de la AEPD (45 en
+  la de análisis de riesgos, 42 en la de adecuación de la IA, 2 en la de privacidad desde el
+  diseño y 1 en la de IA agéntica);
+- siete encabezados con el número pegado a una llamada de nota de la guía (44 fragmentos, 28
+  de la guía de análisis de riesgos y 16 de la de adecuación de la IA; 7 «Artículo» y 37
+  «Considerando»): «Artículo 2918» es el «Artículo 29» de la nota 18, «Considerando 49127» es
+  el 49 de la nota 127. Ninguna norma del corpus pasa de 999 artículos ni considerandos (el
+  máximo real del índice es 203 y 149), así que un número de cuatro o más cifras no localiza
+  nada.
 
 El metadato nunca lleva «(cont.)»: ese prefijo va en el texto de los sub-fragmentos. Se acepta
 igualmente, por si un índice futuro lo guardara así.
+
+La última prueba comprueba estas cifras contra ``chroma_db`` en solo lectura. Sin Git LFS
+(como en la CI) el fichero es un puntero y la prueba se omite.
 """
+
+import sqlite3
+from collections import Counter
+from pathlib import Path
 
 import pytest
 from langchain_core.documents import Document
@@ -114,3 +125,91 @@ def test_from_doc_nunca_rellena_los_dos_campos(article):
     assert ref.articulo is None or ref.considerando is None
     assert ref.articulo is None or ref.articulo.isdigit()
     assert ref.considerando is None or ref.considerando.isdigit()
+
+
+INDICE = Path(__file__).resolve().parents[1] / "chroma_db" / "chroma.sqlite3"
+RIESGOS = "Guía de Análisis de Riesgos para tratamientos de datos personales - AEPD.pdf"
+ADECUACION_IA = "Adecuación al RGPD de tratamientos que incorporan IA - AEPD.pdf"
+PRIVACIDAD_DISENO = "Guía de Privacidad desde el Diseño - AEPD.pdf"
+IA_AGENTICA = "IA Agentica desde la perspectiva de proteccion de datos - AEPD.pdf"
+
+
+def _encabezados_del_indice() -> list[tuple[str, str]]:
+    """(fuente, encabezado) de cada fragmento del índice que lleva ``article``.
+
+    Se abre en solo lectura y como inmutable (``mode=ro&immutable=1``): SQLite no escribe nada,
+    ni bloqueos ni ficheros ``-wal``/``-shm``. No pasa por ``settings`` para no leer ``.env``.
+    """
+    try:
+        with INDICE.open("rb") as f:
+            cabecera = f.read(16)
+    except FileNotFoundError:
+        pytest.skip("no hay chroma_db/chroma.sqlite3")
+    if cabecera != b"SQLite format 3\x00":
+        pytest.skip("chroma_db/chroma.sqlite3 es un puntero de Git LFS (sin LFS)")
+    con = sqlite3.connect(INDICE.as_uri() + "?mode=ro&immutable=1", uri=True)
+    try:
+        return con.execute(
+            "SELECT s.string_value, m.string_value FROM embedding_metadata m"
+            " JOIN embedding_metadata s ON s.id = m.id AND s.key = 'source'"
+            " WHERE m.key = 'article'"
+        ).fetchall()
+    finally:
+        con.close()
+
+
+def _forma(encabezado: str) -> str:
+    if "\n" in encabezado:
+        return "Artículo \\nN"
+    if encabezado.startswith("ARTÍCULO "):
+        return "ARTÍCULO N"
+    if encabezado.startswith("Artículo "):
+        return "Artículo N"
+    if encabezado.startswith("Considerando "):
+        return "Considerando N"
+    return encabezado
+
+
+def test_el_indice_tiene_las_formas_y_el_reparto_que_cita_la_documentacion():
+    """Las cifras del índice que citan este módulo, app/obligations.py y docs/mcp/README.md.
+
+    Si se reindexa (PT10, segmentador v3), esta prueba falla y hay que actualizar las tres
+    cosas a la vez: las cifras de aquí, el docstring de ``app/obligations.py`` y «Diseño
+    resumido» de ``docs/mcp/README.md``.
+    """
+    filas = _encabezados_del_indice()
+    actualizar = (
+        "reindexado: actualizar obligations.py, docs/mcp/README.md y esta prueba"
+    )
+
+    assert len(filas) == 1422, actualizar
+    assert Counter(_forma(art) for _, art in filas) == {
+        "Artículo N": 1308,
+        "ARTÍCULO N": 23,
+        "Artículo \\nN": 1,
+        "Considerando N": 90,
+    }, actualizar
+    # Los «Considerando N» son menciones al RGPD en cuatro guías, no considerandos propios.
+    assert Counter(f for f, art in filas if _forma(art) == "Considerando N") == {
+        RIESGOS: 45,
+        ADECUACION_IA: 42,
+        PRIVACIDAD_DISENO: 2,
+        IA_AGENTICA: 1,
+    }, actualizar
+
+    localizados = [(f, art, localizador(art)) for f, art in filas]
+    assert all(a is None or c is None for _, _, (a, c) in localizados)
+    articulos = [int(a) for _, _, (a, _) in localizados if a is not None]
+    considerandos = [int(c) for _, _, (_, c) in localizados if c is not None]
+    nulos = [(f, art) for f, art, (a, c) in localizados if a is None and c is None]
+    recuento = (len(articulos), len(considerandos), len(nulos))
+    assert recuento == (1325, 53, 44), actualizar
+    assert (max(articulos), max(considerandos)) == (203, 149), actualizar
+
+    # Los nulos son, todos, las colisiones con una llamada de nota, y solo de dos guías.
+    assert {art for _, art in nulos} == set(ENCABEZADOS_CON_NOTA), actualizar
+    assert Counter(f for f, _ in nulos) == {RIESGOS: 28, ADECUACION_IA: 16}, actualizar
+    assert Counter(_forma(art) for _, art in nulos) == {
+        "Artículo N": 7,
+        "Considerando N": 37,
+    }, actualizar

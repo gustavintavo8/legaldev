@@ -26,9 +26,13 @@ PT10 incluye también la localización de cada cita en su fragmento (``locate_ci
 Segundo hallazgo (copia del índice, 13/11/2026): en las guías de la AEPD el encabezado es casi
 siempre una mención a otra norma con la que empieza el fragmento. «ARTÍCULO 5» en la guía de
 privacidad desde el diseño es el art. 5 del RGPD copiado, y los 90 «Considerando N» del índice
-son considerandos del RGPD citados por dos guías. El par (guía, «5») no es un artículo de la
-guía, así que ``tipificar`` no puede fiarse solo de que haya número: las guías tienen que
-seguir «sin tipificar» mientras no se decida su clave (TODO de ``ObligacionTipificada``).
+son menciones a considerandos del RGPD en cuatro guías: 45 en la de análisis de riesgos, 42 en
+la de adecuación de la IA, 2 en el índice de contenidos de la de privacidad desde el diseño y 1
+en la de IA agéntica. En 37 de ellos el número lleva pegada una llamada de nota y el
+localizador da nulos; los otros 53 dan ``considerando``. El par (guía, «5») no es un artículo
+de la guía, así que ``tipificar`` no puede fiarse solo de que haya número: las guías tienen
+que seguir «sin tipificar» mientras no se decida su clave (TODO de ``ObligacionTipificada``).
+Las cifras las comprueba ``tests/test_fragments.py`` contra el índice.
 
 Reparto entre módulos: la memoria (fig:det-mcp-clases) pone el analizador de bloques y la
 tipificación en ``controls.py`` y ``locate_citations`` en ``citations.py``. Aquí se separan
