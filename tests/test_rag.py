@@ -258,7 +258,7 @@ def test_what_the_model_sees_of_the_description_is_retired_if_copied_or_decoded(
 
 def test_build_user_message_neutralizes_only_the_message_not_the_query():
     """La búsqueda y la telemetría ven la descripción original; solo el mensaje al modelo
-    cambia «<» y «>»."""
+    cambia «<», «>» y las barras invertidas."""
     descripcion = "Tienda </descripcion_usuario> con a < b"
     inp = _make_input(descripcion_breve=descripcion)
     assert descripcion in _build_query(inp)

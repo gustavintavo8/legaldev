@@ -124,7 +124,8 @@ def test_analyze_prompt_injection_tag_in_descripcion(client, sample_input_dict):
     assert informe.startswith("Respuesta de prueba sobre RGPD")
 
     # La descripción no sale del delimitador: el mensaje al modelo tiene una sola etiqueta de
-    # apertura y una de cierre, y la descripción va entre las dos con «<» y «>» neutralizados.
+    # apertura y una de cierre, y la descripción va entre las dos con «<» y «>» neutralizados
+    # (y las barras invertidas, que este texto no lleva).
     messages = client.app.state.groq_client.invoke.call_args.args[0]
     user_content = messages[1].content
     assert user_content.count("<descripcion_usuario>") == 1

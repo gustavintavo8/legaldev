@@ -234,7 +234,8 @@ casos, y `tests/test_api.py`).
   mismo). Un delimitador con un valor aleatorio por petición también cerraría el paso, pero
   cambiaría el prompt y obligaría a repetir PP-18 con el modelo real.
 - Solo cambia el mensaje al modelo. La búsqueda (`_build_query`), la clave de la caché y la
-  telemetría ven el texto original; una descripción sin «<» ni «>» llega igual que antes.
+  telemetría ven el texto original; una descripción sin «<», «>» ni barras invertidas
+  llega igual que antes.
 - `_detect_injection` es **telemetría, no una defensa**: registra `suspected_injection` (sin
   el texto) y la petición sigue. Desde la 0.5.0 tiene patrones en español, atados a anular o
   sustituir instrucciones («ignora las reglas…», «nuevas instrucciones», «prompt del
@@ -250,7 +251,10 @@ casos, y `tests/test_api.py`).
   son anteriores a la neutralización: P12 llegaba al modelo con la etiqueta cerrada. La
   repetida sobre la 0.5.0 (`bd228c6`) ya la llevaba, con «‹» y «›», y encontró la regresión
   de P06 (ver «PP-18 repetida sobre la 0.5.0» en «Salida segura»). Falta repetirla sobre la
-  0.5.1, con `&lt;` y `&gt;` (la hace el autor: son 12 llamadas a Groq).
+  0.5.1, con `&lt;`, `&gt;` y `&#92;`, en un commit igual o posterior a `572f02d`, porque
+  desde él cambia otra vez lo que recibe el modelo (la hace el autor: son 12 llamadas a
+  Groq). Las cargas de `cargas.json` no llevan `\<`, así que esa medición no pasa por el
+  caso de la revisión independiente; lo cubre la prueba automática.
 ### Tope diario por clave (`MCP_DAILY_LIMIT`)
 
 Responde a la amenaza de consumo de la cuota del proveedor del modelo: con solo el cupo por
@@ -911,8 +915,10 @@ real.
    escapada (`\<function_calls\>`): 54 casos. Con la entrada de `9a0a271` falla en P06
    escapada por la descripción.
 
-**Falta repetirla sobre la 0.5.1** (12 llamadas a Groq; la hace el autor). `medir.py` la
-guardará en `resultado-AAAA-MM-DD-<commit>.json`, sin pisar las anteriores.
+**Falta repetirla sobre la 0.5.1** (12 llamadas a Groq; la hace el autor), en un commit igual
+o posterior a `572f02d`, que vuelve a cambiar lo que recibe el modelo (las barras invertidas
+de la descripción). `medir.py` la guardará en `resultado-AAAA-MM-DD-<commit>.json`, sin pisar
+las anteriores.
 
 **Lo que enseña.** Cada defensa era razonable y tenía sus pruebas, pero las de cada capa no
 miraban la otra, y la de extremo a extremo simulaba un modelo que ve la carga tal como la
@@ -1674,8 +1680,9 @@ Lo que falta del servidor MCP:
 - **C-05:** el formato definitivo del marcado (D-4, art. 50.7), si hace falta una cabecera
   HTTP y el aviso de IA en la web (art. 50.1).
 - **PP-18 sobre la 0.5.1:** repetir `docs/mcp/pp18/medir.py` (12 llamadas a Groq; lo hace
-  el autor). Sobre la 0.5.0 sobrevivía P06; con la 0.5.1, la descripción llega con `&lt;` y
-  `&gt;` y el saneado lee los signos de un ángulo, así que no debería sobrevivir ninguna.
+  el autor) en un commit igual o posterior a `572f02d`. Sobre la 0.5.0 sobrevivía P06; con la
+  0.5.1, la descripción llega con `&lt;`, `&gt;` y `&#92;` y el saneado lee los signos de un
+  ángulo, así que no debería sobrevivir ninguna.
 - **PP-18:** revisar a mano si los informes de P05 y P12 obedecen, sin copiarlas, las órdenes
   en lenguaje natural. Hace falta guardar el informe entero, porque `medir.py` solo guarda
   extractos.

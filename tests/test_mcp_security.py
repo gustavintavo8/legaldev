@@ -415,7 +415,8 @@ def _informe_que_repite(carga: str, *, tambien_citada: bool = False) -> str:
 def _lo_que_ve_el_modelo(mensaje_usuario: str, canario: str) -> list[str]:
     """Las partes del mensaje de usuario que llevan la carga, tal como las construye
     rag._build_user_message y las recibe el modelo: la descripción entre sus dos etiquetas
-    (con «<» y «>» neutralizados) y el fragmento envenenado debajo de su cabecera
+    (con «<», «>» y las barras invertidas neutralizados) y el fragmento envenenado debajo
+    de su cabecera
     «### Fuente N». No se recalcula la neutralización: se toma del mensaje."""
     vistas = []
     descripcion = mensaje_usuario.split("<descripcion_usuario>", 1)[1]
@@ -523,7 +524,8 @@ def test_pp18_indirect_injection_payloads_do_not_reach_the_assistant_executable(
     modelo real se mide aparte (docs/mcp/pp18/medir.py).
 
     El modelo simulado repite la carga en bruto y, además, tal como la recibe: la
-    descripción como va en el mensaje de usuario (con «<» y «>» neutralizados) y el
+    descripción como va en el mensaje de usuario (con «<», «>» y las barras invertidas
+    neutralizados) y el
     fragmento como llega en el contexto. Hasta la 0.5.1 solo repetía la carga en bruto, y
     no vio que la 0.5.0 (bd228c6) entregaba P06 escrita con «‹» y «›», que el saneado no
     reconocía; lo vio la medición con el modelo real (docs/mcp/README.md, «PP-18 repetida
