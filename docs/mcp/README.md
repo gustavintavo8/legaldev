@@ -271,7 +271,9 @@ Lo que no trata de cómo se pinta el texto sigue como estaba:
     lado seguro;
   - `</invoke_[r]`: con `\b` detrás del nombre no era un cierre, pero si el `_` cierra un
     énfasis el visor lo quita y se ve `</invoke`. Detrás del nombre basta ahora con que no
-    haya una letra ni una cifra;
+    haya una letra ni una cifra, ni siquiera detrás de `_`: un marcador como
+    `<parameter_name>` o `<invoke_url>` sigue sin ser una etiqueta de llamada (está en
+    `LEGITIMOS`, y las pruebas comprueban que de un informe legítimo no se retira nada);
   - `<\|…|>` y `<\/invoke>`: el visor quita la barra del escape y se ven un token especial y
     un cierre. El `|` de un token y la `/` de un cierre se reconocen también escapados.
 
@@ -338,8 +340,8 @@ Decisiones:
   objetos JSON. Las cifras que se daban el 12/11/2026 (el peor, 0,12 s con 32.000
   caracteres y 0,38 s con 200.000) eran el peor de los textos de `fuzz_tiempo.py`, que no
   juntaba las 21 pasadas con una cola cara, no una cota (revisión de la codificación).
-  `fuzz_tiempo.py` las junta ahora. El 13/11/2026, en el portátil de desarrollo y sin otra
-  carga, el peor caso conocido es ese anidamiento seguido de miles de párrafos `{"` (sueltos
+  `fuzz_tiempo.py` las junta ahora. El 13/11/2026, con `fuzz_tiempo.py --n 32000` y
+  `--n 200000`, en el portátil de desarrollo y sin otra carga, el peor caso conocido es ese anidamiento seguido de miles de párrafos `{"` (sueltos
   o dentro de un bloque sin cerrar) y una clave de llamada: unos 0,56 s con 32.000
   caracteres (lo que cabe más o menos en `GROQ_MAX_TOKENS=8000`) y unos 3,5 s con 200.000.
   Con la máquina ocupada (los fuzzers en paralelo) se mide el doble. `5e718bc` tardaba
@@ -499,7 +501,7 @@ Resultado del 13/11/2026:
 | Después del saneado | 0 | 0 |
 | Secciones del código dentro de un bloque | 1 | 2 (el residual cosmético de las listas) |
 | Enlaces difusos (residual) | — | 0 |
-| Informes legítimos (17) que cambian de estructura | 0 | 0 |
+| Informes legítimos (18) que cambian de estructura | 0 | 0 |
 
 El 12/11/2026 (con el saneado de `5e718bc` y el oráculo de entonces, que no miraba las
 llamadas ni los invisibles en lo que se pinta) eran 185 y 179 de 258, y 0 después.
@@ -536,7 +538,9 @@ juntaba nodos de texto vecinos; eso se corrigió en el oráculo (`formas_pintada
 pintaban algo entre 2.743 y 3.693 casos en las tandas de 4.000 y entre 4.165 y 5.526 en las
 de 6.000, y después del saneado ninguno, con ninguno de los dos intérpretes. Los enlaces
 difusos (de 244 a 536 por tanda) salen todos de la pieza de dominio sin esquema: con un
-dominio único en esa pieza, todos llevan a él.
+dominio único en esa pieza, todos llevan a él. Después del último ajuste (los marcadores
+en snake_case, que solo deja de retirar), una tanda más de 6.000 casos por modo (semilla
+41): 0 fallos.
 
 **PP-18 con el modelo real (12/11/2026).** Lo hizo `docs/mcp/pp18/medir.py`. El script
 arrancó la API de este repositorio en local, en el commit `ea4433c` y con el corpus

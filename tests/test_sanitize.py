@@ -450,8 +450,9 @@ def test_legitimate_reports_keep_their_structure(texto):
     código no se ve ninguna barra invertida añadida, tampoco con «&» y referencias de
     carácter, y las secciones que añade el código quedan fuera de los bloques.
     docs/mcp/pp18/oraculo.py lo comprueba también con marked y con el informe de ejemplo de
-    la web."""
+    la web. Y no se retira nada: un marcador como «<parameter_name>» no es una llamada."""
     salida, stats = sanear(texto)
+    assert stats.total() == 0
     assert _estructura(salida) == _estructura(texto)
     assert _pp18.fuera_de_codigo(salida).count(BS) == _pp18.fuera_de_codigo(
         texto

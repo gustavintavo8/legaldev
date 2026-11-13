@@ -317,10 +317,11 @@ _ETIQUETAS_HERRAMIENTA: Final[tuple[str, ...]] = (
 _NOMBRE_HERRAMIENTA = (
     r"(?:[\w-]+:)?(?:" + "|".join(map(re.escape, _ETIQUETAS_HERRAMIENTA)) + r")"
 )
-# Detrás del nombre, cualquier cosa que no sea una letra o una cifra: con «\b», «</invoke_»
-# no era un cierre, pero si el «_» cierra un énfasis el visor lo quita y se ve «</invoke»
-# (fuzzers, 13/11/2026).
-_FIN_NOMBRE = r"(?![A-Za-z0-9])"
+# Detrás del nombre, ni una letra ni una cifra, tampoco detrás de «_»: con «\b»,
+# «</invoke_» no era un cierre, pero si el «_» cierra un énfasis el visor lo quita y se ve
+# «</invoke» (fuzzers, 13/11/2026). Un marcador como «<parameter_name>» o «<invoke_url>»
+# sigue sin ser una etiqueta de llamada.
+_FIN_NOMBRE = r"(?!_*[A-Za-z0-9])"
 _APERTURA_HERRAMIENTA_RE = re.compile(
     r"<\s*(" + _NOMBRE_HERRAMIENTA + r")" + _FIN_NOMBRE, re.I
 )

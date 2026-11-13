@@ -542,6 +542,9 @@ LEGITIMOS = [
     # no cuenta las casillas, como no cuenta los enlaces).
     "I+D (R&D), Términos & Condiciones, cláusula &laquo;de buena fe&raquo;, 5&nbsp;% "
     "y `make && make test`.",
+    # Marcadores en snake_case que empiezan como una etiqueta de llamada: no lo son.
+    "Sustituye `<parameter_name>` por el valor, <invoke_url> por la URL y "
+    "<tool_call_id> por el identificador.\n\nSigue el informe.",
     "**Checklist**\n\n- [ ] Designar DPD\n- [x] Política de privacidad publicada",
 ]
 
