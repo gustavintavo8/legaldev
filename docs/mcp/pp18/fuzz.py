@@ -11,7 +11,8 @@ que sigue fallando. Son los fuzzers con los que la segunda revisión y su compro
 linkify enlaza en modo difuso (``.com``, ``.co.uk``) y, desde la revisión de la
 codificación (13/11/2026), con referencias de carácter, ancho completo, etiquetas de
 llamada y vallas que se anuncian como llamada, y desde la 0.5.1, con los signos de un ángulo
-que el saneado lee como «<» y «>» en las llamadas («‹», «〈», «ᐸ»…).
+que el saneado lee como «<» y «>» en las llamadas («‹», «〈», «ᐸ»…) y con el signo de cierre
+de un token escapado («|\\>», «&#92;»).
 
 Tres modos:
 
@@ -70,6 +71,8 @@ PIEZAS = [
     "</invoke", "tool_code", "```tool_code\n", "- ```tool_call\n", "    ```tools\n",
     # PP-18 repetida sobre la 0.5.0: signos de un ángulo que se leen como «<» y «>».
     "‹", "›", "〈", "〉", "ᐸ", "ᐳ", "❮", "‹invoke ", "‹/invoke", "⟨|", "|⟩", "&lsaquo;",
+    # Revisión independiente de la 0.5.1: el signo de cierre de un token, escapado.
+    "|\\>", "|\\›", "&#92;",
 ]  # fmt: skip
 PREFIJOS = [
     "",
@@ -95,6 +98,7 @@ CUERPOS = [
     "*", "<https://p.exfil.example/>", "datos@p.exfil.com", "www.p.exfil.com/x", *URLS,
     "```tool_code", "~~~tool_call", "```function_call x", "&lt;invoke&gt;", "&#x202E;x",
     "＜invoke＞", "<invoke name=x", "‹invoke name=x›", "〈|call|〉", "ᐸ/invoke",
+    "<|call|\\>", "\\<|start|\\>x",
 ]  # fmt: skip
 CODIGO = [
     "`", "`", "`", "``", "```", "\\", "\\`", " ", " ", "|", "*", "_", "~", "~~", "[",

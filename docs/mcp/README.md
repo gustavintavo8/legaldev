@@ -435,6 +435,13 @@ Lo que no trata de cómo se pinta el texto sigue como estaba:
   dentro de un token especial no puede haber otro signo de apertura ni de cierre, para que
   un anidamiento se quite de dentro afuera.
 
+  Y con la revisión independiente de la 0.5.1 (13/11/2026): en `<|im_start|\>` el signo de
+  cierre va escapado, el visor quita la barra y se ve el token entero, pero este paso solo
+  admitía escapado el `|` de apertura. Ya pasaba con `bd228c6`; con la entrada de la 0.5.1,
+  llegaba así P08 escrita con `\<` y `\>` si el modelo decodificaba las referencias. El
+  signo de cierre de un token se reconoce ahora también escapado (`CASOS_CIERRE_ESCAPADO` de
+  `tests/_casos_saneado.py`).
+
   Se repite hasta que el texto no cambia, porque quitar algo puede formar otra llamada
   (`<in<|x|>voke>`), como mucho 20 veces. Si no converge, todos los signos de apertura que
   quedan (`<` y los de la lista) pasan a `�` (U+FFFD, el carácter de sustitución). Hasta la
@@ -655,7 +662,7 @@ informes legítimos conservan su estructura con los dos intérpretes (las mismas
 sin contar los enlaces ni las casillas de las listas de tareas): `LEGITIMOS` de
 `tests/_casos_saneado.py` y el informe de ejemplo de la web.
 
-Los casos son las 20 cargas de PP-18 y las 299 entradas de `tests/_casos_saneado.py`, que
+Los casos son las 20 cargas de PP-18 y las 303 entradas de `tests/_casos_saneado.py`, que
 usan también las pruebas:
 
 - 19 de la primera revisión;
@@ -673,6 +680,10 @@ usan también las pruebas:
   referencias (`&lsaquo;`, `&#x27E8;`), el formato de Llama, tokens especiales y cierres
   sueltos. Con el saneado de `bd228c6`, 16 de las 17 fallan con los dos intérpretes (la de
   los signos mezclados ya se retiraba);
+- 4 de la revisión independiente de la 0.5.1: tokens especiales con el signo de cierre
+  escapado (`<|im_start|\>`, `<\|x\|\>`, `‹|x|\›` y P08 escrita con `\<` y `\>`). Con el
+  saneado de `87cea33`, 3 de los 4 fallan con los dos intérpretes; el otro (`‹|x|\›`) solo
+  lo marca el oráculo de texto, porque `\›` no es un escape y el visor deja la barra;
 - 20 variantes con dominios `.com` y `.co.uk`: linkify no enlaza los canarios `.example` en
   modo difuso, así que sin ellas el oráculo no vería un enlace que se formara detrás de un
   escape;
@@ -685,13 +696,14 @@ Resultado del 13/11/2026, con la 0.5.1:
 
 | | marked + DOMPurify | markdown-it |
 |---|---|---|
-| Casos que pintan algo peligroso sin sanear | 262 de 319 | 253 de 319 |
+| Casos que pintan algo peligroso sin sanear | 265 de 323 | 256 de 323 |
 | Después del saneado | 0 | 0 |
 | Secciones del código dentro de un bloque | 1 | 2 (el residual cosmético de las listas) |
 | Enlaces difusos (residual) | — | 0 |
 | Informes legítimos (19) que cambian de estructura | 0 | 0 |
 
-Con la 0.5.0, antes de los 17 casos de los signos de un ángulo, eran 245 y 236 de 302, 0
+Antes de los 4 casos de la revisión de la 0.5.1 eran 262 y 253 de 319. Con la 0.5.0, antes
+de los 17 casos de los signos de un ángulo, eran 245 y 236 de 302, 0
 después del saneado y 18 informes legítimos sin cambios. El 12/11/2026 (con el saneado de
 `5e718bc` y el oráculo de entonces, que no miraba las llamadas ni los invisibles en lo que
 se pinta) eran 185 y 179 de 258, y 0 después.
@@ -736,7 +748,10 @@ Con la 0.5.1, las piezas llevan también los signos de un ángulo que el paso 2 
 y `>` (`‹`, `〈`, `ᐸ`, `‹invoke `, `〈|call|〉`…). Una tanda de 3.000 casos por modo con la
 semilla 51 (13/11/2026): sin sanear pintaban algo 2.755, 2.609 y 2.052 casos (`piezas`,
 `lineas` y `codigo`), y después del saneado ninguno, con ninguno de los dos intérpretes;
-enlaces difusos, 190, 167 y 272.
+enlaces difusos, 190, 167 y 272. Con las piezas de la revisión independiente de la 0.5.1 (el
+signo de cierre de un token escapado, `|\>` y `|\›`, y `&#92;`), la misma tanda (semilla 51,
+3.000 casos por modo, que sin repetir son 3.000, 2.999 y 2.999): sin sanear pintaban algo
+2.765, 2.619 y 2.052, y después del saneado ninguno; enlaces difusos, 177, 166 y 272.
 
 **PP-18 con el modelo real (12/11/2026).** Lo hizo `docs/mcp/pp18/medir.py`. El script
 arrancó la API de este repositorio en local, en el commit `ea4433c` y con el corpus
@@ -1499,7 +1514,7 @@ salía de él, separándolo de lo que aportaba por su cuenta. Lo que señaló:
   - la prueba automática: 20 cargas, en la descripción y en un fragmento (40 casos), con un
     oráculo que pinta con markdown-it;
   - el oráculo doble con el visor de la web y markdown-it (`docs/mcp/pp18/oraculo.py`): de
-    319 casos (0.5.1), 0 pintan nada peligroso con ninguno de los dos, y 19 informes
+    323 casos (0.5.1), 0 pintan nada peligroso con ninguno de los dos, y 19 informes
     legítimos conservan su estructura;
   - los fuzzers: 108.000 casos, 0 fallos, y con la 0.5.1, 9.000 más con los signos de un
     ángulo, 0 fallos;

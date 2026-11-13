@@ -385,11 +385,13 @@ _CIERRE_SUELTO_RE = re.compile(
 _APERTURA_FUNCION_RE = re.compile(_MENOR + r"\s*function\s*=", re.I)
 _CIERRE_FUNCION_RE = re.compile(_MENOR + r"\s*/\s*(function)\s*" + _MAYOR, re.I)
 # Tokens especiales de las plantillas de chat (<|im_start|>, <|call|>, <｜tool▁calls▁begin｜>).
-# El «|» puede ir escapado: el visor quita la barra de «<\|…|>» y se ve el token
-# (fuzzers, 13/11/2026). Dentro no puede haber otro signo de apertura ni de cierre: así un
-# anidamiento se quita de dentro afuera, un nivel por pasada, sin dejar medias marcas.
+# El «|» de apertura puede ir escapado: el visor quita la barra de «<\|…|>» y se ve el token
+# (fuzzers, 13/11/2026). El signo de cierre también, por lo mismo: con «<|im_start|\>» se veía
+# «<|im_start|>» (revisión de la 0.5.1, 13/11/2026). Dentro no puede haber otro signo de
+# apertura ni de cierre: así un anidamiento se quita de dentro afuera, un nivel por pasada,
+# sin dejar medias marcas.
 _TOKEN_ESPECIAL_RE = re.compile(
-    _MENOR + r"\\?[|｜][^" + _APERTURAS + _CIERRES + r"\n]{0,60}?[|｜]" + _MAYOR
+    _MENOR + r"\\?[|｜][^" + _APERTURAS + _CIERRES + r"\n]{0,60}?[|｜]\\?" + _MAYOR
 )
 # Formato harmony de gpt-oss: «to=functions.bash … {…}» hasta el final de la línea.
 _HARMONY_RE = re.compile(

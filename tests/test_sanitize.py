@@ -402,13 +402,13 @@ def test_attack_inputs_render_nothing_with_the_web_viewer_either():
     assert r["fallos"] == {"marked": [], "markdown-it": []}
     for visor in ("marked", "markdown-it"):
         assert {t for _g, t in r["centinela"][visor]} <= _casos_saneado.COSMETICOS
-    # Sin sanear, marked pinta algo en 262 de los 319 casos (0.5.1, 13/11/2026).
+    # Sin sanear, marked pinta algo en 265 de los 323 casos (0.5.1, 13/11/2026).
     assert r["peligrosos_antes"]["marked"] >= 0.7 * len(ATAQUES)
     assert oraculo.comprobar_legitimos(list(LEGITIMOS), web) == []
 
 
 def test_the_oracle_sees_the_attacks_before_sanitizing():
-    """El oráculo no es vacío: sin sanear, encuentra algo en 257 de los 319 casos (0.5.1).
+    """El oráculo no es vacío: sin sanear, encuentra algo en 261 de los 323 casos (0.5.1).
     Los demás los pinta solo marked (URL detrás de una letra, vallas que solo cierra marked),
     son formas legítimas o del corpus que comprobaban las pruebas anteriores, o eran ya
     inocuas y comprueban que resolver las referencias no abre nada."""
@@ -591,6 +591,30 @@ def test_chat_template_tokens_and_harmony_recipients_are_removed():
     salida, stats = _san(texto)
     assert salida == f"assistantcommentary {BLOQUE_RETIRADO}\nsigue"
     assert stats == {"bloques_herramienta": 3}
+
+
+@pytest.mark.parametrize(
+    "texto",
+    _casos_saneado.CASOS_CIERRE_ESCAPADO,
+    ids=["cierre", "todo_escapado", "angulos", "P08_escapada"],
+)
+def test_chat_template_tokens_with_an_escaped_closing_sign_are_removed(texto):
+    """Revisión de la 0.5.1 (13/11/2026): con «<|im_start|\\>» el visor quita la barra y se
+    ve el token entero, y el paso 2 solo admitía escapado el «|» de apertura (ya pasaba con
+    bd228c6). Se admite también escapado el signo de cierre."""
+    salida, stats = sanear(texto)
+    assert stats.bloques_herramienta >= 1
+    for resto in ("|", "im_start", "start", "call"):
+        assert resto not in salida, resto
+    assert _pp18.formas_ejecutables(salida) == []
+
+
+def test_escaped_closing_sign_of_a_token_leaves_the_text_around_it():
+    assert _san(f"<|im_start|{BS}>assistant") == (
+        "assistant",
+        {"bloques_herramienta": 1},
+    )
+    assert _san(f"a <{BS}|x{BS}|{BS}> b") == ("a  b", {"bloques_herramienta": 1})
 
 
 def test_json_tool_calls_are_removed_and_other_json_is_kept():
