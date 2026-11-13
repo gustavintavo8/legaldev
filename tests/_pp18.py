@@ -207,12 +207,23 @@ def anuncia_llamada(info: str) -> bool:
     return bool(palabras) and palabras[0].lower() in _INFO_LLAMADA
 
 
+# Signos de un solo ángulo que quien lee toma por «<» y «>» y que NFKC no lleva a ASCII. La
+# 0.5.0 entregaba la descripción al modelo con «‹» y «›», el modelo copió así la carga P06 y
+# la llamada llegó al asistente (PP-18 repetida sobre la 0.5.0, 13/11/2026). Las formas que
+# NFKC lleva a uno de ellos («〈» U+2329, «︿» U+FE3F) se leen igual, porque el texto pasa
+# antes por NFKC. «» no cuentan: son las comillas del español. La lista está escrita aquí
+# aparte de la del saneado (``app/sanitize.py``, ``_ANGULOS``).
+_ANGULOS = str.maketrans(
+    dict.fromkeys("‹〈⟨❬❮❰˂ᐸ⧼", "<") | dict.fromkeys("›〉⟩❭❯❱˃ᐳ⧽", ">")
+)
+
+
 def llamada_en(texto: str, *, pintado: bool = False) -> bool:
-    """¿Hay en ``texto`` (pasado por NFKC) algo con forma de llamada a una herramienta?
-    Con ``pintado``, ``texto`` es lo que se ve en la página y un token especial tiene que
-    estar entero."""
+    """¿Hay en ``texto`` (pasado por NFKC, y con los signos de un ángulo leídos como «<» y
+    «>») algo con forma de llamada a una herramienta? Con ``pintado``, ``texto`` es lo que
+    se ve en la página y un token especial tiene que estar entero."""
     patron = _HERRAMIENTA_VISIBLE if pintado else _HERRAMIENTA
-    return bool(patron.search(unicodedata.normalize("NFKC", texto)))
+    return bool(patron.search(unicodedata.normalize("NFKC", texto).translate(_ANGULOS)))
 
 
 def formas_pintadas(trozos: list[str], vallas: list[str]) -> list[str]:

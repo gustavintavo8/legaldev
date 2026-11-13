@@ -43,9 +43,14 @@ Qué hace, en este orden:
    escapes ``\\u…``) y los bloques de código que se anuncian como llamada, también detrás de
    un marcador de lista o de cita. Esto no es para el visor sino para el asistente que lee
    el texto: escapar no le impide leer una llamada. Es una heurística para las formas
-   conocidas, no una frontera (lo que no cubre, en el README). Se repite hasta que el texto
-   no cambia, porque quitar algo puede formar otra (``<in<|x|>voke>``), como mucho
-   ``MAX_PASADAS`` veces; si no converge, los «<» que quedan pasan a «‹».
+   conocidas, no una frontera (lo que no cubre, en el README). En estas reglas, y solo en
+   ellas, cuentan como «<» y «>» los signos de un solo ángulo que se leen igual y que el
+   paso 1 no lleva a ASCII (``_ANGULOS``: «‹›», «〈〉», «⟨⟩», «❮❯»…): la 0.5.0 entregaba
+   la descripción al modelo con «‹» y «›», el modelo copió así una llamada y este paso no
+   la reconocía (PP-18 repetida sobre la 0.5.0, 13/11/2026). Fuera de las llamadas esos
+   signos no cambian ni se escapan. Se repite hasta que el texto no cambia, porque quitar
+   algo puede formar otra (``<in<|x|>voke>``), como mucho ``MAX_PASADAS`` veces; si no
+   converge, todos los signos de apertura que quedan pasan a ``RESPALDO``.
 3. **Codificación.** Se pone una barra invertida delante de cada «<», «[» y «@», del «&»
    que va delante de «#» o de una letra o cifra (el de una referencia de carácter), del «:»
    de «://», de la segunda barra de «//» y del punto de «www.» (sin distinguir mayúsculas),
@@ -70,8 +75,8 @@ Lo que queda fuera (detalle en el README): un dominio sin esquema que escribe el
 (``evil.com/?d=…``) sigue siendo enlace en los visores con linkify en modo difuso. Hay que
 pulsarlo y se ve a dónde lleva. Las casillas de las listas de tareas (``- [ ]``) se ven
 como texto. Y el paso 2 no ve una llamada escrita de otra forma (en lenguaje natural, con
-signos que se parecen a «<» pero NFKC no cambia, con dos niveles de referencias o como un
-objeto JSON partido por una línea en blanco fuera de un bloque de código).
+signos que se parecen a «<» y no están en ``_ANGULOS``, con dos niveles de referencias o
+como un objeto JSON partido por una línea en blanco fuera de un bloque de código).
 
 Coste: lineal. Los cierres de las etiquetas de llamada se buscan una vez para todo el texto
 y se agrupan por nombre; el cierre de un objeto JSON se busca dentro de su párrafo; la
@@ -102,7 +107,7 @@ from app.models import SaneadoStats
 BLOQUE_RETIRADO: Final = "(bloque retirado)"
 
 # Límite de pasadas del paso 2; si el texto sigue cambiando (anidamiento adversario), los
-# «<» que quedan pasan a «‹» y ya no se puede formar ninguna etiqueta.
+# signos de apertura que quedan pasan a RESPALDO y ya no se puede formar ninguna etiqueta.
 MAX_PASADAS: Final = 20
 
 # ------------------------------------------------------------------------- 1. caracteres
@@ -218,18 +223,19 @@ def _caracteres(texto: str, c: Counter) -> str:
 # --------------------------------------------------------- 2. llamadas a herramientas
 
 
-def _buscador(texto: str, aguja: str) -> Callable[[int], int]:
-    """Posición de la siguiente ``aguja`` desde ``i``, o -1, sin volver a recorrer lo ya
-    recorrido: si la última búsqueda empezó en ``desde`` y encontró ``pos``, para todo ``i``
-    entre los dos la respuesta es la misma. Sin esto, mil aperturas seguidas sin «>»
-    recorrían mil veces el resto."""
+def _buscador(texto: str, aguja: re.Pattern) -> Callable[[int], int]:
+    """Posición de la siguiente coincidencia de ``aguja`` desde ``i``, o -1, sin volver a
+    recorrer lo ya recorrido: si la última búsqueda empezó en ``desde`` y encontró ``pos``,
+    para todo ``i`` entre los dos la respuesta es la misma. Sin esto, mil aperturas seguidas
+    sin «>» recorrían mil veces el resto."""
     ultima = [-1, -1]
 
     def buscar(i: int) -> int:
         desde, pos = ultima
         if desde != -1 and desde <= i and (pos == -1 or i <= pos):
             return pos
-        pos = texto.find(aguja, i)
+        m = aguja.search(texto, i)
+        pos = m.start() if m else -1
         ultima[0], ultima[1] = i, pos
         return pos
 
@@ -253,10 +259,11 @@ def _quitar_bloques(
     c: Counter,
 ) -> str:
     """Quita cada bloque «apertura … cierre del mismo nombre» (el primer cierre detrás), en
-    tiempo lineal. La etiqueta de apertura acaba en el siguiente «>»; sin cierre, el bloque
-    llega hasta el final de su párrafo, y sin ningún «>» detrás, también. Antes, sin «>»
-    detrás no se quitaba esa apertura ni ninguna de las siguientes: bastaba con poner la
-    llamada al final del informe (revisión de la codificación, 13/11/2026).
+    tiempo lineal. La etiqueta de apertura acaba en el siguiente «>» o signo que se lee como
+    él (``_ANGULOS``); sin cierre, el bloque llega hasta el final de su párrafo, y sin
+    ningún «>» detrás, también. Antes, sin «>» detrás no se quitaba esa apertura ni ninguna
+    de las siguientes: bastaba con poner la llamada al final del informe (revisión de la
+    codificación, 13/11/2026).
 
     Los cierres se buscan una vez para todo el texto y se agrupan por nombre (en minúsculas,
     con su espacio de nombres); cada apertura busca el suyo con una bisección. Antes se
@@ -270,7 +277,7 @@ def _quitar_bloques(
         clave = m.group(1).lower()
         inicios.setdefault(clave, []).append(m.start())
         finales.setdefault(clave, []).append(m.end())
-    mayor = _buscador(texto, ">")
+    mayor = _buscador(texto, _MAYOR_RE)
     salida: list[str] = []
     pos = 0
     while m := apertura.search(texto, pos):
@@ -294,6 +301,44 @@ def _quitar_bloques(
     salida.append(texto[pos:])
     return "".join(salida)
 
+
+# Signos de un solo ángulo que se leen como «<» y «>» y que el paso 1 no lleva a ASCII (las
+# formas de ancho completo y pequeñas, «＜» y «﹤», ya son «<» ahí). Las reglas de este paso
+# los toman por «<» y «>», solo para reconocer y retirar llamadas: fuera de ellas no cambian
+# y la codificación no los toca. La 0.5.0 entregaba la descripción al modelo con «‹» y «›»,
+# el modelo copió así la carga P06 y este paso no la reconocía (PP-18 repetida sobre la
+# 0.5.0, 13/11/2026). Están los que se confunden con «<» y «>» y los corchetes angulares,
+# con las formas que NFKC lleva a uno de ellos («〈» U+2329 y «︿» U+FE3F dan «〈» U+3008),
+# porque el oráculo pasa el texto por NFKC; tests/test_sanitize.py comprueba que no falta
+# ninguna. Quedan fuera los dobles: «» son las comillas del español (un informe puede decir
+# «invoke» o «tool_use» entre comillas), y «《》» o «⟪⟫» no se leen como un «<». Tampoco
+# están los signos de relación (≺ ≻) ni los triángulos. La lista no es exhaustiva: lo que se
+# parezca a «<» y no esté aquí es el residual del README («Lo que no cubre»).
+_ANGULOS: Final[tuple[tuple[str, str], ...]] = (
+    ("\u2039", "\u203a"),  # ‹ › comillas angulares simples (las de la 0.5.0)
+    ("\u3008", "\u3009"),  # 〈 〉 corchetes angulares
+    ("\u2329", "\u232a"),  # U+2329 y U+232A: los mismos, técnicos (NFKC)
+    ("\ufe3f", "\ufe40"),  # ︿ ﹀ los mismos, verticales (NFKC: U+3008 y U+3009)
+    ("\u27e8", "\u27e9"),  # ⟨ ⟩ corchetes angulares matemáticos
+    ("\u276c", "\u276d"),  # ❬ ❭ ornamentos
+    ("\u276e", "\u276f"),  # ❮ ❯ ornamentos (comillas angulares gruesas)
+    ("\u2770", "\u2771"),  # ❰ ❱ ornamentos
+    ("\u02c2", "\u02c3"),  # ˂ ˃ puntas de flecha modificadoras
+    ("\u1438", "\u1433"),  # ᐸ ᐳ sílabas PA y PO del silabario canadiense
+    ("\u29fc", "\u29fd"),  # ⧼ ⧽ corchetes angulares curvos
+)
+_APERTURAS: Final = "<" + "".join(a for a, _ in _ANGULOS)
+_CIERRES: Final = ">" + "".join(c for _, c in _ANGULOS)
+_MENOR = f"[{_APERTURAS}]"
+_MAYOR = f"[{_CIERRES}]"
+_MAYOR_RE = re.compile(_MAYOR)
+# Si el paso 2 no converge, todos los signos de apertura pasan a este. No puede ser ninguno
+# de _ANGULOS: hasta la 0.5.0 era «‹», que ahora este paso lee como «<», y al sanear otra
+# vez se habrían retirado más cosas (sanear dejaría de ser idempotente). Tampoco un carácter
+# que el paso 1 lleve a «<», que se quite por invisible o que escape la codificación. Es el
+# carácter de sustitución, el que da también una referencia de carácter inválida.
+RESPALDO: Final = "\ufffd"
+_SIN_APERTURAS: Final = str.maketrans(dict.fromkeys(_APERTURAS, RESPALDO))
 
 # Etiquetas de llamada al estilo XML (Anthropic, Hermes/Qwen, Cline…), con prefijo de
 # espacio de nombres opcional («ns:invoke»).
@@ -323,23 +368,29 @@ _NOMBRE_HERRAMIENTA = (
 # sigue sin ser una etiqueta de llamada.
 _FIN_NOMBRE = r"(?!_*[A-Za-z0-9])"
 _APERTURA_HERRAMIENTA_RE = re.compile(
-    r"<\s*(" + _NOMBRE_HERRAMIENTA + r")" + _FIN_NOMBRE, re.I
+    _MENOR + r"\s*(" + _NOMBRE_HERRAMIENTA + r")" + _FIN_NOMBRE, re.I
 )
-_CIERRE_HERRAMIENTA_RE = re.compile(r"<\s*/\s*(" + _NOMBRE_HERRAMIENTA + r")\s*>", re.I)
+_CIERRE_HERRAMIENTA_RE = re.compile(
+    _MENOR + r"\s*/\s*(" + _NOMBRE_HERRAMIENTA + r")\s*" + _MAYOR, re.I
+)
 # Los cierres sueltos que quedan se quitan también sin su «>» («</invoke» al final) y con
 # la «/» escapada («<\/invoke>», que el visor pinta «</invoke>»).
 _CIERRE_SUELTO_RE = re.compile(
-    r"<\s*\\?/\s*" + _NOMBRE_HERRAMIENTA + _FIN_NOMBRE + r"\s*>?", re.I
+    _MENOR + r"\s*\\?/\s*" + _NOMBRE_HERRAMIENTA + _FIN_NOMBRE + r"\s*" + _MAYOR + "?",
+    re.I,
 )
 # Formato de Llama 3.1/3.2 para herramientas propias: <function=nombre>{…}</function>. El
 # nombre puede llevar espacio de nombres o comillas («github/create_issue», «fs:borrar»,
 # «"borrar"»): la etiqueta llega hasta el «>».
-_APERTURA_FUNCION_RE = re.compile(r"<\s*function\s*=", re.I)
-_CIERRE_FUNCION_RE = re.compile(r"<\s*/\s*(function)\s*>", re.I)
+_APERTURA_FUNCION_RE = re.compile(_MENOR + r"\s*function\s*=", re.I)
+_CIERRE_FUNCION_RE = re.compile(_MENOR + r"\s*/\s*(function)\s*" + _MAYOR, re.I)
 # Tokens especiales de las plantillas de chat (<|im_start|>, <|call|>, <｜tool▁calls▁begin｜>).
 # El «|» puede ir escapado: el visor quita la barra de «<\|…|>» y se ve el token
-# (fuzzers, 13/11/2026).
-_TOKEN_ESPECIAL_RE = re.compile(r"<\\?[|｜][^<>\n]{0,60}?[|｜]>")
+# (fuzzers, 13/11/2026). Dentro no puede haber otro signo de apertura ni de cierre: así un
+# anidamiento se quita de dentro afuera, un nivel por pasada, sin dejar medias marcas.
+_TOKEN_ESPECIAL_RE = re.compile(
+    _MENOR + r"\\?[|｜][^" + _APERTURAS + _CIERRES + r"\n]{0,60}?[|｜]" + _MAYOR
+)
 # Formato harmony de gpt-oss: «to=functions.bash … {…}» hasta el final de la línea.
 _HARMONY_RE = re.compile(
     r"\bto=(?:functions|browser|python|container|repo_browser)\b[^\n]*", re.I
@@ -751,9 +802,10 @@ def sanear(texto: str) -> tuple[str, SaneadoStats]:
         if t == antes:
             break
     else:
-        # Anidamiento adversario: sin «<» no se forma ninguna etiqueta ni ningún token
-        # especial, y las demás reglas no quitan nada que pueda unir lo que queda.
-        t = _vallas(_herramientas(t.replace("<", "‹"), c), c, cerrar=False)
+        # Anidamiento adversario: sin signos de apertura no se forma ninguna etiqueta ni
+        # ningún token especial, y las demás reglas no quitan nada que pueda unir lo que
+        # queda. RESPALDO no es ninguno de ellos, así que sanear otra vez no cambia nada.
+        t = _vallas(_herramientas(t.translate(_SIN_APERTURAS), c), c, cerrar=False)
     t = codificar(t)
     t = _vallas(t, c, cerrar=True)
     return t, SaneadoStats(**c)

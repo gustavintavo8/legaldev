@@ -195,6 +195,9 @@ casos, y `tests/test_api.py`).
   al asistente. Con `&lt;` y `&gt;`, si el modelo copia lo que ve, el paso 1 del saneado
   resuelve las referencias una vez y el paso de llamadas retira el bloque; si las decodifica,
   también (`test_what_the_model_sees_of_the_description_is_retired_if_copied_or_decoded`).
+  Además, desde la 0.5.1 ese paso lee también como `<` y `>` esos signos y otros parecidos,
+  así que una de las dos defensas ya no depende de la otra (ver «Bloques que imitan llamadas
+  a herramientas» en «Salida segura»).
 - **El `&` no se escapa.** La frontera solo necesita que no haya «<» ni «>», y escapar el `&`
   subiría un nivel lo que ya viniera escrito con referencias: `&lt;invoke&gt;` llegaría como
   `&amp;lt;invoke&amp;gt;` y, copiado tal cual, el saneado, que resuelve las referencias una
@@ -403,8 +406,37 @@ Lo que no trata de cómo se pinta el texto sigue como estaba:
   - `<\|…|>` y `<\/invoke>`: el visor quita la barra del escape y se ven un token especial y
     un cierre. El `|` de un token y la `/` de un cierre se reconocen también escapados.
 
+  Y con la regresión de la 0.5.0 que encontró PP-18 con el modelo real (0.5.1; ver «PP-18
+  repetida sobre la 0.5.0»): la descripción llegaba al modelo con «‹» y «›», el modelo copió
+  así la carga P06 (`‹function_calls›‹invoke name="Bash"›…`) y este paso no la reconocía.
+  Ahora, en estas reglas y solo en ellas, cuentan como `<` y `>` los signos de un solo
+  ángulo que se leen igual y que el paso 1 no lleva a ASCII (`_ANGULOS` de
+  `app/sanitize.py`):
+  - `‹ ›` (U+2039 y U+203A), las comillas angulares simples que usaba la 0.5.0;
+  - `〈 〉` (U+3008 y U+3009) y las dos formas que NFKC lleva a ellos, U+2329 y U+232A
+    (técnicas) y `︿ ﹀` (U+FE3F y U+FE40, verticales): el oráculo pasa el texto por NFKC, y
+    una prueba recorre todo Unicode para comprobar que no falta ninguna forma así;
+  - `⟨ ⟩` (U+27E8 y U+27E9), los corchetes angulares matemáticos;
+  - `❬ ❭`, `❮ ❯` y `❰ ❱` (U+276C a U+2771), los ornamentos angulares;
+  - `˂ ˃` (U+02C2 y U+02C3), las puntas de flecha modificadoras;
+  - `ᐸ ᐳ` (U+1438 y U+1433), las sílabas PA y PO del silabario canadiense, la confusión con
+    `<` y `>` más conocida;
+  - `⧼ ⧽` (U+29FC y U+29FD), los corchetes angulares curvos.
+
+  Quedan fuera los dobles: `« »` son las comillas del español, y un informe puede escribir
+  «invoke» o «tool_use» entre comillas (hay un caso así en `LEGITIMOS`); `《 》` y `⟪ ⟫` no
+  se leen como un `<`. Tampoco están los signos de relación (`≺ ≻`) ni los triángulos. Fuera
+  de las llamadas, todos esos signos no cambian ni se escapan: no son para la codificación.
+  La apertura de una etiqueta acaba en el siguiente `>` o signo de cierre de la lista, y
+  dentro de un token especial no puede haber otro signo de apertura ni de cierre, para que
+  un anidamiento se quite de dentro afuera.
+
   Se repite hasta que el texto no cambia, porque quitar algo puede formar otra llamada
-  (`<in<|x|>voke>`), como mucho 20 veces. Si no converge, los `<` que quedan pasan a `‹`.
+  (`<in<|x|>voke>`), como mucho 20 veces. Si no converge, todos los signos de apertura que
+  quedan (`<` y los de la lista) pasan a `�` (U+FFFD, el carácter de sustitución). Hasta la
+  0.5.0 pasaban a `‹`, pero ahora este paso lo lee como `<`: al sanear otra vez se habría
+  retirado más y `sanear` habría dejado de ser idempotente. Una prueba fuerza el respaldo
+  con 25 niveles anidados y comprueba que sanear otra vez no cambia nada.
 - **Bloques de código sin cerrar**, que se cierran: si no, se tragarían las secciones que
   añade el código y, por MCP, el JSON del resultado. Un bloque acaba donde lo cierra marked o
   CommonMark, y si la línea solo cierra para uno de los dos (```` ```~ ````, o ```` ``` ````
@@ -481,6 +513,14 @@ Decisiones:
   pruebas comparan 4.000 con 32.000 caracteres y miden el bucle, también con el peor caso
   conocido.
 
+  Con los signos de un ángulo de la 0.5.1, medido el 13/11/2026 en el mismo proceso y la
+  misma máquina contra el saneado de `bd228c6` (el menor de cinco tiempos), el peor caso
+  conocido pasa de 0,51 s a 0,53 s con 32.000 caracteres: las expresiones del paso 2 empiezan
+  ahora por una clase de caracteres y el final de una apertura se busca con una expresión,
+  no con `str.find`. El mismo anidamiento escrito con `‹|…|›`, que antes no se quitaba y
+  costaba 0,05 s, obliga ahora también a las 21 pasadas y tarda lo mismo, unos 0,55 s.
+  `fuzz_tiempo.py` lleva esas entradas, y las pruebas de coste, tres más con esos signos.
+
   | Entrada | 62e858f (antes) | Ahora |
   |---|---|---|
   | `<nK:invoke>` con 20.000 nombres distintos, 200.000 caracteres (hallazgo 5) | 2,47 s | 0,18 s |
@@ -502,12 +542,14 @@ Decisiones:
   - No se impide que el modelo imite las secciones que añade el código, como una
     «Verificación de citas» falsa.
   - **Llamadas escritas de otra forma.** El paso 2 ve las formas conocidas, después de
-    llevar el texto a una sola forma. No ve, y no puede ver sin entender el texto, una
-    llamada escrita con signos que se parecen a `<` pero que NFKC no cambia (`‹invoke›`,
-    `〈invoke〉`), con dos niveles de referencias (`&amp;lt;invoke&amp;gt;`, que la web pinta
-    como `&lt;invoke&gt;`), partida por el marcado (`<**invoke**>`) o por un escape dentro
-    del nombre (`<function\_calls>`, que el visor pinta sin la barra), en base64 o letra a
-    letra. Tampoco un objeto JSON de llamada partido por una línea en blanco fuera de un
+    llevar el texto a una sola forma, y desde la 0.5.1 también con los signos de un ángulo
+    de la lista de arriba (`‹invoke›`, `〈invoke〉`). No ve, y no puede ver sin entender el
+    texto, una llamada escrita con otros signos que se parezcan a `<` y no estén en la lista
+    (`«invoke»`, `≺invoke≻`), con dos niveles de referencias (`&amp;lt;invoke&amp;gt;`, que
+    la web pinta como `&lt;invoke&gt;`; por eso la entrada no escapa el `&`, ver «Entrada:
+    la descripción y su delimitador»), partida por el marcado (`<**invoke**>`) o por un
+    escape dentro del nombre (`<function\_calls>`, que el visor pinta sin la barra), en
+    base64 o letra a letra. Tampoco un objeto JSON de llamada partido por una línea en blanco fuera de un
     bloque de código: el cierre de un objeto se busca dentro de su párrafo, porque buscarlo
     en todo el texto hacía cuadrático el coste (dentro de un bloque de código se busca hasta
     el final del bloque). Ya estaba así en `62e858f` y la reescritura del README lo había
@@ -572,8 +614,9 @@ el texto ni en `structuredContent`. Las cargas de llamadas y de caracteres dejan
 (`tests/_pp18.py`). Ya no aproxima con expresiones regulares lo que pinta un visor (el de
 antes se equivocaba como el saneado y compartía sus huecos): pinta con markdown-it-py en modo
 CommonMark, con tablas, tachado y linkify. Busca imágenes, HTML en bruto y enlaces que llevan
-a un host no oficial. En el texto busca llamadas a herramientas, caracteres invisibles o de
-control y bloques sin cerrar. Otra prueba confirma que ese oráculo detecta cada carga sin
+a un host no oficial. En el texto busca llamadas a herramientas (desde la 0.5.1, también con
+los signos de un ángulo leídos como `<` y `>`, con su propia lista), caracteres invisibles o
+de control y bloques sin cerrar. Otra prueba confirma que ese oráculo detecta cada carga sin
 sanear. Las cargas nuevas no se miden con el modelo real (`medir: false`): las 12 llamadas de
 la medición siguen siendo P01 a P12. Además, la cita limpia se sigue verificando y el
 cuestionario devuelto no repite la descripción.
@@ -598,7 +641,7 @@ informes legítimos conservan su estructura con los dos intérpretes (las mismas
 sin contar los enlaces ni las casillas de las listas de tareas): `LEGITIMOS` de
 `tests/_casos_saneado.py` y el informe de ejemplo de la web.
 
-Los casos son las 20 cargas de PP-18 y las 282 entradas de `tests/_casos_saneado.py`, que
+Los casos son las 20 cargas de PP-18 y las 299 entradas de `tests/_casos_saneado.py`, que
 usan también las pruebas:
 
 - 19 de la primera revisión;
@@ -611,6 +654,11 @@ usan también las pruebas:
   escapada, de la misma clase; arriba, «Bloques que imitan llamadas») y 5 que ya eran
   inocuos y comprueban que resolver las referencias no abre nada. Con el saneado anterior
   (`5e718bc`), 39 de las 44 fallan con los dos intérpretes; las otras 5 son las inocuas;
+- 17 de PP-18 repetida sobre la 0.5.0 (0.5.1): P06 con cada uno de los 11 pares de signos de
+  un ángulo, una llamada con `‹` y sin `function_calls`, signos mezclados con `<` y `>`,
+  referencias (`&lsaquo;`, `&#x27E8;`), el formato de Llama, tokens especiales y cierres
+  sueltos. Con el saneado de `bd228c6`, 16 de las 17 fallan con los dos intérpretes (la de
+  los signos mezclados ya se retiraba);
 - 20 variantes con dominios `.com` y `.co.uk`: linkify no enlaza los canarios `.example` en
   modo difuso, así que sin ellas el oráculo no vería un enlace que se formara detrás de un
   escape;
@@ -619,18 +667,20 @@ usan también las pruebas:
   mecánica: se ejecutaron esas pruebas con el saneado de entonces, se apuntó cada entrada y
   no falta ninguna (las de coste están en las pruebas de tiempo).
 
-Resultado del 13/11/2026:
+Resultado del 13/11/2026, con la 0.5.1:
 
 | | marked + DOMPurify | markdown-it |
 |---|---|---|
-| Casos que pintan algo peligroso sin sanear | 245 de 302 | 236 de 302 |
+| Casos que pintan algo peligroso sin sanear | 262 de 319 | 253 de 319 |
 | Después del saneado | 0 | 0 |
 | Secciones del código dentro de un bloque | 1 | 2 (el residual cosmético de las listas) |
 | Enlaces difusos (residual) | — | 0 |
-| Informes legítimos (18) que cambian de estructura | 0 | 0 |
+| Informes legítimos (19) que cambian de estructura | 0 | 0 |
 
-El 12/11/2026 (con el saneado de `5e718bc` y el oráculo de entonces, que no miraba las
-llamadas ni los invisibles en lo que se pinta) eran 185 y 179 de 258, y 0 después.
+Con la 0.5.0, antes de los 17 casos de los signos de un ángulo, eran 245 y 236 de 302, 0
+después del saneado y 18 informes legítimos sin cambios. El 12/11/2026 (con el saneado de
+`5e718bc` y el oráculo de entonces, que no miraba las llamadas ni los invisibles en lo que
+se pinta) eran 185 y 179 de 258, y 0 después.
 
 Con el saneado anterior, la misma comprobación con solo marked daba 0 en los 79 casos de las
 dos primeras revisiones, pero la comprobación posterior encontró 7 huecos más.
@@ -667,6 +717,12 @@ difusos (de 244 a 536 por tanda) salen todos de la pieza de dominio sin esquema:
 dominio único en esa pieza, todos llevan a él. Después del último ajuste (los marcadores
 en snake_case, que solo deja de retirar), una tanda más de 6.000 casos por modo (semilla
 41): 0 fallos.
+
+Con la 0.5.1, las piezas llevan también los signos de un ángulo que el paso 2 lee como `<`
+y `>` (`‹`, `〈`, `ᐸ`, `‹invoke `, `〈|call|〉`…). Una tanda de 3.000 casos por modo con la
+semilla 51 (13/11/2026): sin sanear pintaban algo 2.755, 2.609 y 2.052 casos (`piezas`,
+`lineas` y `codigo`), y después del saneado ninguno, con ninguno de los dos intérpretes;
+enlaces difusos, 190, 167 y 272.
 
 **PP-18 con el modelo real (12/11/2026).** Lo hizo `docs/mcp/pp18/medir.py`. El script
 arrancó la API de este repositorio en local, en el commit `ea4433c` y con el corpus
@@ -1358,9 +1414,10 @@ salía de él, separándolo de lo que aportaba por su cuenta. Lo que señaló:
   - la prueba automática: 20 cargas, en la descripción y en un fragmento (40 casos), con un
     oráculo que pinta con markdown-it;
   - el oráculo doble con el visor de la web y markdown-it (`docs/mcp/pp18/oraculo.py`): de
-    302 casos, 0 pintan nada peligroso con ninguno de los dos, y 18 informes legítimos
-    conservan su estructura;
-  - los fuzzers: 108.000 casos, 0 fallos;
+    319 casos (0.5.1), 0 pintan nada peligroso con ninguno de los dos, y 19 informes
+    legítimos conservan su estructura;
+  - los fuzzers: 108.000 casos, 0 fallos, y con la 0.5.1, 9.000 más con los signos de un
+    ángulo, 0 fallos;
   - la medición con el modelo real, repetida con la codificación el 13/11/2026 (ver «PP-18
     repetida con la codificación»).
 - tab:det-mcp-herramientas y 31-manual-usuario: campos nuevos `saneado` y `generado_por_ia`

@@ -10,7 +10,8 @@ que sigue fallando. Son los fuzzers con los que la segunda revisión y su compro
 (12/11/2026) buscaron huecos en el saneado anterior, con piezas nuevas con dominios que
 linkify enlaza en modo difuso (``.com``, ``.co.uk``) y, desde la revisión de la
 codificación (13/11/2026), con referencias de carácter, ancho completo, etiquetas de
-llamada y vallas que se anuncian como llamada.
+llamada y vallas que se anuncian como llamada, y desde la 0.5.1, con los signos de un ángulo
+que el saneado lee como «<» y «>» en las llamadas («‹», «〈», «ᐸ»…).
 
 Tres modos:
 
@@ -67,6 +68,8 @@ PIEZAS = [
     "&lt;", "&gt;", "&#60;", "&#x3C;", "&#91;", "&#64;", "&#58;", "&#x202E;",
     "&ZeroWidthSpace;", "&amp;lt;", "＜", "＞", "［", "＠", "invoke", "<invoke ",
     "</invoke", "tool_code", "```tool_code\n", "- ```tool_call\n", "    ```tools\n",
+    # PP-18 repetida sobre la 0.5.0: signos de un ángulo que se leen como «<» y «>».
+    "‹", "›", "〈", "〉", "ᐸ", "ᐳ", "❮", "‹invoke ", "‹/invoke", "⟨|", "|⟩", "&lsaquo;",
 ]  # fmt: skip
 PREFIJOS = [
     "",
@@ -91,13 +94,13 @@ CUERPOS = [
     "[BOE](https://www.boe.es/)", "![i](//p.exfil.example/i.png)", "[t](//p.exfil.com/t)",
     "*", "<https://p.exfil.example/>", "datos@p.exfil.com", "www.p.exfil.com/x", *URLS,
     "```tool_code", "~~~tool_call", "```function_call x", "&lt;invoke&gt;", "&#x202E;x",
-    "＜invoke＞", "<invoke name=x",
+    "＜invoke＞", "<invoke name=x", "‹invoke name=x›", "〈|call|〉", "ᐸ/invoke",
 ]  # fmt: skip
 CODIGO = [
     "`", "`", "`", "``", "```", "\\", "\\`", " ", " ", "|", "*", "_", "~", "~~", "[",
     "]", "(", ")", "<", ">", "<https://www.boe.es/`>", "[a](https://www.boe.es/)",
     "[a](https://www.boe.es/ '`')", "[x`]", "\n", "x", "'", '"', "!", "&", ";", ":", "@",
-    "#", "&lt;", "&#96;", "&#x60;", "＜", *URLS,
+    "#", "&lt;", "&#96;", "&#x60;", "＜", "‹", "›", *URLS,
 ]  # fmt: skip
 
 

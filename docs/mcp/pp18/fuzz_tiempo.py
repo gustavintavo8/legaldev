@@ -7,7 +7,8 @@ suelta el GIL: si una tarda, el bucle de eventos (la API, ``/mcp``, la salud) es
 repeticiones de las unidades de las revisiones del 12/11/2026 (con las de los hallazgos 5 y
 7 de la comprobación: miles de nombres distintos de etiqueta de llamada y «[a]: //x» en una
 línea) y de la revisión de la codificación (13/11/2026: referencias de carácter, ancho
-completo, aperturas sin «>» y vallas detrás de marcadores), mezclas aleatorias de esas
+completo, aperturas sin «>» y vallas detrás de marcadores) y de la 0.5.1 (los signos de un
+ángulo que el saneado lee como «<» y «>», «‹invoke›», «ᐸ|»…), mezclas aleatorias de esas
 unidades, texto aleatorio y, sobre todo, las colas que cuestan en cada pasada (líneas,
 objetos JSON con una clave de llamada, un bloque sin cerrar) detrás de un anidamiento que
 obliga a las 21 pasadas. Esas son las peores: el peor tiempo que imprime es el del peor caso
@@ -43,10 +44,13 @@ UNIDADES = [
     "[a]: //x ", '{"', '{"\n\n', "- ```\n  ", "\r\n", "­", "​",
     "&#x1F", "&lt;", "&amp;", "&#", "＜ｉｎｖｏｋｅ＞", "＆lt;", "<invoke x\n\n",
     "- ```tool_code\n", "- ```tool_code\n  ```\n", "> - 1. ", '{"Name": "x", "',
+    "‹invoke›", "〈/invoke〉", "ᐸinvoke ", "‹|", "|›", "⟨function=", "❮|x",
 ]  # fmt: skip
 # Tokens especiales anidados: cada pasada quita un nivel, así que obliga a hacer las 20 y la
 # de respaldo (el VEINTE_PASADAS de tests/test_sanitize.py).
 NIDO = "<|" * 25 + "x" + "|>" * 25
+# El mismo con signos de un ángulo, que el paso 2 lee como «<» y «>» desde la 0.5.1.
+NIDO_ANGULOS = "‹|" * 25 + "x" + "|›" * 25
 CLAVE = '"arguments": 1'
 F = "```"
 
@@ -68,6 +72,8 @@ def _pasadas(n: int) -> list[tuple[str, str]]:
         ("pasadas + valla + JSON + clave", NIDO + f"\n{F}\n" + _repetida('{"a":1}\n\n', r - 19) + CLAVE),
         ("pasadas + valla + «{\"» + clave", NIDO + f"\n{F}\n" + _repetida('{"\n\n', r - 19) + CLAVE),
         ("pasadas + vallas en lista", NIDO + _repetida(f"\n- {F}x\n  y\n  {F}", r)),
+        ("pasadas ‹› + párrafos «{\"» + clave", NIDO_ANGULOS + _repetida('{"\n\n', r - 14) + CLAVE),
+        ("pasadas ‹› + valla + «{\"» + clave", NIDO_ANGULOS + f"\n{F}\n" + _repetida('{"\n\n', r - 19) + CLAVE),
     ]  # fmt: skip
 
 
