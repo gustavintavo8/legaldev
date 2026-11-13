@@ -1,11 +1,13 @@
 // Pinta Markdown con el visor de la web (marked + DOMPurify, src/lib/markdown.ts de
 // legaldev-web) y devuelve, por cada texto, el HTML, el src de las imágenes, el href de los
-// enlaces (con el host que resuelve el navegador) y los demás elementos que pueden cargar algo
-// solos (con style, background, src, srcset o poster). Lo usa oraculo.py. Uso:
+// enlaces (con el host que resuelve el navegador), los demás elementos que pueden cargar algo
+// solos (con style, background, src, srcset o poster), los nodos de texto y la clase de los
+// bloques de código. Lo usa oraculo.py. Uso:
 // node visor_web.mjs <ruta de legaldev-web>  (JSON por stdin y stdout: una lista de cadenas;
-// una lista de {html, imgs, links, cargas}). Solo lee: resuelve los paquetes desde el
-// package.json de legaldev-web y no escribe nada. Usa una sola ventana de JSDOM para todos los
-// textos, así que miles de casos de los fuzzers se pintan en unos segundos.
+// una lista de {html, imgs, links, cargas, fuera_de_codigo, textos, lenguajes}). Solo lee:
+// resuelve los paquetes desde el package.json de legaldev-web y no escribe nada. Usa una sola
+// ventana de JSDOM para todos los textos, así que miles de casos de los fuzzers se pintan en
+// unos segundos.
 import { createRequire } from 'node:module';
 import path from 'node:path';
 
@@ -49,6 +51,17 @@ process.stdin.on('end', () => {
         copia.querySelectorAll('pre, code').forEach((e) => e.remove());
         return copia.textContent;
       })(),
+      // Los nodos de texto que se ven, con las referencias de carácter ya resueltas
+      // («&lt;invoke» se ve como «<invoke», «&#x202E;» da el carácter real), y la clase de
+      // los bloques de código («language-tool_code»): para buscar llamadas e invisibles en
+      // lo que se pinta.
+      textos: (() => {
+        const nodos = [];
+        const paseo = documento.createTreeWalker(raiz, 4); // NodeFilter.SHOW_TEXT
+        while (paseo.nextNode()) nodos.push(paseo.currentNode.nodeValue);
+        return nodos;
+      })(),
+      lenguajes: [...raiz.querySelectorAll('code[class]')].map((e) => e.getAttribute('class')),
     };
   });
   process.stdout.write(JSON.stringify(salida));

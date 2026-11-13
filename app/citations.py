@@ -43,9 +43,9 @@ _ELLIPSIS_RE = re.compile(r"\[\s*(?:\.\.\.|…)\s*\]|\.\.\.|…")
 # U+2010; U+2012, U+2212 y U+2043): sin ellos, una cita literal partida por un guion de
 # corte de línea no se verificaba (prueba con Claude Code, 06/11/2026).
 # Y la barra invertida: las citas se verifican sobre el texto saneado (RNF-20), que lleva
-# una delante de «<», «[», «@», «://», «//» y «www.» (app/sanitize.py, paso 3). Sin
-# quitarla, una cita literal con «[...]» o con una URL dejaba de verificarse. La web repite
-# estas reglas en legaldev-web/src/lib/citations.ts.
+# una delante de «<», «[», «@», el «&» de una referencia, «://», «//» y «www.»
+# (app/sanitize.py, paso 3). Sin quitarla, una cita literal con «[...]» o con una URL
+# dejaba de verificarse. La web repite estas reglas en legaldev-web/src/lib/citations.ts.
 _STRIP_RE = re.compile(r"[\s\"“”«»'‘’\-‐‑‒−⁃–—­|​‌‍⁠﻿\\]+")
 
 

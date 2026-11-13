@@ -4,8 +4,9 @@ Comprobación de RNF-20: si el texto saneado de cada fragmento (app/sanitize.py)
 original comparando con ``citations.normalize``, como la verificación de citas, una cita
 literal de un fragmento real no puede dejar de verificarse por culpa del saneado. Desde la
 codificación de la salida (12/11/2026) el saneado cambia muchos fragmentos (pone una barra
-invertida delante de «<», «[», «@», «://», «//» y «www.»), y ``normalize`` quita esas
-barras. Cuenta los cambiados por el saneado, cuántos lo hacen solo por la codificación y los
+invertida delante de «<», «[», «@», el «&» de una referencia, «://», «//» y «www.»), y
+``normalize`` quita esas barras. Desde el 13/11/2026 también resuelve las referencias de
+carácter y pasa a ASCII las formas de ancho completo; el índice no tiene ninguna de las dos. Cuenta los cambiados por el saneado, cuántos lo hacen solo por la codificación y los
 que quedan distintos tras ``normalize``, que tienen que ser 0.
 
 Solo lee: abre ``chroma.sqlite3`` en modo de solo lectura y no carga la configuración (ni el

@@ -2,11 +2,15 @@
 
 Genera textos aleatorios con piezas de Markdown, los sanea y los pinta con marked +
 DOMPurify (el visor de la web) y con markdown-it-py (CommonMark, tablas, tachado y linkify).
-Cuenta los que pintan una imagen, un elemento que carga algo o un enlace no oficial, y
-aparte los enlaces difusos de linkify (el residual documentado). Con ``--reducir``, reduce
-cada fallo al texto más corto que sigue fallando. Son los fuzzers con los que la segunda
-revisión y su comprobación (12/11/2026) buscaron huecos en el saneado anterior, con piezas
-nuevas con dominios que linkify enlaza en modo difuso (``.com``, ``.co.uk``).
+Cuenta los que pintan una imagen, un elemento que carga algo o un enlace no oficial, o en
+los que se ve una llamada, un bloque anunciado como llamada o un invisible
+(``oraculo.fallos_web`` y ``oraculo.fallos_mdit``), y aparte los enlaces difusos de
+linkify (el residual documentado). Con ``--reducir``, reduce cada fallo al texto más corto
+que sigue fallando. Son los fuzzers con los que la segunda revisión y su comprobación
+(12/11/2026) buscaron huecos en el saneado anterior, con piezas nuevas con dominios que
+linkify enlaza en modo difuso (``.com``, ``.co.uk``) y, desde la revisión de la
+codificación (13/11/2026), con referencias de carácter, ancho completo, etiquetas de
+llamada y vallas que se anuncian como llamada.
 
 Tres modos:
 
@@ -58,6 +62,11 @@ PIEZAS = [
     "<x@p.exfil.example>", "<x@p.exfil.com>", "a@b.c", ",", ".", "!", "?", "[^1]", "{",
     "}", ":", "/", "//", "www", "www.", "https:", "http", "\\\\", "\\[", "\\<", "\\@",
     "<img src=//p.exfil.com/i>", "<!--", "-->", "<script>", *URLS,
+    # Revisión de la codificación (13/11/2026): referencias de carácter, ancho completo,
+    # etiquetas de llamada sin «>» y vallas que se anuncian como llamada.
+    "&lt;", "&gt;", "&#60;", "&#x3C;", "&#91;", "&#64;", "&#58;", "&#x202E;",
+    "&ZeroWidthSpace;", "&amp;lt;", "＜", "＞", "［", "＠", "invoke", "<invoke ",
+    "</invoke", "tool_code", "```tool_code\n", "- ```tool_call\n", "    ```tools\n",
 ]  # fmt: skip
 PREFIJOS = [
     "",
@@ -81,12 +90,14 @@ CUERPOS = [
     "[a][r]", "[r]", "<foo>", "| a | b |", "|---|---|", "===", "---",
     "[BOE](https://www.boe.es/)", "![i](//p.exfil.example/i.png)", "[t](//p.exfil.com/t)",
     "*", "<https://p.exfil.example/>", "datos@p.exfil.com", "www.p.exfil.com/x", *URLS,
+    "```tool_code", "~~~tool_call", "```function_call x", "&lt;invoke&gt;", "&#x202E;x",
+    "＜invoke＞", "<invoke name=x",
 ]  # fmt: skip
 CODIGO = [
     "`", "`", "`", "``", "```", "\\", "\\`", " ", " ", "|", "*", "_", "~", "~~", "[",
     "]", "(", ")", "<", ">", "<https://www.boe.es/`>", "[a](https://www.boe.es/)",
     "[a](https://www.boe.es/ '`')", "[x`]", "\n", "x", "'", '"', "!", "&", ";", ":", "@",
-    "#", *URLS,
+    "#", "&lt;", "&#96;", "&#x60;", "＜", *URLS,
 ]  # fmt: skip
 
 

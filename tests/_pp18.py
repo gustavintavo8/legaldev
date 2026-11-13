@@ -20,6 +20,12 @@ el texto, no una frase con una orden:
   y ``enlaces_difusos`` los lista aparte.
 - Al leerlo un asistente: un bloque que imita una llamada a una herramienta, caracteres
   invisibles o de control, o un bloque de código sin cerrar.
+
+La llamada se busca en el texto (pasado por NFKC, que lleva «＜» a «<»), en lo que pinta
+markdown-it (con las referencias de carácter resueltas: ``&lt;invoke`` se ve como
+``<invoke``) y en la información de los bloques de código (```` ```tool_code ````, también
+dentro de una lista o de una cita). Los caracteres invisibles, en el texto y en lo que pinta
+(``&#x202E;`` da el carácter real en la página). Revisión de la codificación, 13/11/2026.
 """
 
 from __future__ import annotations
@@ -115,19 +121,27 @@ def _fichas(texto: str) -> Iterator[tuple[Token, Token | None]]:
 
 def pintar(texto: str) -> dict[str, list[str]]:
     """Lo que pinta markdown-it: el src de las imágenes, el HTML en bruto, el href de los
-    enlaces (los difusos aparte) y el texto que queda fuera del código."""
+    enlaces (los difusos aparte), el texto que queda fuera del código, todo el texto que se
+    ve (también el del código) y la información de los bloques de código."""
     resultado: dict[str, list[str]] = {
         "imgs": [],
         "html": [],
         "enlaces": [],
         "difusos": [],
         "fuera_de_codigo": [],
+        "visible": [],
+        "vallas": [],
     }
     for ficha, siguiente in _fichas(texto):
+        if ficha.type in ("text", "text_special", "code_inline", "code_block", "fence"):
+            resultado["visible"].append(ficha.content)
+        if ficha.type == "fence":
+            resultado["vallas"].append(ficha.info)
         if ficha.type == "image":
             resultado["imgs"].append(str(ficha.attrGet("src")))
         elif ficha.type in ("html_block", "html_inline"):
             resultado["html"].append(ficha.content)
+            resultado["visible"].append(ficha.content)
         elif ficha.type == "link_open":
             href = str(ficha.attrGet("href") or "")
             visible = siguiente.content if siguiente is not None else ""
@@ -153,15 +167,69 @@ def fuera_de_codigo(texto: str) -> str:
     return "".join(pintar(texto)["fuera_de_codigo"])
 
 
-_HERRAMIENTA = re.compile(
+# Las marcas de Mistral, con su nombre: «[TOOL_» a secas lo formaban los fuzzers con
+# «[» y «tool_code» (13/11/2026), y no es ninguna marca.
+_LLAMADA_CON_NOMBRE = (
     r"function_calls|<\s*/?\s*(?:[\w-]+:)?(?:invoke|parameter|tool_call|tool_use|tool_code|"
     r"tool_request|tool_result|function_call)\b"
-    r"|<[|｜]|[|｜]>|\[/?TOOL_|\bto=functions\b|\"(?:arguments|parameters)\"\s*:"
-    r"|\"tools/call\"|\"tool_calls\"\s*:|\"function_call\"\s*:|<\s*function\s*=",
-    re.I,
+    r"|\[/?TOOL_(?:CALLS?|RESULTS?|REQUEST|CONTENT)\b|\bto=functions\b"
+    r"|\"(?:arguments|parameters)\"\s*:"
+    r"|\"tools/call\"|\"tool_calls\"\s*:|\"function_call\"\s*:|<\s*function\s*="
+)
+# En el texto, también media marca de token especial («<|» o «|>»), por si acaso.
+_HERRAMIENTA = re.compile(_LLAMADA_CON_NOMBRE + r"|<[|｜]|[|｜]>", re.I)
+# En lo que se pinta, el token entero: el texto de una página junta elementos vecinos y
+# cualquier «|>» de una tabla o de texto aleatorio de los fuzzers parecía media marca.
+_HERRAMIENTA_VISIBLE = re.compile(
+    _LLAMADA_CON_NOMBRE + r"|<[|｜][^<>\n]{0,60}[|｜]>", re.I
+)
+# Información de un bloque de código que lo anuncia como llamada (la primera palabra).
+_INFO_LLAMADA = frozenset(
+    {
+        "tool_call",
+        "tool_calls",
+        "tool_code",
+        "tool_use",
+        "function_call",
+        "function_calls",
+        "tool",
+        "tools",
+    }
 )
 _APERTURA = re.compile(r"^ {0,3}(`{3,}|~{3,})([^\n]*)$")
 _CIERRE = re.compile(r"^ {0,3}(`{3,}|~{3,})[ \t]*$")
+
+
+def anuncia_llamada(info: str) -> bool:
+    """¿Anuncia la información de un bloque de código (o su clase ``language-…``) una
+    llamada a una herramienta?"""
+    palabras = info.removeprefix("language-").split()
+    return bool(palabras) and palabras[0].lower() in _INFO_LLAMADA
+
+
+def llamada_en(texto: str, *, pintado: bool = False) -> bool:
+    """¿Hay en ``texto`` (pasado por NFKC) algo con forma de llamada a una herramienta?
+    Con ``pintado``, ``texto`` es lo que se ve en la página y un token especial tiene que
+    estar entero."""
+    patron = _HERRAMIENTA_VISIBLE if pintado else _HERRAMIENTA
+    return bool(patron.search(unicodedata.normalize("NFKC", texto)))
+
+
+def formas_pintadas(trozos: list[str], vallas: list[str]) -> list[str]:
+    """Lo que un intérprete deja en la página para quien la lee: una llamada en el texto que
+    se ve o en la información de un bloque de código, y caracteres invisibles o de control.
+    Lo usan ``formas_ejecutables`` (con markdown-it) y ``docs/mcp/pp18/oraculo.py`` (con
+    marked + DOMPurify). La llamada se busca en cada trozo de texto por separado (cada ficha
+    de markdown-it, cada nodo de texto del DOM): lo que importa es lo que el intérprete
+    resuelve dentro de un trozo (``&lt;invoke``). Juntándolos, un «\\<» escapado delante de
+    un código en línea que empieza por «tool_code» parecía una etiqueta; una etiqueta partida
+    por el marcado («<**invoke**>») es de la clase de las órdenes en otra forma (README)."""
+    hallazgos = []
+    if any(llamada_en(t, pintado=True) for t in trozos) or any(
+        anuncia_llamada(v) for v in vallas
+    ):
+        hallazgos.append("bloque de llamada a herramienta")
+    return hallazgos + _caracteres("".join(trozos))
 
 
 def _valla_abierta(texto: str) -> bool:
@@ -210,16 +278,19 @@ def formas_ejecutables(texto: str) -> list[str]:
         hallazgos.append("enlace a un destino no oficial")
     if pintado["html"]:
         hallazgos.append("HTML")
-    if _HERRAMIENTA.search(texto):
+    pintadas = formas_pintadas(pintado["visible"], pintado["vallas"])
+    if llamada_en(texto) or "bloque de llamada a herramienta" in pintadas:
         hallazgos.append("bloque de llamada a herramienta")
     if _valla_abierta(texto):
         hallazgos.append("bloque de código sin cerrar")
-    hallazgos.extend(_caracteres(texto))
+    caracteres = set(_caracteres(texto)) | set(pintadas)
+    caracteres.discard("bloque de llamada a herramienta")
+    hallazgos.extend(sorted(caracteres))
     return hallazgos
 
 
 # Los escapes que pone el saneado (app/sanitize.py, paso 3), para deshacerlos al medir.
-_ESCAPE_DEL_SANEADO = re.compile(r"\\([<\[@:/.])")
+_ESCAPE_DEL_SANEADO = re.compile(r"\\([<\[@:/.&])")
 
 
 def formas_codificadas(texto: str) -> list[str]:

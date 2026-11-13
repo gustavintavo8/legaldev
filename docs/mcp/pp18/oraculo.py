@@ -12,17 +12,24 @@ carga algo solo (con ``style``, ``src``, ``srcset``, ``poster`` o ``background``
 markdown-it, cualquier HTML en bruto, porque no lleva DOMPurify detrás) o un enlace cuyo
 destino, absoluto o relativo al protocolo («//»), lleva a un host que no es un dominio
 oficial del corpus. Los destinos relativos no cuentan. Los enlaces que linkify forma en modo
-difuso con un dominio sin esquema se cuentan aparte: son el residual documentado.
+difuso con un dominio sin esquema se cuentan aparte: son el residual documentado. Desde la
+revisión de la codificación (13/11/2026) también falla si en lo que pinta (con las
+referencias de carácter resueltas y pasado por NFKC) se ve una llamada a una herramienta, un
+bloque de código se anuncia como llamada (```` ```tool_code ````, también en una lista o una
+cita) o aparece un carácter invisible o de control.
 
 Comprueba además, con los dos intérpretes:
 
 - que una línea puesta detrás del texto saneado, como las secciones que añade el código, no
-  queda dentro de un bloque de código (``centinela``). Si queda, es cosmético (se ve como
-  código y no se ejecuta nada) y no cuenta como fallo: hay un caso conocido y documentado,
-  una lista con un bloque de código y líneas sin sangrar, en CommonMark;
+  queda dentro de un bloque de código (``centinela``; los casos conocidos están en
+  ``COSMETICOS`` de ``tests/_casos_saneado.py``). Si queda, es cosmético (se ve como
+  código y no se ejecuta nada) y no cuenta como fallo: es el residual documentado de las
+  listas con un bloque de código y líneas sin sangrar (uno en CommonMark y, desde la
+  revisión de la codificación, uno de los fuzzers en marked);
 - que los informes legítimos (``LEGITIMOS`` y, si existe, el informe de ejemplo de la web)
   conservan su estructura: las mismas etiquetas HTML en el mismo orden, sin contar los
-  enlaces, que ya no se pintan.
+  enlaces, que ya no se pintan, ni las casillas de las listas de tareas, que se ven como
+  «[ ]» (los dos son cambios aceptados).
 
 Casos: las cargas de PP-18 (``cargas.json``) y las entradas de ``tests/_casos_saneado.py``
 (las tres revisiones del 12/11/2026 y las entradas de ataque de las pruebas anteriores).
@@ -77,9 +84,11 @@ def pintar_web(textos: list[str], web: Path) -> list[dict]:
 
 def fallos_web(pintado: dict) -> list[str]:
     """Imágenes, elementos que cargan algo y enlaces no oficiales, juzgados por el host que
-    resuelve el navegador (con «www.boe.es%C2%A0"@otro», el host es «otro»)."""
+    resuelve el navegador (con «www.boe.es%C2%A0"@otro», el host es «otro»); y llamadas,
+    bloques anunciados como llamada e invisibles en lo que se ve."""
     fallos = [f"img {s}" for s in pintado["imgs"]]
     fallos += [f"carga {c}" for c in pintado["cargas"]]
+    fallos += _pp18.formas_pintadas(pintado["textos"], pintado["lenguajes"])
     for e in pintado["links"]:
         if not e["href"] or e["protocolo"] is None:
             continue  # sin href, o una URL que el navegador no puede abrir
@@ -103,21 +112,26 @@ def fallos_mdit(texto: str) -> list[str]:
     fallos = [f"img {s}" for s in pintado["imgs"]]
     fallos += [f"html {h[:60]!r}" for h in pintado["html"]]
     fallos += [f"enlace {h}" for h in pintado["enlaces"] if _pp18.destino_no_oficial(h)]
+    fallos += _pp18.formas_pintadas(pintado["visible"], pintado["vallas"])
     return fallos
 
 
 # ------------------------------------------------------------------------- estructura
 
+# Lo que el saneado deja de pintar a propósito: los enlaces del modelo y las casillas de
+# las listas de tareas («- [ ]»), porque se escapa su «[» (docs/mcp/README.md).
+_SIN_CONTAR = frozenset({"a", "input"})
+
 
 class _Etiquetas(HTMLParser):
-    """Las etiquetas de apertura de un HTML, sin los enlaces."""
+    """Las etiquetas de apertura de un HTML, sin los enlaces ni las casillas."""
 
     def __init__(self) -> None:
         super().__init__()
         self.etiquetas: list[str] = []
 
     def handle_starttag(self, tag: str, attrs: list) -> None:
-        if tag != "a":
+        if tag not in _SIN_CONTAR:
             self.etiquetas.append(tag)
 
 
