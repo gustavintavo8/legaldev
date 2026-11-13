@@ -12,8 +12,11 @@ publicada con el servidor MCP y añade los arreglos de la revisión externa del 
 (`articulo` y `considerando`, los textos de los fragmentos una sola vez y la descripción que
 ya no puede cerrar su delimitador), y es la que está ahora en producción. PP-18 repetida con el
 modelo real sobre ella encontró una regresión: la carga P06 llegaba al asistente (ver «PP-18
-repetida sobre la 0.5.0»). La 0.5.1 la corrige; está pendiente de desplegar, de etiquetar y
-de repetir PP-18 con el modelo real sobre ella. Lo que falta está en «Pendiente».
+repetida sobre la 0.5.0»). La 0.5.1 la corrige, con los cuatro hallazgos de una revisión
+independiente de ese arreglo (la entrada volvía a fabricar un residual de la salida con
+`\<`, ver «Entrada: la descripción y su delimitador»); está pendiente de desplegar, de
+etiquetar y de repetir PP-18 con el modelo real sobre ella. Lo que falta está en
+«Pendiente».
 
 `POST /mcp` existe cuando `MCP_ENABLED=true` y hay claves (`MCP_API_KEYS` o, si está vacía,
 `API_KEYS`); sin claves no se monta aunque se active (RNF-15), y por defecto está desactivado.
