@@ -1,0 +1,115 @@
+{
+ "fecha_utc": "2026-11-13T01:20:55Z",
+ "base": "https://gustavintavo8-legaldev.hf.space",
+ "health": 200,
+ "health_deep": {
+  "chroma": "ok",
+  "groq": "ok",
+  "groq_model": "openai/gpt-oss-120b",
+  "groq_fallback_model": "openai/gpt-oss-20b",
+  "groq_model_available_at_startup": true,
+  "corpus_version": "7a2029a4dfd8"
+ },
+ "sin_clave": 401,
+ "clave_falsa": 403,
+ "tools_list": "ok",
+ "herramientas": [
+  "analizar_proyecto",
+  "consultar_obligaciones",
+  "listar_normativas"
+ ],
+ "output_schema_campos": [
+  "aviso",
+  "citas",
+  "corpus_version",
+  "cuestionario",
+  "fragmentos",
+  "generado_por_ia",
+  "informe",
+  "llm_model",
+  "normativas_detectadas",
+  "normativas_sin_desarrollar",
+  "saneado",
+  "sin_cobertura"
+ ],
+ "listar_normativas": "ok",
+ "analizar_segundos": 20.6,
+ "analizar": "ok",
+ "campos": [
+  "aviso",
+  "citas",
+  "corpus_version",
+  "cuestionario",
+  "fragmentos",
+  "generado_por_ia",
+  "informe",
+  "llm_model",
+  "normativas_detectadas",
+  "normativas_sin_desarrollar",
+  "saneado",
+  "sin_cobertura"
+ ],
+ "generado_por_ia": {
+  "modelo": "openai/gpt-oss-120b",
+  "proveedor": "Groq",
+  "fecha": "2026-11-13T01:21:19.129988Z"
+ },
+ "saneado": {
+  "bloques_herramienta": 0,
+  "imagenes": 0,
+  "enlaces": 0,
+  "html": 0,
+  "urls": 0,
+  "caracteres_control": 0,
+  "caracteres_invisibles": 0,
+  "bloques_codigo_sin_cerrar": 0
+ },
+ "citas": {
+  "total": 13,
+  "verificadas": 11
+ },
+ "informe_caracteres": 12598,
+ "escapes": {
+  "\\[": 0,
+  "\\<": 0,
+  "\\@": 0,
+  "\\:": 0,
+  "/\\/": 0,
+  "www\\.": 0,
+  "\\&": 0
+ },
+ "formas_ejecutables_estructurado": [],
+ "formas_ejecutables_content": [],
+ "fallos_markdown_it": [],
+ "fallos_marked_dompurify": [],
+ "enlaces_difusos": [],
+ "trozos_con_escapes": [],
+ "informe": "> ⚠️ Esta información es orientativa y no constituye asesoramiento legal. Para decisiones con impacto legal, consulta con un abogado especializado en derecho digital.\n\n**Sumario ejecutivo**  \nEl proyecto SaaS que genera respuestas con IA y trata nombres y correos electrónicos está sujeto a múltiples obligaciones de acceso, información y control de datos tanto bajo el RGPD como bajo la LOPDGDD, el EU AI Act, la LSSI y el Data Act, además de requerir una gestión adecuada de cookies.  \n\n- Responder a los derechos de acceso, rectificación, supresión y portabilidad en el plazo máximo de un mes.  \n- Informar de forma clara y completa a los usuarios sobre el uso de IA, el tratamiento de sus datos personales y la utilización de cookies.  \n- Garantizar la disponibilidad y la transmisión segura de los datos solicitados por autoridades públicas y usuarios, cumpliendo con los requisitos de documentación y medidas de seguridad del Data Act.  \n\n---\n\n## RGPD  \n\n> “responsable del tratamiento también debe proporcionar medios para que las solicitudes se presenten por medios electrónicos, en particular cuando los datos personales se tratan por medios electrónicos. El responsable del tratamiento debe estar obligado a responder a las solicitudes del interesado sin dilación indebida y a más tardar en el plazo de un mes, y a explicar sus motivos en caso de que no fuera a atenderlas.” — RGPD, p. 11  \n\n**Interpretación:** El SaaS debe habilitar un portal o API que permita a los usuarios ejercer sus derechos (acceso, rectificación, supresión, portabilidad, oposición) de forma electrónica y responder en ≤ 30 días.  \n\n**Implementación:**  \n- Desarrollar una funcionalidad “Mi cuenta → Derechos de datos” que genere automáticamente los formularios de solicitud y exporte los datos en formato estructurado (JSON/CSV).  \n- Configurar un flujo de trabajo interno que asigne cada solicitud a un responsable y registre la fecha de recepción y respuesta para garantizar el cumplimiento del plazo de un mes.  \n\n> “ser utilizadas para elaborar perfiles de las personas físicas e identificarlas.” — RGPD, p. 6  \n\n**Interpretación:** El modelo generativo que crea perfiles a partir de nombres y correos constituye tratamiento de datos para elaboración de perfiles, por lo que se requiere una evaluación de impacto y la información específica al usuario.  \n\n**Implementación:**  \n- Realizar una Evaluación de Impacto en la Protección de Datos (EIPD) que analice los riesgos del perfilado automatizado y documente las medidas de mitigación.  \n- Incluir en la política de privacidad una sección que describa el fin del perfilado, la lógica utilizada y los derechos de los usuarios respecto a decisiones automatizadas.  \n\n---\n\n## LOPDGDD  \n\n> “la persona el control sobre sus datos, cualesquiera datos personales, y sobre su uso y destino, para evitar el tráfico ilícito de los mismos o lesivo para la dignidad y los derechos de los afectados; de esta forma, el derecho a la protección de datos se configura como una facultad del ciudadano para oponerse a que determinados datos personales sean usados para fines distintos a aquel que justificó su obtención.” — LOPDGDD, p. 8  \n\n**Interpretación:** Los usuarios deben poder oponerse al uso de sus datos para fines diferentes a la suscripción y generación de respuestas; el SaaS debe ofrecer mecanismos de objeción y registro de consentimientos.  \n\n**Implementación:**  \n- Añadir en el proceso de registro una casilla de consentimiento específica para el uso de datos con IA y un botón “Oponerse” accesible desde el perfil.  \n- Registrar cada objeción en un log auditado y excluir esos datos de cualquier procesamiento posterior.  \n\n> “Los prestadores de servicios de la sociedad de la información cuando elaboren a gran escala perfiles de los usuarios del servicio.” — LOPDGDD, p. 27  \n\n**Interpretación:** La elaboración de perfiles a gran escala está regulada; el proyecto debe justificar la necesidad y limitar la escala o aplicar medidas de minimización.  \n\n**Implementación:**  \n- Limitar el número de atributos utilizados para el perfilado a los estrictamente necesarios (nombre, email, historial de consultas).  \n- Aplicar técnicas de pseudonimización antes de almacenar los datos en los sistemas de entrenamiento del modelo.  \n\n---\n\n## EU AI Act  \n\n> “autor idades nacionales competentes con el fin de garantizar la coherencia de las prácticas en toda la Unión.” — EU AI Act, p. 91  \n\n**Interpretación:** El SaaS, al usar IA generativa, debe estar preparado para auditorías de autoridades nacionales y demostrar cumplimiento con los requisitos de transparencia y seguridad.  \n\n**Implementación:**  \n- Designar un responsable de IA que mantenga un registro de los sistemas de IA, sus versiones y los datos de entrenamiento utilizados.  \n- Establecer un proceso de revisión anual con la autoridad competente (por ejemplo, la AEPD) para validar la conformidad del modelo.  \n\n> “enumerando los principales conjuntos o recopilaciones de datos que han sido vistos para entrenar al modelo, como los grandes archivos de datos o bases de datos privados o públicos, y proporcionando una explicación descriptiva sobre otras fuentes de datos utilizadas.” — EU AI Act, p. 28  \n\n**Interpretación:** Es obligatorio documentar y publicar la procedencia de los datos de entrenamiento, incluyendo fuentes públicas y privadas, para garantizar la trazabilidad.  \n\n**Implementación:**  \n- Crear un “Data Sheet” público que liste cada conjunto de datos usado, su origen, licencias y medidas de anonimización aplicadas.  \n- Publicar este documento en la sección legal del sitio web y actualizarlo con cada nueva versión del modelo.  \n\n---\n\n## Data Act  \n\n> “la puesta a disposición de los datos y su utilización posterior deben ir acompañadas de garantías para los derechos e intereses de las personas afectadas por dichos datos.” — Data Act, p. 20  \n\n**Interpretación:** Cuando el SaaS comparte datos con terceros (por ejemplo, proveedores de análisis), debe asegurar que se respeten los derechos de los usuarios mediante acuerdos y medidas de seguridad.  \n\n**Implementación:**  \n- Incluir cláusulas contractuales en los acuerdos con terceros que obliguen al cumplimiento de los derechos de acceso, rectificación y supresión.  \n- Implementar cifrado en tránsito y reposo para cualquier transmisión de datos personales a terceros.  \n\n> “organización o persona física que reciba los datos, la finalidad de la transmisión o puesta a disposición de los datos, el plazo durante el cual se utilizarán los datos y las medidas técnicas y organizativas de protección adoptadas, también cuando se trate de datos personales o secretos comerciales.” — Data Act, p. 53  \n\n**Interpretación:** Cada transferencia de datos debe documentarse con finalidad, duración y medidas de protección, lo que implica mantener un registro de todas las transmisiones.  \n\n**Implementación:**  \n- Desarrollar un registro de transferencias (Data Transfer Log) que capture los campos exigidos y sea auditado trimestralmente.  \n- Definir políticas de retención que eliminen o anonimicen los datos una vez cumplida la finalidad contractual.  \n\n> “coordinador de datos del Estado miembro… debe garantizar la disponibilidad pública en línea de todas las solicitudes.” — Data Act, p. 19  \n\n**Interpretación:** Si una autoridad pública solicita datos, el SaaS debe publicar la solicitud y su respuesta de forma accesible, garantizando transparencia.  \n\n**Implementación:**  \n- Crear una sección “Transparencia de solicitudes públicas” en el sitio web donde se publiquen, sin datos personales, los números de solicitud y la respuesta correspondiente.  \n- Designar al responsable de datos como punto de contacto oficial para recibir y gestionar dichas solicitudes.  \n\n---\n\n## LSSI  \n\n> “de servicios la obligación de facilitar el acceso a sus datos de identificación a cuantos visiten su sitio en Internet; la de informar a los destinatarios sobre los precios que apliquen a sus servicios y la de permitir a éstos visualizar, imprimir y archivar las condiciones generales a que se someta, en su caso, el contrato.” — LSSI, p. 6  \n\n**Interpretación:** El SaaS debe poner a disposición de cualquier visitante (incluidos usuarios no registrados) la información de identificación del responsable y los términos contractuales de forma clara y descargable.  \n\n**Implementación:**  \n- Añadir en el footer del sitio web un enlace a “Información legal” que incluya datos de identificación (nombre empresarial, CIF, domicilio, email de contacto).  \n- Publicar los “Términos y Condiciones” y la “Política de Precios” en formato PDF accesible para su impresión y archivo.  \n\n> “Los proveedores de servicios de intermediación que alojen o almacenen datos de usuarios… deberán remitir a dichos usuarios, a su solicitud, los contenidos que les hubieran facilitado, sin impedir su transmisión posterior a otro proveedor.” — LSSI, Artículo 12, p. 13  \n\n**Interpretación:** Los usuarios pueden solicitar la portabilidad de los contenidos que el SaaS haya generado o almacenado para ellos, en formato estructurado y de uso común.  \n\n**Implementación:**  \n- Implementar una función “Exportar mis datos” que genere un archivo JSON conforme a la especificación de portabilidad del RGPD.  \n- Garantizar que el archivo pueda ser enviado directamente a otro proveedor mediante una API o enlace de descarga.  \n\n---\n\n## Guía sobre uso de cookies – AEPD  \n\n> “Se considerará que existe tratamiento de datos personales cuando el usuario esté identificado por un nombre o dirección de email que lo identifique… o cuando se utilicen identificadores únicos que permitan distinguir unos usuarios de otros y realizar un seguimiento individualizado de los mismos (por ejemplo, un ID de publicidad).” — Guía sobre uso de cookies, p. 9  \n\n**Interpretación:** Las cookies que identifican al usuario (p. ej., cookies de sesión con email) son datos personales y requieren consentimiento informado.  \n\n**Implementación:**  \n- Implementar un banner de cookies que solicite consentimiento explícito antes de colocar cualquier cookie no esencial, describiendo su finalidad y duración.  \n- Registrar el consentimiento en una base de datos vinculada al perfil del usuario para auditoría.  \n\n> “Es el destinatario, persona física, que accede al servicio prestado por un editor… No obstante utilizarse, en la normativa legal, el término destinatario del servicio, en la presente guía se emplea el término usuario, por ser éste de uso más común.” — Guía sobre uso de cookies, p. 35  \n\n**Interpretación:** La documentación debe referirse consistentemente a “usuario” y describir sus derechos respecto a las cookies.  \n\n**Implementación:**  \n- Actualizar la política de cookies para usar el término “usuario” y explicar claramente los derechos de revocación y configuración de cookies.  \n- Proveer un enlace permanente a la política de cookies desde el banner y el pie de página.  \n\n## Cobertura del análisis\nNormativas indexadas de las que este análisis no recuperó ningún fragmento (pueden no aplicar o el proyecto no activa sus condiciones; se pueden consultar por separado):\n- Adecuación al RGPD de tratamientos que incorporan IA - AEPD\n- Cyber Resilience Act (Reglamento UE 2024-2847)\n- Código Ético y Deontológico CCII\n- DORA (Reglamento UE 2022-2554)\n- Data Governance Act (Reglamento UE 2022-868)\n- Directiva NIS2\n- Directiva de Responsabilidad por Productos con IA\n- Directiva ePrivacy (2002-58-CE consolidada)\n- Guía de Anonimización - AEPD\n- Guía de Análisis de Riesgos para tratamientos de datos personales - AEPD\n- Guía para el cumplimiento del deber de informar - AEPD\n- IA Agentica desde la perspectiva de proteccion de datos - AEPD\n- Ley de Propiedad Intelectual\n- Real Decreto 311-2022 ENS\n\nNormativas con un solo fragmento recuperado: el informe no les dedica sección, porque hacen falta al menos dos, pero eso no quiere decir que no apliquen:\n- Digital Services Act (Reglamento UE 2022-2065)\n- Guía de Privacidad desde el Diseño - AEPD\n\n## Verificación de citas\nSe han verificado textualmente 11 de 13 citas contra los fragmentos recuperados.\nCitas no verificadas (posible paráfrasis o interpolación; contrastar con la fuente oficial):\n- \"enumerando los principales conjuntos o recopilaciones de datos que han sido vistos para entrenar al modelo, como los gra\"\n- \"coordinador de datos del Estado miembro… debe garantizar la disponibilidad pública en línea de todas las solicitudes.\"\n\n> ⚠️ Esta información es orientativa y no constituye asesoramiento legal. Para decisiones con impacto legal, consulta con un abogado especializado en derecho digital.",
+ "despliegue": {
+  "space_sha": "9906137",
+  "desde": "main@ab3e3a3",
+  "ficheros_iguales_que_ab3e3a3": [
+   "app/sanitize.py",
+   "app/citations.py",
+   "app/rag.py",
+   "app/mcp_server.py"
+  ],
+  "MCP_DAILY_LIMIT": "200/day",
+  "construccion_s": 128
+ },
+ "inspector": {
+  "version": "2.13.0",
+  "modern": {
+   "tools/list --strict": 0,
+   "listar_normativas": 0
+  },
+  "legacy": {
+   "tools/list --strict": 0,
+   "listar_normativas": 0,
+   "initialize.protocolVersion": "2025-11-25"
+  },
+  "sin_clave": "auth_required (HTTP 401) en las dos eras; el proceso sale con 127 en Windows por una aserción de libuv al cerrar Node (UV_HANDLE_CLOSING), no 3; curl: 401",
+  "clave_falsa": "código de salida 3 (auth_required)"
+ },
+ "nota_escapes": "El informe no tenía ningún carácter que la codificación escape ([, <, @, ://, www., & delante de #, letra o cifra), así que sale tal cual lo escribió el modelo. Que el código desplegado es el de ab3e3a3 se comprueba comparando los ficheros del Space con el commit."
+}

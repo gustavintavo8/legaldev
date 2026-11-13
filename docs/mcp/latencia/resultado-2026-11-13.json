@@ -1,0 +1,353 @@
+{
+  "fecha": "2026-11-13T01:22:54+00:00",
+  "servidor": "https://gustavintavo8-legaldev.hf.space",
+  "protocolo": "2026-07-28",
+  "version_servidor": "0.4.0",
+  "corpus_version": "7a2029a4dfd8",
+  "marca": "529d3d0a",
+  "metodo": {
+    "percentil": "rango más cercano: el valor p de n tiempos ordenados es el de la posición ceil(p*n/100); con n < 20, p95 es el máximo",
+    "unidad": "segundos, del envío del POST a la llegada de la respuesta completa",
+    "analizar_frio": "cuestionarios distintos, con la marca de la ejecución en la descripción",
+    "analizar_caliente": "los de frío otra vez; cuentan si generado_por_ia.fecha coincide",
+    "esperas_s": {
+      "frio": 90.0,
+      "caliente": 8.0,
+      "consulta": 2.0
+    },
+    "reintentos": 0
+  },
+  "despertar": {
+    "health_s": 0.299,
+    "discover_s": 0.187,
+    "tools_list_s": 0.238
+  },
+  "series": {
+    "analizar_frio": {
+      "n": 10,
+      "p50": 20.933,
+      "p95": 22.702,
+      "min": 15.926,
+      "max": 22.702,
+      "excluidas": {}
+    },
+    "analizar_caliente": {
+      "n": 10,
+      "p50": 0.335,
+      "p95": 3.398,
+      "min": 0.124,
+      "max": 3.398,
+      "excluidas": {}
+    },
+    "consultar_obligaciones": {
+      "n": 10,
+      "p50": 4.203,
+      "p95": 8.937,
+      "min": 2.82,
+      "max": 8.937,
+      "excluidas": {}
+    }
+  },
+  "llamadas": [
+    {
+      "serie": "analizar_frio",
+      "i": 1,
+      "segundos": 20.933,
+      "http": 200,
+      "resultado": "ok",
+      "llm_model": "openai/gpt-oss-120b",
+      "fecha_generacion": "2026-11-13T01:23:17.501623Z",
+      "sin_cobertura": false
+    },
+    {
+      "serie": "analizar_frio",
+      "i": 2,
+      "segundos": 18.027,
+      "http": 200,
+      "resultado": "ok",
+      "llm_model": "openai/gpt-oss-120b",
+      "fecha_generacion": "2026-11-13T01:24:44.603110Z",
+      "sin_cobertura": false
+    },
+    {
+      "serie": "analizar_frio",
+      "i": 3,
+      "segundos": 20.979,
+      "http": 200,
+      "resultado": "ok",
+      "llm_model": "openai/gpt-oss-120b",
+      "fecha_generacion": "2026-11-13T01:26:17.549155Z",
+      "sin_cobertura": false
+    },
+    {
+      "serie": "analizar_frio",
+      "i": 4,
+      "segundos": 20.901,
+      "http": 200,
+      "resultado": "ok",
+      "llm_model": "openai/gpt-oss-120b",
+      "fecha_generacion": "2026-11-13T01:27:47.534325Z",
+      "sin_cobertura": false
+    },
+    {
+      "serie": "analizar_frio",
+      "i": 5,
+      "segundos": 18.964,
+      "http": 200,
+      "resultado": "ok",
+      "llm_model": "openai/gpt-oss-120b",
+      "fecha_generacion": "2026-11-13T01:29:15.597215Z",
+      "sin_cobertura": false
+    },
+    {
+      "serie": "analizar_frio",
+      "i": 6,
+      "segundos": 22.702,
+      "http": 200,
+      "resultado": "ok",
+      "llm_model": "openai/gpt-oss-120b",
+      "fecha_generacion": "2026-11-13T01:30:49.336792Z",
+      "sin_cobertura": false
+    },
+    {
+      "serie": "analizar_frio",
+      "i": 7,
+      "segundos": 22.412,
+      "http": 200,
+      "resultado": "ok",
+      "llm_model": "openai/gpt-oss-120b",
+      "fecha_generacion": "2026-11-13T01:32:19.053426Z",
+      "sin_cobertura": false
+    },
+    {
+      "serie": "analizar_frio",
+      "i": 8,
+      "segundos": 21.665,
+      "http": 200,
+      "resultado": "ok",
+      "llm_model": "openai/gpt-oss-120b",
+      "fecha_generacion": "2026-11-13T01:33:48.282969Z",
+      "sin_cobertura": false
+    },
+    {
+      "serie": "analizar_frio",
+      "i": 9,
+      "segundos": 21.807,
+      "http": 200,
+      "resultado": "ok",
+      "llm_model": "openai/gpt-oss-120b",
+      "fecha_generacion": "2026-11-13T01:35:18.406863Z",
+      "sin_cobertura": false
+    },
+    {
+      "serie": "analizar_frio",
+      "i": 10,
+      "segundos": 15.926,
+      "http": 200,
+      "resultado": "ok",
+      "llm_model": "openai/gpt-oss-120b",
+      "fecha_generacion": "2026-11-13T01:36:42.574578Z",
+      "sin_cobertura": false
+    },
+    {
+      "serie": "analizar_caliente",
+      "i": 1,
+      "segundos": 0.124,
+      "http": 200,
+      "resultado": "ok",
+      "llm_model": "openai/gpt-oss-120b",
+      "fecha_generacion": "2026-11-13T01:23:17.501623Z",
+      "sin_cobertura": false,
+      "desde_cache": true
+    },
+    {
+      "serie": "analizar_caliente",
+      "i": 2,
+      "segundos": 0.333,
+      "http": 200,
+      "resultado": "ok",
+      "llm_model": "openai/gpt-oss-120b",
+      "fecha_generacion": "2026-11-13T01:24:44.603110Z",
+      "sin_cobertura": false,
+      "desde_cache": true
+    },
+    {
+      "serie": "analizar_caliente",
+      "i": 3,
+      "segundos": 0.337,
+      "http": 200,
+      "resultado": "ok",
+      "llm_model": "openai/gpt-oss-120b",
+      "fecha_generacion": "2026-11-13T01:26:17.549155Z",
+      "sin_cobertura": false,
+      "desde_cache": true
+    },
+    {
+      "serie": "analizar_caliente",
+      "i": 4,
+      "segundos": 0.332,
+      "http": 200,
+      "resultado": "ok",
+      "llm_model": "openai/gpt-oss-120b",
+      "fecha_generacion": "2026-11-13T01:27:47.534325Z",
+      "sin_cobertura": false,
+      "desde_cache": true
+    },
+    {
+      "serie": "analizar_caliente",
+      "i": 5,
+      "segundos": 0.354,
+      "http": 200,
+      "resultado": "ok",
+      "llm_model": "openai/gpt-oss-120b",
+      "fecha_generacion": "2026-11-13T01:29:15.597215Z",
+      "sin_cobertura": false,
+      "desde_cache": true
+    },
+    {
+      "serie": "analizar_caliente",
+      "i": 6,
+      "segundos": 0.335,
+      "http": 200,
+      "resultado": "ok",
+      "llm_model": "openai/gpt-oss-120b",
+      "fecha_generacion": "2026-11-13T01:30:49.336792Z",
+      "sin_cobertura": false,
+      "desde_cache": true
+    },
+    {
+      "serie": "analizar_caliente",
+      "i": 7,
+      "segundos": 3.398,
+      "http": 200,
+      "resultado": "ok",
+      "llm_model": "openai/gpt-oss-120b",
+      "fecha_generacion": "2026-11-13T01:32:19.053426Z",
+      "sin_cobertura": false,
+      "desde_cache": true
+    },
+    {
+      "serie": "analizar_caliente",
+      "i": 8,
+      "segundos": 0.193,
+      "http": 200,
+      "resultado": "ok",
+      "llm_model": "openai/gpt-oss-120b",
+      "fecha_generacion": "2026-11-13T01:33:48.282969Z",
+      "sin_cobertura": false,
+      "desde_cache": true
+    },
+    {
+      "serie": "analizar_caliente",
+      "i": 9,
+      "segundos": 0.338,
+      "http": 200,
+      "resultado": "ok",
+      "llm_model": "openai/gpt-oss-120b",
+      "fecha_generacion": "2026-11-13T01:35:18.406863Z",
+      "sin_cobertura": false,
+      "desde_cache": true
+    },
+    {
+      "serie": "analizar_caliente",
+      "i": 10,
+      "segundos": 0.343,
+      "http": 200,
+      "resultado": "ok",
+      "llm_model": "openai/gpt-oss-120b",
+      "fecha_generacion": "2026-11-13T01:36:42.574578Z",
+      "sin_cobertura": false,
+      "desde_cache": true
+    },
+    {
+      "serie": "consultar_obligaciones",
+      "i": 1,
+      "segundos": 4.563,
+      "http": 200,
+      "resultado": "ok",
+      "normativa": "RGPD",
+      "fragmentos": 6
+    },
+    {
+      "serie": "consultar_obligaciones",
+      "i": 2,
+      "segundos": 7.907,
+      "http": 200,
+      "resultado": "ok",
+      "normativa": "LSSI",
+      "fragmentos": 6
+    },
+    {
+      "serie": "consultar_obligaciones",
+      "i": 3,
+      "segundos": 3.366,
+      "http": 200,
+      "resultado": "ok",
+      "normativa": "EU AI Act",
+      "fragmentos": 6
+    },
+    {
+      "serie": "consultar_obligaciones",
+      "i": 4,
+      "segundos": 8.937,
+      "http": 200,
+      "resultado": "ok",
+      "normativa": "LOPDGDD",
+      "fragmentos": 6
+    },
+    {
+      "serie": "consultar_obligaciones",
+      "i": 5,
+      "segundos": 3.175,
+      "http": 200,
+      "resultado": "ok",
+      "normativa": "Guía sobre uso de cookies - AEPD",
+      "fragmentos": 6
+    },
+    {
+      "serie": "consultar_obligaciones",
+      "i": 6,
+      "segundos": 3.334,
+      "http": 200,
+      "resultado": "ok",
+      "normativa": "RGPD",
+      "fragmentos": 6
+    },
+    {
+      "serie": "consultar_obligaciones",
+      "i": 7,
+      "segundos": 4.203,
+      "http": 200,
+      "resultado": "ok",
+      "normativa": "Directiva NIS2",
+      "fragmentos": 6
+    },
+    {
+      "serie": "consultar_obligaciones",
+      "i": 8,
+      "segundos": 6.643,
+      "http": 200,
+      "resultado": "ok",
+      "normativa": "LSSI",
+      "fragmentos": 6
+    },
+    {
+      "serie": "consultar_obligaciones",
+      "i": 9,
+      "segundos": 2.82,
+      "http": 200,
+      "resultado": "ok",
+      "normativa": "RGPD",
+      "fragmentos": 6
+    },
+    {
+      "serie": "consultar_obligaciones",
+      "i": 10,
+      "segundos": 6.517,
+      "http": 200,
+      "resultado": "ok",
+      "normativa": "LSSI",
+      "fragmentos": 6
+    }
+  ]
+}

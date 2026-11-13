@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Deployed
+- 13/11/2026: `main` (`ab3e3a3`) en el Space, con `MCP_DAILY_LIMIT=200/day`. Comprobación, MCP Inspector y latencia en producción en `docs/mcp/produccion/`, `docs/mcp/latencia/` y `docs/mcp/README.md`. `analizar_proyecto` en frío tuvo p50 20,9 s y p95 22,7 s; en caché, p95 3,4 s; `consultar_obligaciones`, p95 8,9 s (n = 10).
+
 ### Added
 - `tools/medir_latencia_mcp.py` (RNF-19): mide por MCP la latencia p50 y p95, con mínimo y máximo, de tres series y la escribe en JSON:
   - `analizar_proyecto` en frío, con cuestionarios distintos y marcados con la ejecución para que no estén en la caché;
@@ -21,7 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PP-18 (inyección indirecta): 20 cargas reales en `docs/mcp/pp18/cargas.json`, probadas en la descripción y en un fragmento envenenado con el modelo simulado que las repite. Las comprueba un oráculo independiente (`tests/_pp18.py`) que pinta con markdown-it-py (CommonMark, tablas, tachado y linkify; `markdown-it-py` y `linkify-it-py`, dependencias de desarrollo).
   - `docs/mcp/pp18/oraculo.py` sanea y pinta las cargas y las 282 entradas de `tests/_casos_saneado.py` (las de las cuatro revisiones y todas las que las pruebas anteriores pasaban a `sanear`) con dos intérpretes: marked + DOMPurify, el visor de la web, y markdown-it-py. Con cada uno mira también si en lo que se pinta se ve una llamada, un bloque anunciado como llamada o un invisible. El 13/11/2026, ninguna pinta nada peligroso con ninguno de los dos.
   - `docs/mcp/pp18/fuzz.py` y `docs/mcp/pp18/fuzz_tiempo.py` buscan fallos y entradas lentas.
-  - `docs/mcp/pp18/medir.py` mide lo mismo con el modelo real, con como mucho 12 llamadas. El 12/11/2026, con el saneado anterior, `openai/gpt-oss-120b` reprodujo 2 de 12 cargas y ninguna forma ejecutable pasó el saneado. Hay que repetirlo con la codificación.
+  - `docs/mcp/pp18/medir.py` mide lo mismo con el modelo real, con como mucho 12 llamadas. El 12/11/2026, con el saneado anterior, `openai/gpt-oss-120b` reprodujo 2 de 12 cargas y ninguna forma ejecutable pasó el saneado. El 13/11/2026, con la codificación (`ab3e3a3`), reprodujo las mismas 2 (P03 quedó como texto y P06 se retiró), ninguna llegó ejecutable y se verificaron 109 de 125 citas.
   - `docs/mcp/pp18/corpus_identidad.py` comprueba que el saneado no cambia el índice tras `normalize`.
 - Marcado del contenido generado por IA (Reglamento de IA, art. 50.2; hallazgo C-05): campo `generado_por_ia` (`modelo`, `proveedor`, `fecha` en UTC) en la respuesta de `POST /v1/analyze` y en el `structuredContent` y el `outputSchema` de `analizar_proyecto`. Es nulo cuando no se llama al modelo. Los dos campos nuevos son opcionales: el contrato anterior no cambia.
 - Servidor MCP en `POST /mcp` (`MCP_ENABLED`, desactivado por defecto; exige `API_KEYS`), sobre el SDK oficial `mcp==2.3.0`: herramientas `analizar_proyecto`, `listar_normativas` y `consultar_obligaciones`, con salida estructurada. Atiende la revisión 2026-07-28 y la era del `initialize`. Guarda propia de `Origin` (`MCP_ALLOWED_ORIGINS`), clave y límite. Claves propias opcionales (`MCP_API_KEYS`) para desplegarlo junto a la web pública sin cerrar `/v1/analyze`. El informe completo va también en `structuredContent.informe`. Detalles y decisiones en `docs/mcp/README.md`.
