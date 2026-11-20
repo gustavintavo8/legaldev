@@ -1,6 +1,6 @@
 # Servidor MCP de LegalDev
 
-**Estado (13/11/2026).** En producción en el Space de Hugging Face
+**Estado (20/11/2026).** En producción en el Space de Hugging Face
 (`https://gustavintavo8-legaldev.hf.space/mcp`) desde el 06/11/2026, con `MCP_API_KEYS`
 propias y la API REST abierta para la web. El despliegue del 13/11/2026 (`main@ab3e3a3`) llevó
 todo lo del 12/11/2026: el saneado de la salida (RNF-20), el marcado del contenido generado por
@@ -17,7 +17,11 @@ de una revisión independiente de ese arreglo (la entrada volvía a fabricar un 
 salida con `\<`, ver «Entrada: la descripción y su delimitador»). **La 0.5.1 (`7e87c8d`,
 etiqueta `v0.5.1`) es la que está en producción** desde el 13/11/2026, comprobada allí, y PP-18
 con el modelo real sobre ella vuelve a dar 0 cargas que sobrevivan (ver «PP-18 sobre la
-0.5.1»). Lo que falta está en «Pendiente».
+0.5.1»). El 20/11/2026 se midió su arranque en frío tras un reinicio: listo para usar a los
+27,9 s (ver «Latencia»). La 0.5.2 (20/11/2026, `CHANGELOG.md`) está publicada en el
+repositorio y pendiente de desplegar: fija el `ttlMs` de `server/discover` con su prueba,
+avisa en el informe si el modelo se cortó y registra los tokens de cada análisis (ver
+«Tokens y corte del informe»). Lo que falta está en «Pendiente».
 
 `POST /mcp` existe cuando `MCP_ENABLED=true` y hay claves (`MCP_API_KEYS` o, si está vacía,
 `API_KEYS`); sin claves no se monta aunque se active (RNF-15), y por defecto está desactivado.
@@ -1380,8 +1384,9 @@ LEGALDEV_URL=https://gustavintavo8-legaldev.hf.space LEGALDEV_API_KEY=<clave> \
   uv run python tools/medir_latencia_mcp.py --salida docs/mcp/latencia/resultado-AAAA-MM-DD.json
 ```
 
-Para medir el arranque del Space dormido, se espera a que se duerma (unas horas sin uso) y
-se mira `despertar.health_s`. Contra un servidor sin `generado_por_ia` (anterior al
+`despertar.health_s` mide el arranque si el Space está dormido o arrancando; el arranque en
+frío del 20/11/2026 se midió de otra forma (ver «Arranque en frío del Space» más abajo).
+Contra un servidor sin `generado_por_ia` (anterior al
 despliegue del 13/11/2026), las llamadas en caliente no se pueden verificar y se anotan como
 `cache_no_verificable`.
 
@@ -1417,12 +1422,39 @@ servidor 0.4.0, corpus `7a2029a4dfd8`), con la orden de arriba y el Space ya des
 - Las diez en caliente salieron de la caché (misma `fecha` que en frío).
 - No hubo exclusiones: ningún 429, ningún `isError` y ningún fallo de red.
 - Con n = 10, el p95 es el máximo.
-- No se midió el arranque del Space dormido, porque estaba despierto.
+- No se midió el arranque del Space, porque estaba despierto; se midió el 20/11/2026 (abajo).
+
+**Arranque en frío del Space (20/11/2026).** Con la 0.5.1 en producción (instantánea
+`33c23ad`, en `RUNNING`), el Space se reinició por la API de Hugging Face
+(`POST /api/spaces/{repo}/restart`, sin *factory reboot*) y los tiempos se cuentan desde la
+respuesta a ese POST. Resultado en `docs/mcp/latencia/arranque-2026-11-20.json`:
+
+| Momento | s |
+|---|---|
+| Etapa `RUNNING_APP_STARTING` | 1,2 |
+| Etapa `BUILDING` | 18,0 |
+| Etapa `RUNNING` | 20,4 |
+| `/health` responde 200 | 20,7 |
+| Listo para usar (`listo_para_usar_s`) | 27,9 |
+
+Entre `/health` y «listo para usar» respondieron bien `server/discover` (0,36 s),
+`tools/list` (0,17 s) y dos `consultar_obligaciones` (3,11 s, con 6 fragmentos, y 3,12 s).
+Después, el Space siguió en `RUNNING`. Es un reinicio, no un despertar: el proceso arranca
+de nuevo y carga el índice, los embeddings y el reordenador (`load_engine`). La etapa
+`BUILDING` es la que informó la API de Hugging Face; no se ha comprobado qué hace en ella un
+reinicio sin *factory reboot*.
+
+El arranque desde un Space **dormido** no se ha medido, y en la práctica no se da: Hugging
+Face duerme un Space gratuito tras 48 h sin tráfico, y la web (`legaldev-web`, `useHealth`)
+llama a `/health` en cada visita, así que el Space no llega a dormirse mientras la web
+tenga visitas. Si se durmiera, el despertar podría tardar distinto que este reinicio: no
+está medido.
 
 **Qué responde a RNF-19.** RNF-19 pide que «la latencia p95 por MCP en caliente» sea menor que
 la espera por defecto de los clientes. Con «en caliente» como acierto de caché, se cumple
 siempre (unos 0,03 s en local y 0,29 s en el Space el 06/11/2026). La cifra que dice algo es el
-p95 de `analizar_frio` con el Space ya despierto, y aparte el arranque del Space dormido.
+p95 de `analizar_frio` con el Space ya despierto, y aparte el arranque en frío (27,9 s hasta
+estar listo tras un reinicio, el 20/11/2026).
 
 Esperas de los clientes:
 
@@ -1739,8 +1771,11 @@ salía de él, separándolo de lo que aportaba por su cuenta. Lo que señaló:
   siempre, y Claude Code 2.1.268 espera a una herramienta unas 28 horas en total y 5 minutos
   sin actividad por HTTP (leído en su binario). La cifra útil es el p95 de
   `analizar_frio` con el Space despierto, comparado con una espera que la memoria tiene que
-  fijar. La medición en el Space despierto se hizo el 13/11/2026 (ver «Latencia»); falta la
-  del arranque del Space dormido (PT2-latencia).
+  fijar. La medición en el Space despierto se hizo el 13/11/2026 (ver «Latencia»). El
+  arranque en frío tras un reinicio se midió el 20/11/2026: `/health` a los 20,7 s y listo
+  para usar a los 27,9 s. El del Space dormido no se da en la práctica, porque la web llama
+  a `/health` en cada visita y Hugging Face solo lo duerme tras 48 h sin tráfico: sale de la
+  tabla de pendientes (PT2-latencia).
 - 23-detalle o el anexo de herramientas: `tools/medir_latencia_mcp.py` (latencia) y
   `tools/servidor_mcp_prueba.py`. Este último es la API local con registro de la revisión que
   negocia cada cliente y, si se pide, el modelo simulado.
@@ -1751,9 +1786,10 @@ salía de él, separándolo de lo que aportaba por su cuenta. Lo que señaló:
   tiene una sola apertura y un solo cierre (en la 0.5.0 con «‹» y «›»; desde la 0.5.1, con
   `&lt;` y `&gt;`, y las barras invertidas como `&#92;`). Los «patrones registrados» de RNF-05 son telemetría, no defensa, y ahora
   incluyen el español. Ver «Entrada: la descripción y su delimitador».
-- Versión: el servidor se publica como 0.5.1 (`CHANGELOG.md`; la 0.5.0 tenía la regresión
-  de P06). Donde la memoria dé la versión que anuncia `server/discover`, o la del generador
-  del ejemplo de evidencia (`lst:det-evidencia`, hoy «0.4.0»), tiene que decir 0.5.1 o
+- Versión: en producción está la 0.5.1 (`CHANGELOG.md`; la 0.5.0 tenía la regresión de
+  P06), y la 0.5.2 (20/11/2026) está publicada en el repositorio, pendiente de desplegar.
+  Donde la memoria dé la versión que anuncia `server/discover`, o la del generador del
+  ejemplo de evidencia (`lst:det-evidencia`, hoy «0.4.0»), tiene que decir la desplegada o
   aclarar que es un ejemplo. Las
   cifras de latencia en producción del 13/11/2026 se midieron con el servidor que anunciaba la
   0.4.0 (`ab3e3a3`).
@@ -1788,7 +1824,15 @@ Siguen abiertas, como estaban: tipificación de las guías de la AEPD sin articu
 `considerando` es una mención al RGPD (ver «Diseño resumido»), así que la tipificación no
 puede tomar el par (guía, artículo) por bueno.
 
-## Pendiente (13/11/2026)
+## Pendiente (20/11/2026)
+
+Hecho el 20/11/2026 (0.5.2, sin desplegar):
+
+- El `ttlMs` y el `cacheScope` de `server/discover`, fijados y con prueba (PP-13, CA-09).
+- El aviso de informe cortado y el registro de los tokens (ver «Tokens y corte del
+  informe»), con `tools/medir_tokens.py` para medir cuántos análisis caben en Groq.
+- `medir.py --informes-completos`, para revisar P05 y P12 a mano.
+- El arranque en frío del Space tras un reinicio (ver «Latencia»).
 
 Hecho el 13/11/2026, después de M1 (stdio y tope diario), M2 (saneado, PP-18 y marcado de IA)
 y M3 (latencia, MCP Inspector y clientes):
@@ -1801,11 +1845,14 @@ y M3 (latencia, MCP Inspector y clientes):
 - La versión 0.5.0, con los arreglos de la revisión externa del 13/11/2026 (`bd228c6`; ver
   `CHANGELOG.md`).
 - La PP-18 repetida sobre la 0.5.0, que encontró la regresión de P06, y la 0.5.1, que la
-  corrige (ver «PP-18 repetida sobre la 0.5.0»).
+  corrige (ver «PP-18 repetida sobre la 0.5.0»). La 0.5.1 se desplegó y se etiquetó ese
+  mismo día, y PP-18 sobre ella dio 0 que sobreviven (ver «PP-18 sobre la 0.5.1»).
 
 Lo que falta del servidor MCP:
 
-- **Arranque del Space dormido** (PT2-latencia): medirlo aparte, cuando el Space se duerma.
+- **Desplegar la 0.5.2 y etiquetarla** (lo hace el autor): en producción está la 0.5.1
+  (`7e87c8d`). Después, repetir la comprobación de `docs/mcp/produccion/`: `GET /` y
+  `server/discover` tienen que anunciar 0.5.2, y `server/discover`, `ttlMs` 0.
 - **Clientes reales** (el marcador de CU-07 de «Configuración de clientes»): VS Code, Cursor y Claude Code, por HTTP y por stdio,
   con los pasos de «Configuración de clientes». Anotar en cada uno la versión, la revisión que
   negocia, si aguanta el arranque de stdio y cómo presenta el 401 y el 403.
@@ -1845,10 +1892,6 @@ Lo que falta del servidor MCP:
   `articulo` o `considerando` lo repiten como si fuera de la guía. Haría falta que el
   segmentador distinga un encabezado de una mención, o no dar localizador en los documentos
   que no se articulan.
-- **Desplegar la 0.5.1 y etiquetarla** (lo hace el autor): en producción está la 0.5.0
-  (`bd228c6`), con la regresión de P06. Después, repetir la comprobación de
-  `docs/mcp/produccion/` (la `version_servidor` que anota `tools/medir_latencia_mcp.py`
-  pasará a 0.5.1).
 - **Partir este README** (mejora propuesta por la revisión externa del 13/11/2026): uno corto
   con el estado, el arranque rápido, las herramientas, el modelo de seguridad y lo pendiente,
   y aparte las decisiones, las mediciones por fecha y los cambios que necesita la memoria. Se
