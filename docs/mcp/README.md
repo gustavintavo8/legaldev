@@ -14,14 +14,16 @@ ya no puede cerrar su delimitador), y se desplegó el 13/11/2026 (etiqueta `v0.5
 repetida con el modelo real sobre ella encontró una regresión: la carga P06 llegaba al
 asistente (ver «PP-18 repetida sobre la 0.5.0»). La 0.5.1 la corrige, con los cuatro hallazgos
 de una revisión independiente de ese arreglo (la entrada volvía a fabricar un residual de la
-salida con `\<`, ver «Entrada: la descripción y su delimitador»). **La 0.5.1 (`7e87c8d`,
-etiqueta `v0.5.1`) es la que está en producción** desde el 13/11/2026, comprobada allí, y PP-18
-con el modelo real sobre ella vuelve a dar 0 cargas que sobrevivan (ver «PP-18 sobre la
-0.5.1»). El 20/11/2026 se midió su arranque en frío tras un reinicio: listo para usar a los
-27,9 s (ver «Latencia»). La 0.5.2 (20/11/2026, `CHANGELOG.md`) está publicada en el
-repositorio y pendiente de desplegar: fija el `ttlMs` de `server/discover` con su prueba,
-avisa en el informe si el modelo se cortó y registra los tokens de cada análisis (ver
-«Tokens y corte del informe»). Lo que falta está en «Pendiente».
+salida con `\<`, ver «Entrada: la descripción y su delimitador»). La 0.5.1 (`7e87c8d`,
+etiqueta `v0.5.1`) estuvo en producción del 13 al 20/11/2026, comprobada allí, y PP-18 con el
+modelo real sobre ella vuelve a dar 0 cargas que sobrevivan (ver «PP-18 sobre la 0.5.1»). El
+20/11/2026 se midió su arranque en frío tras un reinicio: listo para usar a los 27,9 s (ver
+«Latencia»). **Desde el 20/11/2026 está en producción la 0.5.2** (`155c009`, etiqueta
+`v0.5.2`, comprobada allí en `docs/mcp/produccion/verificacion-0.5.2-2026-11-20.json`): fija
+el `ttlMs` de `server/discover` con su prueba, avisa en el informe si el modelo se cortó y
+registra los tokens de cada análisis (ver «Tokens y corte del informe»). No cambia lo que
+recibe el modelo ni el saneado, así que la PP-18 medida sobre la 0.5.1 le sirve. Lo que falta
+está en «Pendiente».
 
 `POST /mcp` existe cuando `MCP_ENABLED=true` y hay claves (`MCP_API_KEYS` o, si está vacía,
 `API_KEYS`); sin claves no se monta aunque se active (RNF-15), y por defecto está desactivado.
@@ -662,7 +664,8 @@ Decisiones:
   - La protección supone un intérprete que trate los escapes como CommonMark (marked,
     markdown-it, cmark-gfm y los que derivan de ellos).
 
-**Hecho en la web (`legaldev-web`, 20/11/2026, `ba8aa05`, desplegado en Vercel).**
+**Hecho en la web (`legaldev-web`, 20/11/2026, desplegado en Vercel; hoy `master` está en
+`e6d54eb`).**
 
 - Cabeceras de seguridad en `vercel.json`: `Content-Security-Policy` con `default-src 'self'`,
   `img-src 'self' data:` y `connect-src` solo a la API del Space, además de `frame-ancestors
@@ -1847,8 +1850,8 @@ salía de él, separándolo de lo que aportaba por su cuenta. Lo que señaló:
   tiene una sola apertura y un solo cierre (en la 0.5.0 con «‹» y «›»; desde la 0.5.1, con
   `&lt;` y `&gt;`, y las barras invertidas como `&#92;`). Los «patrones registrados» de RNF-05 son telemetría, no defensa, y ahora
   incluyen el español. Ver «Entrada: la descripción y su delimitador».
-- Versión: en producción está la 0.5.1 (`CHANGELOG.md`; la 0.5.0 tenía la regresión de
-  P06), y la 0.5.2 (20/11/2026) está publicada en el repositorio, pendiente de desplegar.
+- Versión: en producción está la 0.5.2 desde el 20/11/2026 (`CHANGELOG.md`; la 0.5.1 sirvió
+  del 13 al 20/11 y la 0.5.0 tenía la regresión de P06).
   Donde la memoria dé la versión que anuncia `server/discover`, o la del generador del
   ejemplo de evidencia (`lst:det-evidencia`, hoy «0.4.0»), tiene que decir la desplegada o
   aclarar que es un ejemplo. Las
