@@ -186,3 +186,70 @@ def test_content_to_text_accepts_str_and_blocks():
         "mundo",
     ]
     assert _content_to_text(blocks) == "hola mundo"
+
+
+# ------------------------------------------------------------------- GROQ_MAX_RETRIES
+
+
+def _peticiones_con_un_429(max_retries):
+    """Peticiones HTTP que hace una llamada del cliente de ``_make_groq_client`` si Groq
+    responde siempre 429: ``ChatGroq`` y el SDK de Groq reales sobre un transporte simulado."""
+    import groq
+    from langchain_groq import ChatGroq
+
+    peticiones: list[httpx.Request] = []
+
+    def responder(peticion: httpx.Request) -> httpx.Response:
+        peticiones.append(peticion)
+        return httpx.Response(
+            429,
+            headers={"retry-after-ms": "1"},  # sin esperas reales entre reintentos
+            json={"error": {"message": "límite", "type": "rate_limit"}},
+        )
+
+    def fabrica(**kwargs):
+        transporte = httpx.Client(transport=httpx.MockTransport(responder))
+        return ChatGroq(**kwargs, http_client=transporte)
+
+    with (
+        patch("app.main.ChatGroq", side_effect=fabrica),
+        patch("app.main.settings", _settings()),
+    ):
+        cliente = _make_groq_client("openai/gpt-oss-120b", max_retries=max_retries)
+    with pytest.raises(groq.RateLimitError):
+        cliente.invoke("hola")
+    return len(peticiones)
+
+
+def test_without_groq_max_retries_chatgroq_retries_twice():
+    assert _peticiones_con_un_429(None) == 3
+
+
+def test_groq_max_retries_zero_is_a_single_request():
+    assert _peticiones_con_un_429(0) == 1
+
+
+@pytest.mark.parametrize("reintentos", [None, 0])
+def test_load_engine_passes_groq_max_retries_to_both_clients(mock_doc, reintentos):
+    from types import SimpleNamespace
+
+    from app import main as app_main
+    from tests.conftest import _patched_app
+
+    with (
+        _patched_app(mock_doc),
+        patch.object(app_main.settings, "groq_max_retries", reintentos),
+        patch.object(app_main.settings, "groq_fallback_model", "openai/gpt-oss-20b"),
+        patch("app.main._make_groq_client") as fabrica,
+    ):
+        app_main.load_engine(SimpleNamespace())
+
+    assert [c.args[0] for c in fabrica.call_args_list] == [
+        app_main.settings.groq_model,
+        "openai/gpt-oss-20b",
+    ]
+    # Siempre explícito: con None, _make_groq_client deja los reintentos de ChatGroq.
+    assert [c.kwargs["max_retries"] for c in fabrica.call_args_list] == [
+        reintentos,
+        reintentos,
+    ]

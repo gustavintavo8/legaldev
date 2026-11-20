@@ -50,9 +50,11 @@ GROQ_DEPRECATIONS_URL = "https://console.groq.com/docs/deprecations"
 def _make_groq_client(model: str, *, max_retries: int | None = None) -> ChatGroq:
     """Cliente de Groq con la configuración de ``settings``.
 
-    ``max_retries`` solo se pasa si se pide: la API conserva los reintentos por defecto de
-    ``ChatGroq`` (2, para 429 y 5xx, antes del modelo de respaldo), y
-    ``tools/medir_tokens.py`` pide 0 para que cada análisis sea una sola llamada.
+    ``max_retries`` solo se pasa a ``ChatGroq`` si no es ``None``. ``load_engine`` le da
+    ``GROQ_MAX_RETRIES``, vacío por defecto, y así la API conserva los reintentos por defecto
+    de ``ChatGroq`` (2, para 429 y 5xx, antes del modelo de respaldo).
+    ``docs/mcp/pp18/medir.py`` arranca la API con ``GROQ_MAX_RETRIES=0``, y
+    ``tools/medir_tokens.py`` pide 0 directamente, para que cada análisis sea una sola llamada.
     """
     kwargs: dict = {
         "api_key": settings.groq_api_key,
@@ -150,9 +152,13 @@ def load_engine(state) -> None:
         collection_name=CHROMA_COLLECTION,
     )
     logger.info("Initializing Groq client with model %s", settings.groq_model)
-    state.groq_client = _make_groq_client(settings.groq_model)
+    state.groq_client = _make_groq_client(
+        settings.groq_model, max_retries=settings.groq_max_retries
+    )
     state.groq_fallback_client = (
-        _make_groq_client(settings.groq_fallback_model)
+        _make_groq_client(
+            settings.groq_fallback_model, max_retries=settings.groq_max_retries
+        )
         if settings.groq_fallback_model
         else None
     )

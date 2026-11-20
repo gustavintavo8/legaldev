@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     groq_timeout: int = 30
     groq_temperature: float = 0.0
     groq_max_tokens: int = 8000
+    # Reintentos de ChatGroq ante 429 y 5xx, antes del modelo de respaldo. Vacío: los de
+    # ChatGroq (2). docs/mcp/pp18/medir.py arranca la API con 0, para que cada carga sea una
+    # sola llamada a Groq.
+    groq_max_retries: int | None = None
     min_relevance_score: float = 0.40
     rate_limit: str = "10/minute"
     allowed_origins: str = "*"
@@ -60,6 +64,23 @@ class Settings(BaseSettings):
         if not self.api_keys.strip():
             return frozenset()
         return frozenset(k.strip() for k in self.api_keys.split(",") if k.strip())
+
+    @field_validator("groq_max_retries", mode="before")
+    @classmethod
+    def validate_groq_max_retries(cls, v: object) -> object:
+        """Vacío (``GROQ_MAX_RETRIES=`` en un ``.env``) es «sin fijar», no un error al arrancar."""
+        if isinstance(v, str) and not v.strip():
+            return None
+        return v
+
+    @field_validator("groq_max_retries")
+    @classmethod
+    def validate_groq_max_retries_range(cls, v: int | None) -> int | None:
+        if v is not None and v < 0:
+            raise ValueError(
+                f"GROQ_MAX_RETRIES no puede ser negativo (vacío: los 2 de ChatGroq); recibido {v}"
+            )
+        return v
 
     @field_validator("allowed_origins")
     @classmethod

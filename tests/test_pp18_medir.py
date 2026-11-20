@@ -145,3 +145,24 @@ def test_solo_with_an_unknown_or_unmeasured_id_fails_before_any_call():
         medir.seleccionar(medir.cargas(), "P05,P13")
     with pytest.raises(ValueError, match="P99"):
         medir.seleccionar(medir.cargas(), "P99")
+
+
+def test_the_server_makes_one_groq_call_per_load(monkeypatch):
+    """El servidor que arranca medir.py no reintenta ni pasa al respaldo: cada carga es una
+    llamada a Groq. Hasta la 0.5.2 conservaba los 2 reintentos de ChatGroq ante 429 o 5xx,
+    aunque la cabecera decía «como mucho una llamada»."""
+    from app.config import Settings
+
+    entorno = _medir().entorno_servidor("clave-mcp-de-prueba", base={})
+    assert entorno["GROQ_MAX_RETRIES"] == "0"
+    assert entorno["GROQ_FALLBACK_MODEL"] == ""
+    assert entorno["GROQ_VERIFY_MODEL_ON_STARTUP"] == "false"
+    assert entorno["MCP_API_KEYS"] == "clave-mcp-de-prueba"
+    assert _medir().entorno_servidor("k", base={"PATH": "p"})["PATH"] == "p"
+
+    # Lo que leerá la configuración del servidor con ese entorno.
+    for nombre, valor in entorno.items():
+        monkeypatch.setenv(nombre, valor)
+    s = Settings(groq_api_key="x", _env_file=None)
+    assert s.groq_max_retries == 0
+    assert s.groq_fallback_model == ""

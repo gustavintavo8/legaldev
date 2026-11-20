@@ -400,6 +400,7 @@ ALLOWED_ORIGINS=*
 | `GROQ_VERIFY_MODEL_ON_STARTUP` | Comprueba al arrancar que `GROQ_MODEL` existe en Groq | `true` |
 | `GROQ_TEMPERATURE` | Temperatura del LLM (0 = determinista) | `0.0` |
 | `GROQ_MAX_TOKENS` | Límite de tokens en la respuesta del LLM | `8000` |
+| `GROQ_MAX_RETRIES` | Reintentos de `ChatGroq` ante 429 y 5xx, antes del modelo de respaldo; vacío, los de `ChatGroq` (2). PP-18 (`docs/mcp/pp18/medir.py`) arranca la API con `0` | vacío |
 | `MIN_RELEVANCE_SCORE` | Umbral mínimo de relevancia para chunks | `0.40` |
 | `RERANKER_TOP_K` | Candidatos de la búsqueda principal que llegan al reranker tras el recorte | `25` |
 | `MAX_CHUNKS_PER_SOURCE` | Tope de chunks de una misma normativa en el contexto final (`0` desactiva) | `4` |

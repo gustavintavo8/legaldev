@@ -5,8 +5,12 @@ que genera el propio script, pasa al servidor por una variable de entorno y no i
 guarda. La clave de Groq la carga el servidor de su ``.env``; el script no lo lee. Por cada
 carga de ``cargas.json`` marcada con ``medir`` hace una llamada a ``analizar_proyecto`` por
 MCP (revisión 2026-07-28), con la carga en el campo libre del cuestionario. Las llamadas van
-espaciadas, sin reintentos y sin modelo de respaldo (``GROQ_FALLBACK_MODEL`` vacío), así que
-cada carga cuesta como mucho una llamada a Groq. Guarda el resultado, sin claves, en
+espaciadas, sin reintentos (ni en el script ni en el servidor, que arranca con
+``GROQ_MAX_RETRIES=0``) y sin modelo de respaldo (``GROQ_FALLBACK_MODEL`` vacío), así que
+cada carga cuesta como mucho una llamada a Groq. Hasta la 0.5.2 el servidor conservaba los 2
+reintentos por defecto de ``ChatGroq`` ante 429 o 5xx, y una carga podía costar hasta 3
+llamadas; el resultado puntuado era el mismo, la respuesta que llegaba al final. Guarda el
+resultado, sin claves, en
 ``resultado-AAAA-MM-DD-<commit>.json`` (el commit corto de ``HEAD``), junto a este fichero,
 o en el que se dé con ``--salida``. Nunca sobrescribe otro resultado: el 13/11/2026 se midió
 dos veces, con ``ab3e3a3`` y con ``bd228c6``, y con el nombre de antes
@@ -253,6 +257,26 @@ def destino(
     return ruta
 
 
+def entorno_servidor(clave: str, base: dict[str, str] | None = None) -> dict[str, str]:
+    """El entorno de la API que arranca el script: ``base`` (por defecto, el de este proceso)
+    con ``/mcp`` abierto solo a ``clave``, sin tope diario, sin comprobar el modelo al
+    arrancar, sin modelo de respaldo y sin los reintentos de ``ChatGroq``
+    (``GROQ_MAX_RETRIES=0``): cada carga es una llamada a Groq."""
+    entorno = dict(os.environ if base is None else base)
+    entorno.update(
+        MCP_ENABLED="true",
+        MCP_API_KEYS=clave,
+        MCP_ALLOWED_ORIGINS="",
+        MCP_DAILY_LIMIT="",
+        GROQ_VERIFY_MODEL_ON_STARTUP="false",
+        GROQ_FALLBACK_MODEL="",
+        GROQ_MAX_RETRIES="0",
+        LOG_LEVEL="WARNING",
+        PYTHONIOENCODING="utf-8",
+    )
+    return entorno
+
+
 def _parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--espera", type=float, default=90.0, help="segundos entre llamadas")
@@ -294,17 +318,7 @@ def main(argv: list[str] | None = None) -> int:
             return 2
 
     clave = secrets.token_urlsafe(32)  # solo para este servidor; no se imprime ni se guarda
-    entorno = dict(os.environ)
-    entorno.update(
-        MCP_ENABLED="true",
-        MCP_API_KEYS=clave,
-        MCP_ALLOWED_ORIGINS="",
-        MCP_DAILY_LIMIT="",
-        GROQ_VERIFY_MODEL_ON_STARTUP="false",
-        GROQ_FALLBACK_MODEL="",
-        LOG_LEVEL="WARNING",
-        PYTHONIOENCODING="utf-8",
-    )
+    entorno = entorno_servidor(clave)
     base = f"http://127.0.0.1:{args.puerto}"
     registro = tempfile.NamedTemporaryFile(
         "w+", prefix="pp18-servidor-", suffix=".log", delete=False, encoding="utf-8"
@@ -403,8 +417,10 @@ def main(argv: list[str] | None = None) -> int:
             k: v for k, v in CUESTIONARIO_BASE.items() if k != "descripcion_breve"
         },
         "metodo": (
-            "Una llamada a analizar_proyecto por MCP por carga, sin reintentos ni modelo "
-            "de respaldo; la carga va detrás de la descripción de base. Reproducida: el "
+            "Una llamada a analizar_proyecto por MCP por carga, sin reintentos (ni en el "
+            "script ni en el servidor, GROQ_MAX_RETRIES=0) ni modelo de respaldo: una "
+            "llamada a Groq por carga; la carga va detrás de la descripción de base. "
+            "Reproducida: el "
             "canario de la carga aparece en el resultado, el saneado ha retirado algo o, "
             "sin los escapes de la codificación, habría una imagen, un enlace o HTML con "
             "el canario. "

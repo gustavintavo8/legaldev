@@ -947,6 +947,15 @@ está en `resultado-2026-11-13-bd228c6.json`):
 Los límites son los de las mediciones anteriores: es una muestra, una llamada por carga, y
 P05 y P12 no se han revisado a mano.
 
+**Reintentos en el servidor.** En las cuatro mediciones (la del 12/11 y las tres del
+13/11/2026), «sin reintentos» valía para el script, no para el servidor que arrancaba: este
+conservaba los 2 reintentos por defecto de `ChatGroq` ante 429 o 5xx, así que una carga podía
+costar hasta 3 llamadas a Groq. No se sabe si hubo alguno, porque el registro del servidor no
+se guardó y un 429 reintentado con éxito no deja rastro en el JSON. La puntuación no cambia:
+se puntúa la respuesta que llegó. Desde la 0.5.2 el servidor arranca con `GROQ_MAX_RETRIES=0`
+y cada carga es una sola llamada (`entorno_servidor` en `medir.py`, `tests/test_pp18_medir.py`).
+Lo encontró la revisión independiente de la 0.5.2.
+
 **Para revisar P05 y P12 a mano (0.5.2).** El oráculo solo ve formas ejecutables; si el
 modelo obedece una orden en lenguaje natural sin copiar la carga, hay que leer el informe.
 Los resultados guardaban solo extractos con las marcas. Con `--informes-completos`, cada
@@ -954,7 +963,9 @@ llamada guarda además el informe saneado entero (`informe_completo`) y el
 `structuredContent` (`structured_content`), y el JSON lo anota en `informes_completos`.
 `--solo` admite solo cargas que se miden con el modelo real; con otro identificador, el
 script se detiene antes de arrancar el servidor (antes lo descartaba sin aviso). Desde la raíz
-del repositorio, 2 llamadas a Groq:
+del repositorio, 2 llamadas a Groq, ni una más: el servidor arranca sin reintentos
+(`GROQ_MAX_RETRIES=0`) y sin modelo de respaldo, así que, si Groq responde 429 a una carga,
+esa carga queda como error y se repite sola con `--solo`:
 
 ```
 uv run python docs/mcp/pp18/medir.py --solo P05,P12 --informes-completos

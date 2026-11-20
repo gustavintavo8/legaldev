@@ -66,3 +66,24 @@ def test_unknown_settings_keys_are_ignored_not_rejected():
     s = Settings(groq_api_key="x", chroma_timeout=10.0)
     assert s.retrieval_timeout == 60.0
     assert not hasattr(s, "chroma_timeout")
+
+
+# GROQ_MAX_RETRIES (0.5.2): los reintentos de ChatGroq ante 429 y 5xx. Vacío, los de
+# ChatGroq (2); docs/mcp/pp18/medir.py arranca la API con 0.
+
+
+def test_groq_max_retries_defaults_to_chatgroq():
+    assert Settings(groq_api_key="x", _env_file=None).groq_max_retries is None
+
+
+@pytest.mark.parametrize(
+    ("valor", "esperado"), [("", None), ("  ", None), ("0", 0), ("3", 3)]
+)
+def test_groq_max_retries_is_read_from_the_environment(monkeypatch, valor, esperado):
+    monkeypatch.setenv("GROQ_MAX_RETRIES", valor)
+    assert Settings(groq_api_key="x", _env_file=None).groq_max_retries == esperado
+
+
+def test_groq_max_retries_cannot_be_negative():
+    with pytest.raises(ValidationError, match="GROQ_MAX_RETRIES"):
+        Settings(groq_api_key="x", _env_file=None, groq_max_retries=-1)
