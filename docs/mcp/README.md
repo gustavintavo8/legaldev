@@ -133,8 +133,20 @@ Resumen del [registro de cambios](https://modelcontextprotocol.io/specification/
 - `server/discover` obligatorio (versiones, capacidades, identidad).
 - Cabeceras `MCP-Protocol-Version`, `Mcp-Method` y, en `tools/call`, `Mcp-Name` en cada POST;
   si no coinciden con el cuerpo, 400 con `HeaderMismatch` (-32020). GET y DELETE, 405.
-- `resultType` obligatorio (`"complete"` | `"input_required"`); `ttlMs` y `cacheScope` en
-  `tools/list`.
+- `resultType` obligatorio (`"complete"` | `"input_required"`); `ttlMs` y `cacheScope`
+  obligatorios en los resultados que se pueden guardar: en LegalDev, `server/discover` y
+  `tools/list` (no tiene recursos ni prompts, aunque `server/discover` anuncia las dos
+  capacidades; ver «Pendiente»). Los valores los fija el servidor
+  (`app/mcp_server.py`) y los comprueban PP-13 y PP-15:
+  - `tools/list`: `ttlMs` de una hora (3.600.000) y `cacheScope` `"public"`. La lista solo
+    cambia al desplegar y no depende de quién pregunta.
+  - `server/discover`: `ttlMs` 0 y `cacheScope` `"private"`. Lleva la versión del servidor,
+    que es por la que un cliente distingue un `tools/list` de otro; si se guardara, el
+    cliente no vería un despliegue nuevo hasta que caducara. Descubrir no toca el índice ni
+    el modelo, así que repetirlo no cuesta nada, y con `ttlMs` 0 el ámbito no importa. Son
+    los valores que el SDK ponía por defecto y que ya enviaba la 0.5.1 en producción: desde
+    la 0.5.2 están fijados en el servidor, para que una versión nueva del SDK no los cambie
+    sin decidirlo, y una prueba comprueba que salen de ahí y no del SDK.
 - MRTR (`InputRequiredResult`) en lugar de peticiones iniciadas por el servidor. LegalDev no
   lo usa en la primera versión: las herramientas reciben todos sus datos como argumentos.
 - Sampling, Roots y Logging, obsoletos. LegalDev no los necesita: llama directamente a la API
@@ -1661,6 +1673,12 @@ salía de él, separándolo de lo que aportaba por su cuenta. Lo que señaló:
   números de más de tres cifras del índice son llamadas de nota y dan nulos (ver «Diseño
   resumido»).
 
+- CA-09 en 24-pruebas, 01-objetivo, 06-resultados (balance, fila «Contrato») y
+  07-conclusiones: el `ttlMs` de `server/discover` ya está comprobado (PP-13, 0.5.2). Es 0,
+  con `cacheScope` `"private"`, los mismos valores que enviaba la 0.5.1, así que el contrato
+  se cumplía y ahora tiene prueba; el porqué del 0 está en «Lo que exige la revisión
+  2026-07-28». Deja de ser un criterio pendiente de OE1.
+
 Siguen abiertas, como estaban: tipificación de las guías de la AEPD sin articulado y forma de
 `sin_mapeo` en la evidencia (OE2). En las guías, además, el encabezado que da `articulo` o
 `considerando` es una mención al RGPD (ver «Diseño resumido»), así que la tipificación no
@@ -1694,6 +1712,12 @@ Lo que falta del servidor MCP:
 - **PP-18:** revisar a mano si los informes de P05 y P12 obedecen, sin copiarlas, las órdenes
   en lenguaje natural. Hace falta guardar el informe entero, porque `medir.py` solo guarda
   extractos.
+- **Capacidades de `server/discover`:** anuncia `prompts` (`listChanged`) y `resources`
+  (`listChanged` y `subscribe`), que el SDK declara por defecto, aunque LegalDev no tiene ni
+  prompts ni recursos, y `listChanged` en las tres, aunque sin estado no hay notificaciones
+  (visto al fijar su `ttlMs`, 20/11/2026). Un cliente que se fíe de ellas pedirá listas
+  vacías. Quitarlas es un cambio del contrato que se anuncia: hay que ver si el SDK deja
+  declararlas y probarlo con los clientes.
 - **`make mcp-inspect` en Windows:** el caso sin clave sale con 127 por la aserción de libuv al
   cerrar Node (ver «Despliegue en el Space de Hugging Face»). Basta con aceptar 3 o 127 en Windows, o ejecutarlo en Linux.
 - **Web (`legaldev-web`):** CSP con `img-src` y `default-src`, ganchos de DOMPurify que quiten

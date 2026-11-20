@@ -7,8 +7,8 @@ Es una capa fina: las herramientas llaman a ``app.service`` (la misma caché, el
 los mismos errores de dominio que ``POST /v1/analyze``) y solo traducen entradas y salidas.
 
 Revisión objetivo: **2026-07-28** (sin estado, ``server/discover``, cabeceras
-``MCP-Protocol-Version``/``Mcp-Method``/``Mcp-Name``, ``resultType`` y ``tools/list``
-cacheable). El SDK sirve además la era del ``initialize`` (2025-11-25 y anteriores): la
+``MCP-Protocol-Version``/``Mcp-Method``/``Mcp-Name``, ``resultType`` y ``ttlMs``/``cacheScope``
+en ``server/discover`` y ``tools/list``). El SDK sirve además la era del ``initialize`` (2025-11-25 y anteriores): la
 primera petición de cada cliente decide la era, así que los asistentes que aún no hablan
 2026-07-28 también funcionan (servidor de doble era; decisión de la prueba de concepto,
 ``docs/mcp/README.md``). LegalDev no usa MRTR, Sampling, Roots ni Logging: las tres
@@ -166,6 +166,17 @@ TOOL_ANNOTATIONS: Final[dict[str, dict[str, bool]]] = {
 # «public» es aceptable aunque /mcp exija clave: la lista no contiene nada propio del cliente.
 TOOLS_LIST_TTL_MS: Final = 3_600_000
 TOOLS_LIST_CACHE_SCOPE: Final[CacheScope] = "public"
+
+# server/discover también lleva ttlMs y cacheScope (la revisión 2026-07-28 los exige en
+# DiscoverResult; CA-09). Su resultado incluye la versión del servidor (serverInfo), que es
+# por la que un cliente distingue un tools/list de otro: si se guardara, un cliente no vería
+# un despliegue nuevo hasta que caducara. Por eso ttlMs es 0 (caduca al recibirlo; descubrir
+# no toca el índice ni el modelo). cacheScope queda en «private», el valor por defecto del
+# SDK: con ttlMs 0 no se reutiliza en ningún sitio. Son los valores que el SDK ya enviaba por
+# defecto (la 0.5.1 en producción); fijarlos aquí evita que una versión nueva del SDK los
+# cambie sin que nadie lo decida.
+DISCOVER_TTL_MS: Final = 0
+DISCOVER_CACHE_SCOPE: Final[CacheScope] = "private"
 
 # Intervalo de las notificaciones de progreso mientras se genera el informe (RNF-19): solo se
 # envían si la petición trae progressToken, y reinician el tiempo de espera del cliente.
@@ -508,6 +519,9 @@ def build_mcp_server(state, *, version: str = "0.0.0") -> MCPServer:
         version=version,
         instructions=SERVER_INSTRUCTIONS,
         cache_hints={
+            "server/discover": CacheHint(
+                ttl_ms=DISCOVER_TTL_MS, scope=DISCOVER_CACHE_SCOPE
+            ),
             "tools/list": CacheHint(
                 ttl_ms=TOOLS_LIST_TTL_MS, scope=TOOLS_LIST_CACHE_SCOPE
             ),

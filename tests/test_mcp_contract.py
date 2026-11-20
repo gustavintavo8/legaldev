@@ -7,10 +7,12 @@ peticiones JSON-RPC en crudo contra /mcp montado en la aplicación (TestClient, 
 
 import base64
 import json
+from unittest.mock import patch
 
 import jsonschema
 import pytest
 from mcp.shared.exceptions import MCPError
+from mcp_types.methods import validate_server_result
 
 from app import mcp_server
 from app.fragments import fragment_id
@@ -91,8 +93,10 @@ def test_pp01_tools_call_without_prior_request_carries_version_in_meta(mcp_http)
 
 
 def test_pp13_server_discover_declares_revision_and_tools_capability(mcp_http):
-    """supportedVersions contiene 2026-07-28, capabilities.tools existe, serverInfo en _meta
-    y resultType complete."""
+    """supportedVersions contiene 2026-07-28, capabilities.tools existe, serverInfo en _meta,
+    resultType complete y, como en tools/list, ttlMs y cacheScope (CA-09): la revisión
+    2026-07-28 los exige en DiscoverResult. Son los valores fijados en el servidor, no los
+    que el SDK pone por defecto."""
     r = rpc(mcp_http, "server/discover")
     assert r.status_code == 200
     result = message(r)["result"]
@@ -101,6 +105,37 @@ def test_pp13_server_discover_declares_revision_and_tools_capability(mcp_http):
     assert result["_meta"]["io.modelcontextprotocol/serverInfo"]["name"] == "legaldev"
     assert result["resultType"] == "complete"
     assert result["instructions"] == mcp_server.SERVER_INSTRUCTIONS
+    assert type(result["ttlMs"]) is int and result["ttlMs"] >= 0
+    assert result["cacheScope"] in ("public", "private")
+    assert result["ttlMs"] == mcp_server.DISCOVER_TTL_MS
+    assert result["cacheScope"] == mcp_server.DISCOVER_CACHE_SCOPE
+    # El resultado entero cumple el modelo de la revisión (campos obligatorios y rangos).
+    validate_server_result("server/discover", mcp_server.PROTOCOL_VERSION, result)
+
+
+def test_pp13_discover_is_immediately_stale_so_a_client_sees_a_new_version():
+    """server/discover lleva la versión del servidor, que es por la que un cliente distingue
+    un tools/list de otro (TOOLS_LIST_TTL_MS): si se guardara, un cliente no vería un
+    despliegue nuevo. Por eso su ttlMs es 0, y cacheScope queda en «private», el valor por
+    defecto del SDK (con ttlMs 0 no se reutiliza en ningún sitio). Son los que enviaba ya la
+    0.5.1 en producción: el contrato no cambia."""
+    assert mcp_server.DISCOVER_TTL_MS == 0
+    assert mcp_server.DISCOVER_CACHE_SCOPE == "private"
+
+
+def test_pp13_discover_hints_come_from_the_server_not_from_sdk_defaults(request):
+    """Los valores de 0 y «private» coinciden con los del SDK por defecto, así que la prueba
+    de arriba pasaría aunque el servidor no los fijara. Con otros valores en las constantes,
+    server/discover tiene que enviar esos: el resultado sale de cache_hints."""
+    with (
+        patch.object(mcp_server, "DISCOVER_TTL_MS", 1234),
+        patch.object(mcp_server, "DISCOVER_CACHE_SCOPE", "public"),
+    ):
+        # mcp_http construye el servidor dentro del parche.
+        http = request.getfixturevalue("mcp_http")
+        result = message(rpc(http, "server/discover"))["result"]
+    assert result["ttlMs"] == 1234
+    assert result["cacheScope"] == "public"
 
 
 def test_pp15_every_result_is_complete_and_tools_list_is_cacheable(mcp_http):
