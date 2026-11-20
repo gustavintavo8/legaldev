@@ -1464,6 +1464,52 @@ del informe. Si una vía necesita el dato estructurado, se añadiría como campo
 Pruebas en `tests/test_uso_modelo.py`, que leen la respuesta con `ChatGroq` y el SDK de Groq
 reales sobre un transporte HTTP simulado.
 
+### Cuántos análisis caben en la cuenta de Groq (`tools/medir_tokens.py`)
+
+La cuenta de Groq es del plan gratuito, así que lo que limita no es el coste, sino los
+límites de la cuenta por modelo. `tools/medir_tokens.py` mide cuántos tokens gasta un
+análisis y, con eso, cuántos caben:
+
+- **Análisis reales en proceso** (`--n`, 5 por defecto, como mucho 20), por
+  `service.analyze`, el mismo camino que `POST /v1/analyze` y `analizar_proyecto`, con el
+  índice de este repositorio y el modelo de `.env`. Los cuestionarios son los cinco de
+  `tools/medir_latencia_mcp.py`, con la marca de la ejecución en la descripción, así que
+  ninguno sale de la caché; si alguno saliera, se anota como `cache` y no cuenta.
+- **Por informe:** los tokens de entrada, salida, razonamiento y total que lee el motor
+  (`PipelineResult.uso_modelo`), el `finish_reason` y el `usage` numérico tal como lo da
+  Groq (`usage_groq`), para ver qué campos manda de verdad. Después, la media, el máximo y
+  cuántos se cortaron.
+- **Los límites,** de las cabeceras `x-ratelimit-*` de una llamada mínima a
+  `chat/completions` (16 tokens de salida) con el mismo modelo, porque los límites son por
+  modelo. Según la documentación de Groq, `limit-requests` es el de peticiones por día (RPD)
+  y `limit-tokens` el de tokens por minuto (TPM). Las cabeceras se guardan tal cual, para
+  poder comprobarlo. Las peticiones por minuto (RPM) y los tokens por día (TPD) no van en
+  las cabeceras: se pasan con `--rpm` y `--tpd`, leídos en la página de límites de la
+  consola de Groq, o quedan en `null`.
+- **La capacidad:** por minuto, `min(floor(TPM / máx(total)), RPM)`; por día,
+  `min(RPD, floor(TPD / máx(total)))`. También con la media, y por minuto con lo que
+  cabría si Groq reservara la entrada más `GROQ_MAX_TOKENS` al recibir la petición, que no
+  está documentado. A eso se suman los límites propios de LegalDev: `RATE_LIMIT` (10 por
+  minuto) y, en `/mcp`, `MCP_DAILY_LIMIT` (200 al día por clave en el Space).
+
+Gasta `--n` + 1 llamadas a Groq: la mínima, que va primero, y una por análisis. Si la
+mínima no responde 200 (clave o modelo mal), se para antes de cargar el motor. No hay
+reintentos (el cliente se crea con `max_retries=0`; `ChatGroq` reintenta dos veces por
+defecto), ni modelo de respaldo, ni comprobación del modelo al arrancar. Las llamadas van
+espaciadas 90 s. La clave la lee `app.config.settings` del `.env`, y no se imprime ni se
+guarda. El JSON solo lleva recuentos, ni la clave ni texto de los informes, y nunca
+sobrescribe otro resultado.
+
+Desde la raíz del repositorio (unos 8 minutos con los valores por defecto):
+
+```
+uv run python tools/medir_tokens.py --rpm <RPM> --tpd <TPD>
+git checkout -- chroma_db/chroma.sqlite3
+```
+
+El resultado va a `docs/mcp/tokens/resultado-AAAA-MM-DD-<commit>.json`. Pruebas con dobles y
+sin red en `tests/test_medir_tokens.py`. **Pendiente:** ejecutarlo (lo hace el autor).
+
 ## Primera prueba con un asistente real (Claude Code, 06/11/2026)
 
 Cuestionario: aplicación web de una empresa de Madrid, de acceso público, con usuarios
@@ -1719,6 +1765,9 @@ salía de él, separándolo de lo que aportaba por su cuenta. Lo que señaló:
   `finish_reason` y los tokens, el informe cortado lo dice en «Cobertura del análisis» y hay
   dos métricas nuevas (ver «Tokens y corte del informe»). La evaluación extendida
   (`eval/run.py`) puede tomar los tokens de `PipelineResult.uso_modelo`.
+- Modelo de amenazas (consumo de la cuota del modelo), RNF-21 y el anexo de herramientas:
+  `tools/medir_tokens.py` y sus cifras, cuando el autor lo ejecute. Con ellas se justifica
+  el tope diario de `/mcp` frente a los límites de la cuenta gratuita de Groq.
 
 Siguen abiertas, como estaban: tipificación de las guías de la AEPD sin articulado y forma de
 `sin_mapeo` en la evidencia (OE2). En las guías, además, el encabezado que da `articulo` o
@@ -1753,6 +1802,9 @@ Lo que falta del servidor MCP:
 - **PP-18:** revisar a mano si los informes de P05 y P12 obedecen, sin copiarlas, las órdenes
   en lenguaje natural. Hace falta guardar el informe entero, porque `medir.py` solo guarda
   extractos.
+- **Tokens por análisis** (lo hace el autor, con Groq): ejecutar `tools/medir_tokens.py`
+  (6 llamadas con los valores por defecto) y llevar las cifras a la memoria (ver «Cuántos
+  análisis caben en la cuenta de Groq»).
 - **Capacidades de `server/discover`:** anuncia `prompts` (`listChanged`) y `resources`
   (`listChanged` y `subscribe`), que el SDK declara por defecto, aunque LegalDev no tiene ni
   prompts ni recursos, y `listChanged` en las tres, aunque sin estado no hay notificaciones

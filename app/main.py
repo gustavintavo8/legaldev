@@ -47,7 +47,13 @@ GROQ_MODELS_URL = "https://api.groq.com/openai/v1/models"
 GROQ_DEPRECATIONS_URL = "https://console.groq.com/docs/deprecations"
 
 
-def _make_groq_client(model: str) -> ChatGroq:
+def _make_groq_client(model: str, *, max_retries: int | None = None) -> ChatGroq:
+    """Cliente de Groq con la configuración de ``settings``.
+
+    ``max_retries`` solo se pasa si se pide: la API conserva los reintentos por defecto de
+    ``ChatGroq`` (2, para 429 y 5xx, antes del modelo de respaldo), y
+    ``tools/medir_tokens.py`` pide 0 para que cada análisis sea una sola llamada.
+    """
     kwargs: dict = {
         "api_key": settings.groq_api_key,
         "model_name": model,
@@ -58,6 +64,8 @@ def _make_groq_client(model: str) -> ChatGroq:
     # reasoning_effort solo existe en la familia gpt-oss; Groq rechaza el parámetro en otros modelos.
     if settings.groq_reasoning_effort and model.startswith("openai/gpt-oss"):
         kwargs["reasoning_effort"] = settings.groq_reasoning_effort
+    if max_retries is not None:
+        kwargs["max_retries"] = max_retries
     return ChatGroq(**kwargs)
 
 

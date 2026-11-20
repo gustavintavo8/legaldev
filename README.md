@@ -520,7 +520,7 @@ En local también funciona por stdio, sin clave y con la clave de Groq propia:
 claude mcp add legaldev -- uv run --directory <ruta del repositorio> python -m app.mcp_stdio
 ```
 
-Diseño, seguridad, decisiones, modo stdio y configuración de VS Code y Cursor (ejemplos en `docs/mcp/clients/`, con una variante stdio en `docs/mcp/clients/stdio/`): [`docs/mcp/README.md`](docs/mcp/README.md). `make mcp-inspect` comprueba `/mcp` con MCP Inspector en las dos eras (necesita `LEGALDEV_API_KEY` y, si no es la API local, `LEGALDEV_URL`). `tools/medir_latencia_mcp.py` mide la latencia p50 y p95 por MCP.
+Diseño, seguridad, decisiones, modo stdio y configuración de VS Code y Cursor (ejemplos en `docs/mcp/clients/`, con una variante stdio en `docs/mcp/clients/stdio/`): [`docs/mcp/README.md`](docs/mcp/README.md). `make mcp-inspect` comprueba `/mcp` con MCP Inspector en las dos eras (necesita `LEGALDEV_API_KEY` y, si no es la API local, `LEGALDEV_URL`). `tools/medir_latencia_mcp.py` mide la latencia p50 y p95 por MCP, y `tools/medir_tokens.py`, los tokens de cada análisis y cuántos caben en los límites de Groq (lo ejecuta el autor: gasta N + 1 llamadas).
 
 ## 🔒 Privacidad y datos
 

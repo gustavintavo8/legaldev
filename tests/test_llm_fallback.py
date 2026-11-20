@@ -34,6 +34,16 @@ def test_make_groq_client_sends_reasoning_effort_for_gpt_oss():
     assert kwargs["temperature"] == 0.0
 
 
+def test_make_groq_client_keeps_chatgroq_retries_unless_asked():
+    """La API deja los reintentos por defecto de ChatGroq; tools/medir_tokens.py pide 0 para
+    que cada análisis sea una sola llamada a Groq."""
+    with patch("app.main.ChatGroq") as cls, patch("app.main.settings", _settings()):
+        _make_groq_client("openai/gpt-oss-120b")
+        assert "max_retries" not in cls.call_args.kwargs
+        _make_groq_client("openai/gpt-oss-120b", max_retries=0)
+        assert cls.call_args.kwargs["max_retries"] == 0
+
+
 def test_make_groq_client_omits_reasoning_effort_for_other_models():
     with patch("app.main.ChatGroq") as cls, patch("app.main.settings", _settings()):
         _make_groq_client("qwen/qwen3.6-27b")
