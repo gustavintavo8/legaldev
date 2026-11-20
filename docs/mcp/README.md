@@ -1543,8 +1543,12 @@ mínima no responde 200 (clave o modelo mal), se para antes de cargar el motor. 
 reintentos (el cliente se crea con `max_retries=0`; `ChatGroq` reintenta dos veces por
 defecto), ni modelo de respaldo, ni comprobación del modelo al arrancar. Las llamadas van
 espaciadas 90 s. La clave la lee `app.config.settings` del `.env`, y no se imprime ni se
-guarda. El JSON solo lleva recuentos, ni la clave ni texto de los informes, y nunca
-sobrescribe otro resultado.
+guarda. `Settings` no la recorta, y httpx rechaza una cabecera `Authorization` con un espacio
+o un `\r` al final con un error que la repite entera (`Illegal header value b'Bearer …'`); por
+eso el script rechaza antes de la primera llamada una clave con espacios o saltos de línea al
+principio o al final, o con caracteres no ASCII o de control, sin mostrarla, y de un error de
+red o de httpx solo imprime el tipo. El JSON solo lleva recuentos, ni la clave ni texto de los
+informes, y nunca sobrescribe otro resultado.
 
 Desde la raíz del repositorio (unos 8 minutos con los valores por defecto):
 

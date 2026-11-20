@@ -33,7 +33,10 @@ con ``--rpm`` y ``--tpd`` (consola de Groq, página de límites de la organizaci
 cálculo los deja en ``null``. Cada análisis es una petición.
 
 La clave de Groq la lee ``app.config.settings`` del ``.env``. No se imprime ni se guarda: el
-JSON no lleva la clave ni texto de los informes, solo recuentos.
+JSON no lleva la clave ni texto de los informes, solo recuentos. Una clave con espacios o
+saltos de línea al principio o al final, o con caracteres no ASCII o de control, se rechaza
+antes de la primera llamada, sin mostrarla (httpx rechazaría la cabecera con un error que la
+repite entera). De un error de red o de httpx solo se imprime el tipo, nunca el mensaje.
 
 Uso, desde la raíz del repositorio (hace falta el índice y ``GROQ_API_KEY`` en ``.env``):
 
@@ -461,6 +464,17 @@ def destino(
     return ruta
 
 
+def clave_bien_formada(clave: str) -> bool:
+    """La clave se puede enviar tal cual en ``Authorization``: ASCII imprimible, sin espacios
+    ni saltos de línea al principio o al final.
+
+    ``Settings`` no recorta la clave, y una que llegue del ``.env`` con un espacio o un
+    ``\\r`` al final la rechaza httpx (h11) con un error cuyo mensaje lleva la cabecera
+    entera, ``Bearer <clave>``. Así se para antes de la primera llamada.
+    """
+    return clave == clave.strip() and clave.isascii() and clave.isprintable()
+
+
 def _parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--n", type=int, default=5, help=f"análisis (1 a {MAX_INFORMES})")
@@ -512,6 +526,13 @@ def main(argv: list[str] | None = None) -> int:
     if not settings.groq_api_key.strip():
         print("Falta GROQ_API_KEY en .env.", file=sys.stderr)
         return 2
+    if not clave_bien_formada(settings.groq_api_key):
+        print(
+            "GROQ_API_KEY tiene espacios o saltos de línea al principio o al final, o "
+            "caracteres no ASCII o de control: corrígela en .env (no se muestra aquí).",
+            file=sys.stderr,
+        )
+        return 2
     print(
         f"{args.n} análisis con {settings.groq_model}: {args.n + 1} llamadas a Groq "
         f"(la mínima y una por análisis), {args.espera:.0f} s entre análisis.",
@@ -533,7 +554,14 @@ def main(argv: list[str] | None = None) -> int:
                 commit=commit,
                 avisar=lambda m: print(m, file=sys.stderr, flush=True),
             )
-        except (RuntimeError, ValueError, httpx.HTTPError) as exc:
+        except (httpx.HTTPError, UnicodeError) as exc:
+            # Solo el tipo, como medir() y app.main._check_groq_model: el mensaje de httpx
+            # puede llevar las cabeceras de la petición, con la clave («Illegal header value
+            # b'Bearer …'»).
+            print(f"Error: {type(exc).__name__} (sin el mensaje)", file=sys.stderr)
+            return 1
+        except (RuntimeError, ValueError) as exc:
+            # Los de este script y los del motor (401 de la llamada mínima, índice vacío).
             print(f"Error: {type(exc).__name__}: {exc}", file=sys.stderr)
             return 1
     fichero.parent.mkdir(parents=True, exist_ok=True)

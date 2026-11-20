@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import os
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -367,3 +368,83 @@ def test_the_engine_gets_a_groq_client_without_retries_or_fallback():
     assert fabrica.call_args.kwargs == {"max_retries": 0}
     assert state.groq_client == "sin reintentos"
     assert state.groq_fallback_client is None
+
+
+# ------------------------------------------------------------------- la clave no se muestra
+#
+# main() pone GROQ_FALLBACK_MODEL, GROQ_VERIFY_MODEL_ON_STARTUP y LOG_LEVEL en el entorno:
+# patch.dict lo deja como estaba, para no cambiar la configuración de otras pruebas.
+
+
+def _main_con_clave(clave, tmp_path, monkeypatch, **ejecutar_kwargs):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "groq_api_key", clave)
+    with (
+        patch.dict(os.environ),
+        patch.object(medir_tokens, "ejecutar", **ejecutar_kwargs) as ejecutar,
+    ):
+        rc = medir_tokens.main(["--salida", str(tmp_path / "resultado.json")])
+    return rc, ejecutar
+
+
+@pytest.mark.parametrize(
+    "clave",
+    [
+        CLAVE + " ",
+        CLAVE + "\n",
+        CLAVE + "\r",
+        CLAVE + "\t",
+        " " + CLAVE,
+        CLAVE + "ñ",
+        CLAVE + "\x01",
+    ],
+    ids=[
+        "espacio",
+        "salto",
+        "retorno",
+        "tabulador",
+        "espacio-delante",
+        "no-ascii",
+        "control",
+    ],
+)
+def test_a_malformed_key_stops_before_any_call_without_showing_it(
+    clave, tmp_path, monkeypatch, capsys
+):
+    # httpx (h11) rechaza una cabecera así con un error cuyo mensaje lleva la cabecera entera,
+    # «Bearer <clave>». Se para antes de la llamada mínima, sin repetir la clave.
+    rc, ejecutar = _main_con_clave(clave, tmp_path, monkeypatch)
+    assert rc == 2
+    ejecutar.assert_not_called()
+    salida = capsys.readouterr()
+    assert "SECRETA" not in salida.out + salida.err
+    assert "GROQ_API_KEY" in salida.err
+    assert not (tmp_path / "resultado.json").exists()
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        # El mensaje real de h11 lleva el repr de los bytes: «\n» como dos caracteres.
+        httpx.LocalProtocolError(f"Illegal header value b'Bearer {CLAVE}\\n'"),
+        httpx.ConnectError(f"conexión rechazada (Bearer {CLAVE})"),
+        UnicodeEncodeError("ascii", CLAVE, 0, 1, f"Bearer {CLAVE}"),
+    ],
+    ids=["cabecera", "conexion", "codificacion"],
+)
+def test_an_http_error_is_shown_without_its_message(
+    error, tmp_path, monkeypatch, capsys
+):
+    rc, _ = _main_con_clave(CLAVE, tmp_path, monkeypatch, side_effect=error)
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "SECRETA" not in err
+    assert type(error).__name__ in err
+
+
+def test_own_errors_keep_their_message(tmp_path, monkeypatch, capsys):
+    error = RuntimeError("La llamada mínima a Groq respondió 401: no se mide nada")
+    rc, _ = _main_con_clave(CLAVE, tmp_path, monkeypatch, side_effect=error)
+    assert rc == 1
+    assert "respondió 401" in capsys.readouterr().err
