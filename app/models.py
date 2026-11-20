@@ -177,18 +177,46 @@ class RAGResponse(BaseModel):
     generado_por_ia: GeneradoPorIA | None = None
 
 
+class UsoModelo(BaseModel):
+    """Lo que dice el proveedor sobre una respuesta del modelo: por qué terminó y cuántos
+    tokens gastó (``rag._uso_modelo``).
+
+    Interno: va en ``PipelineResult`` y en el registro, no en la respuesta REST ni en el
+    contenido estructurado de ``analizar_proyecto``. Cada campo es ``None`` si el proveedor
+    no lo da. Los tokens son los de ``usage_metadata`` de LangChain, que langchain-groq
+    rellena con el ``usage`` de Groq. En el formato de OpenAI, que sigue Groq, el razonamiento
+    es un desglose de la salida, no se suma a ella: en gpt-oss los tokens de razonamiento
+    cuentan contra ``GROQ_MAX_TOKENS``.
+    """
+
+    # «stop» si el modelo terminó; «length» si se cortó al llegar a GROQ_MAX_TOKENS.
+    finish_reason: str | None = None
+    tokens_entrada: int | None = None
+    tokens_salida: int | None = None
+    tokens_razonamiento: int | None = None
+    tokens_total: int | None = None
+
+    @property
+    def truncado(self) -> bool:
+        """El modelo no terminó: se cortó por longitud y al informe le falta el final."""
+        return self.finish_reason == "length"
+
+
 class PipelineResult(BaseModel):
     """Resultado interno de un análisis: la respuesta REST y los fragmentos del contexto.
 
     La API REST devuelve solo ``response`` (su forma pública no cambia); ``analizar_proyecto``
     publica además los fragmentos, sin texto, en el orden en que los recibe el modelo. Es lo
-    que guarda la caché común (``service.analyze``).
+    que guarda la caché común (``service.analyze``), así que un acierto de caché conserva el
+    ``uso_modelo`` de la llamada que generó el informe.
     """
 
     response: RAGResponse
     fragmentos: list[FragmentoRef]
     # Detectadas a las que el informe no dedica sección (citations.normativas_sin_desarrollar).
     normativas_sin_desarrollar: list[str] = Field(default_factory=list)
+    # Motivo de fin y tokens de la llamada al modelo (interno; no sale de la API ni de MCP).
+    uso_modelo: UsoModelo = Field(default_factory=UsoModelo)
 
 
 class FeedbackInput(BaseModel):

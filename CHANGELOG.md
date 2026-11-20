@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- El motor lee de la respuesta del modelo por qué terminó (`finish_reason`) y cuántos tokens gastó (entrada, salida, razonamiento y total, de `usage_metadata`; `null` si Groq no los da). Si la respuesta se cortó al llegar a `GROQ_MAX_TOKENS` (`length`), «Cobertura del análisis» abre con un aviso escrito por el código: el informe está incompleto y pueden faltar normativas enteras al final. Hasta ahora se entregaba como completo. Los tokens y el motivo van en `PipelineResult.uso_modelo` (interno), en el evento `rag_pipeline` (`llm_finish_reason` y `llm_tokens`, solo recuentos) y en dos métricas que no cuentan los aciertos de caché: `legaldev_llm_tokens{kind}` (histograma por informe) y `legaldev_llm_truncated_total{model}`. La respuesta REST y el `structuredContent` de `analizar_proyecto` no cambian, ni el `SYSTEM_PROMPT`. Idea de prioridad 9 de la revisión «fable:código» del 13/11/2026; pruebas en `tests/test_uso_modelo.py`, con `ChatGroq` y el SDK de Groq reales sobre un transporte simulado.
+
 ### Changed
 - `server/discover` lleva `ttlMs` 0 y `cacheScope` `"private"` fijados en el servidor (`DISCOVER_TTL_MS` y `DISCOVER_CACHE_SCOPE` en `app/mcp_server.py`), no heredados del SDK. Son los valores que ya enviaba la 0.5.1, así que el contrato no cambia. El 0 es deliberado: el resultado lleva la versión del servidor, que es por la que un cliente distingue un `tools/list` de otro, y guardarlo ocultaría un despliegue nuevo. PP-13 comprueba ahora los dos campos (obligatorios en la revisión 2026-07-28), valida el resultado entero con el modelo de la revisión y comprueba que los valores salen de las constantes y no de los del SDK por defecto (CA-09).
 

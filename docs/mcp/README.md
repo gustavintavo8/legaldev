@@ -1428,6 +1428,42 @@ tarda decenas de segundos. Para VS Code y Cursor no hay una espera documentada c
 comparar. La memoria tiene que fijar con qué espera se compara (ver «Cambios que necesita la
 memoria»), o medirla con los pasos de «Configuración de clientes».
 
+## Tokens y corte del informe (0.5.2)
+
+Hasta la 0.5.1 el motor solo leía el texto de la respuesta del modelo. Un informe cortado
+por longitud (`GROQ_MAX_TOKENS`, 8.000, en los que en gpt-oss cuenta también el
+razonamiento) se entregaba como completo: el saneado cerraba el bloque de código abierto y
+nada lo delataba, y lo que falta al final de un informe de obligaciones son normativas
+enteras. Tampoco se sabía cuántos tokens gasta un análisis, que es lo que decide cuántos
+caben en la cuota gratuita de Groq (idea de prioridad 9 de la revisión «fable:código» del
+13/11/2026). Desde la 0.5.2, `app/rag.py` lee de la respuesta (`_uso_modelo`):
+
+- **`finish_reason`**, de `response_metadata`. Si es `length`, «Cobertura del análisis» abre
+  con un aviso que escribe el código, no el modelo: el informe está incompleto y pueden
+  faltar obligaciones o normativas enteras al final. Las detectadas que el corte deja fuera
+  salen en la lista de las que no desarrolla. El aviso no propone repetir el análisis,
+  porque la caché devolvería el mismo informe durante una hora. Un corte no es un fallo: no
+  pasa al modelo de respaldo.
+- **Los tokens** de entrada, salida, razonamiento y total, de `usage_metadata`, que
+  langchain-groq rellena con el `usage` de Groq. El razonamiento es un desglose de la salida
+  (formato de OpenAI), no se suma. Si Groq no da un dato, queda en `null`.
+
+Dónde quedan:
+
+- En `PipelineResult.uso_modelo` (interno, y en la caché con el resto del análisis).
+- En el evento `rag_pipeline` del registro: `llm_finish_reason` y `llm_tokens` (`input`,
+  `output`, `reasoning`, `total`). Son solo recuentos, sin texto del usuario (PP-08).
+- En dos métricas, que solo se observan cuando se llama al modelo, no en los aciertos de
+  caché:
+  - `legaldev_llm_tokens{kind}`, un histograma de tokens por informe;
+  - `legaldev_llm_truncated_total{model}`, los informes cortados, por modelo.
+
+El contrato público no cambia: ni la respuesta de `POST /v1/analyze` ni el
+`structuredContent` de `analizar_proyecto` llevan campos nuevos; el corte se ve en el texto
+del informe. Si una vía necesita el dato estructurado, se añadiría como campo opcional.
+Pruebas en `tests/test_uso_modelo.py`, que leen la respuesta con `ChatGroq` y el SDK de Groq
+reales sobre un transporte HTTP simulado.
+
 ## Primera prueba con un asistente real (Claude Code, 06/11/2026)
 
 Cuestionario: aplicación web de una empresa de Madrid, de acceso público, con usuarios
@@ -1678,6 +1714,11 @@ salía de él, separándolo de lo que aportaba por su cuenta. Lo que señaló:
   con `cacheScope` `"private"`, los mismos valores que enviaba la 0.5.1, así que el contrato
   se cumplía y ahora tiene prueba; el porqué del 0 está en «Lo que exige la revisión
   2026-07-28». Deja de ser un criterio pendiente de OE1.
+- 22-arquitectura (pipeline), 23-detalle (`app/rag.py`, `PipelineResult`) y la pregunta del
+  tribunal «¿cómo sabe el usuario que un informe se ha cortado?»: desde la 0.5.2 el motor lee
+  `finish_reason` y los tokens, el informe cortado lo dice en «Cobertura del análisis» y hay
+  dos métricas nuevas (ver «Tokens y corte del informe»). La evaluación extendida
+  (`eval/run.py`) puede tomar los tokens de `PipelineResult.uso_modelo`.
 
 Siguen abiertas, como estaban: tipificación de las guías de la AEPD sin articulado y forma de
 `sin_mapeo` en la evidencia (OE2). En las guías, además, el encabezado que da `articulo` o

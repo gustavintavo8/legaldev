@@ -50,6 +50,22 @@ citations_unverified_total = Counter(
     "LLM quotes not found verbatim in the retrieved chunks",
 )
 
+# Per LLM call, not per request: cache hits are not observed again (app.rag).
+llm_tokens = Histogram(
+    "legaldev_llm_tokens",
+    "Tokens per report as reported by the LLM provider (kind: input, output, reasoning, "
+    "total); reasoning is part of output",
+    ["kind"],
+    buckets=[500, 1000, 2000, 4000, 6000, 8000, 10000, 12000, 16000, 24000, 32000],
+)
+
+llm_truncated_total = Counter(
+    "legaldev_llm_truncated_total",
+    "LLM responses cut at the output token limit (finish_reason=length); the report "
+    "says it is incomplete",
+    ["model"],
+)
+
 analyze_requests_total = Counter(
     "legaldev_analyze_requests_total",
     "Analysis requests by access path (rest, mcp, ci), cache hits included",
