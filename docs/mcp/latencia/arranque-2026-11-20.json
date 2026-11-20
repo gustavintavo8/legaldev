@@ -1,0 +1,44 @@
+{
+ "fecha_utc": "2026-11-20T17:47:17Z",
+ "metodo": "reinicio por POST /api/spaces/{repo}/restart (sin factory reboot); tiempos desde la respuesta de ese POST",
+ "etapas": [
+  {
+   "s": 1.2,
+   "stage": "RUNNING_APP_STARTING"
+  },
+  {
+   "s": 18.0,
+   "stage": "BUILDING"
+  },
+  {
+   "s": 20.4,
+   "stage": "RUNNING"
+  }
+ ],
+ "antes": {
+  "stage": "RUNNING",
+  "sha": "33c23ad"
+ },
+ "health_200_s": 20.7,
+ "discover": {
+  "resultado": "ok",
+  "s": 0.36
+ },
+ "tools_list": {
+  "resultado": "ok",
+  "s": 0.17
+ },
+ "primera_consulta": {
+  "resultado": "ok",
+  "s": 3.11,
+  "fragmentos": 6
+ },
+ "segunda_consulta": {
+  "resultado": "ok",
+  "s": 3.12
+ },
+ "listo_para_usar_s": 27.9,
+ "despues": {
+  "stage": "RUNNING"
+ }
+}
