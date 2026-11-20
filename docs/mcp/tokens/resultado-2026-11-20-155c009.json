@@ -1,0 +1,249 @@
+{
+  "fecha": "2026-11-20T19:07:49+00:00",
+  "commit": "155c009",
+  "modelo": "openai/gpt-oss-120b",
+  "max_tokens": 8000,
+  "reasoning_effort": "low",
+  "corpus_version": "7a2029a4dfd8",
+  "marca": "9f1286a9",
+  "metodo": {
+    "camino": "service.analyze en proceso (el de POST /v1/analyze y analizar_proyecto)",
+    "cuestionarios": "los de tools/medir_latencia_mcp.py, con la marca en la descripción",
+    "espera_s": 90.0,
+    "reintentos": 0,
+    "respaldo": null,
+    "tokens": "PipelineResult.uso_modelo (usage_metadata de LangChain); usage_groq es el usage numérico de Groq"
+  },
+  "llamadas_groq": 6,
+  "informes": [
+    {
+      "i": 1,
+      "tipo_proyecto": "app_web",
+      "segundos": 17.9,
+      "resultado": "ok",
+      "llm_model": "openai/gpt-oss-120b",
+      "finish_reason": "stop",
+      "tokens": {
+        "entrada": 3094,
+        "salida": 2364,
+        "razonamiento": 238,
+        "total": 5458
+      },
+      "usage_groq": {
+        "completion_tokens": 2364,
+        "prompt_tokens": 3094,
+        "total_tokens": 5458,
+        "completion_time": 4.979964567,
+        "completion_tokens_details": {
+          "reasoning_tokens": 238
+        },
+        "prompt_time": 0.158081275,
+        "queue_time": 0.087386808,
+        "total_time": 5.138045842
+      }
+    },
+    {
+      "i": 2,
+      "tipo_proyecto": "ecommerce",
+      "segundos": 12.5,
+      "resultado": "ok",
+      "llm_model": "openai/gpt-oss-120b",
+      "finish_reason": "stop",
+      "tokens": {
+        "entrada": 3255,
+        "salida": 2379,
+        "razonamiento": 255,
+        "total": 5634
+      },
+      "usage_groq": {
+        "completion_tokens": 2379,
+        "prompt_tokens": 3255,
+        "total_tokens": 5634,
+        "completion_time": 4.976205774,
+        "completion_tokens_details": {
+          "reasoning_tokens": 255
+        },
+        "prompt_time": 0.158964888,
+        "queue_time": 0.087861617,
+        "total_time": 5.135170662
+      }
+    },
+    {
+      "i": 3,
+      "tipo_proyecto": "saas",
+      "segundos": 15.5,
+      "resultado": "ok",
+      "llm_model": "openai/gpt-oss-120b",
+      "finish_reason": "stop",
+      "tokens": {
+        "entrada": 3559,
+        "salida": 2608,
+        "razonamiento": 227,
+        "total": 6167
+      },
+      "usage_groq": {
+        "completion_tokens": 2608,
+        "prompt_tokens": 3559,
+        "total_tokens": 6167,
+        "completion_time": 5.464018917,
+        "completion_tokens_details": {
+          "reasoning_tokens": 227
+        },
+        "prompt_time": 0.192963096,
+        "queue_time": 0.281926115,
+        "total_time": 5.656982013
+      }
+    },
+    {
+      "i": 4,
+      "tipo_proyecto": "app_movil",
+      "segundos": 16.7,
+      "resultado": "ok",
+      "llm_model": "openai/gpt-oss-120b",
+      "finish_reason": "stop",
+      "tokens": {
+        "entrada": 3815,
+        "salida": 2394,
+        "razonamiento": 197,
+        "total": 6209
+      },
+      "usage_groq": {
+        "completion_tokens": 2394,
+        "prompt_tokens": 3815,
+        "total_tokens": 6209,
+        "completion_time": 4.974638425,
+        "completion_tokens_details": {
+          "reasoning_tokens": 197
+        },
+        "prompt_time": 0.344829621,
+        "queue_time": 0.183257874,
+        "total_time": 5.319468046
+      }
+    },
+    {
+      "i": 5,
+      "tipo_proyecto": "api",
+      "segundos": 11.1,
+      "resultado": "ok",
+      "llm_model": "openai/gpt-oss-120b",
+      "finish_reason": "stop",
+      "tokens": {
+        "entrada": 3021,
+        "salida": 2090,
+        "razonamiento": 112,
+        "total": 5111
+      },
+      "usage_groq": {
+        "completion_tokens": 2090,
+        "prompt_tokens": 3021,
+        "total_tokens": 5111,
+        "completion_time": 4.397129341,
+        "completion_tokens_details": {
+          "reasoning_tokens": 112
+        },
+        "prompt_time": 0.237230386,
+        "queue_time": 0.058992679,
+        "total_time": 4.634359727
+      }
+    }
+  ],
+  "resumen": {
+    "n": 5,
+    "con_informe": 5,
+    "truncados": 0,
+    "finish_reason": {
+      "stop": 5
+    },
+    "excluidos": {},
+    "entrada": {
+      "n": 5,
+      "media": 3348.8,
+      "max": 3815
+    },
+    "salida": {
+      "n": 5,
+      "media": 2367.0,
+      "max": 2608
+    },
+    "razonamiento": {
+      "n": 5,
+      "media": 205.8,
+      "max": 255
+    },
+    "total": {
+      "n": 5,
+      "media": 5715.8,
+      "max": 6209
+    }
+  },
+  "limites": {
+    "http": 200,
+    "modelo": "openai/gpt-oss-120b",
+    "cabeceras": {
+      "x-ratelimit-limit-requests": "1000",
+      "x-ratelimit-limit-tokens": "8000",
+      "x-ratelimit-remaining-requests": "999",
+      "x-ratelimit-remaining-tokens": "7908",
+      "x-ratelimit-reset-requests": "1m26.4s",
+      "x-ratelimit-reset-tokens": "690ms"
+    },
+    "significado": {
+      "x-ratelimit-limit-requests": "peticiones por día (RPD)",
+      "x-ratelimit-limit-tokens": "tokens por minuto (TPM)",
+      "x-ratelimit-remaining-requests": "peticiones que quedan hoy",
+      "x-ratelimit-remaining-tokens": "tokens que quedan en este minuto",
+      "x-ratelimit-reset-requests": "cuándo se repone el límite de peticiones",
+      "x-ratelimit-reset-tokens": "cuándo se repone el límite de tokens"
+    },
+    "rpd": 1000,
+    "tpm": 8000,
+    "restantes_rpd": 999,
+    "restantes_tpm": 7908,
+    "reposicion_rpd": "1m26.4s",
+    "reposicion_tpm": "690ms",
+    "usage_llamada_minima": {
+      "queue_time": 0.090788,
+      "prompt_tokens": 76,
+      "prompt_time": 0.003224376,
+      "completion_tokens": 16,
+      "completion_time": 0.034425592,
+      "total_tokens": 92,
+      "total_time": 0.037649968,
+      "completion_tokens_details": {
+        "reasoning_tokens": 14
+      }
+    }
+  },
+  "capacidad": {
+    "limites_usados": {
+      "tpm": 8000,
+      "rpd": 1000,
+      "rpm": null,
+      "tpd": null
+    },
+    "tokens_por_analisis": {
+      "media": 5715.8,
+      "max": 6209
+    },
+    "por_minuto": {
+      "por_tokens_con_media": 1,
+      "por_tokens_con_maximo": 1,
+      "por_peticiones": null,
+      "reservando_max_tokens": 0,
+      "cifra": 1
+    },
+    "por_dia": {
+      "por_peticiones": 1000,
+      "por_tokens_con_media": null,
+      "por_tokens_con_maximo": null,
+      "cifra": 1000
+    },
+    "formulas": {
+      "por_minuto": "min(floor(TPM / max(total)), RPM)",
+      "por_dia": "min(RPD, floor(TPD / max(total)))",
+      "con_media": "igual, con la media de total en lugar del máximo",
+      "reservando_max_tokens": "floor(TPM / (max(entrada) + GROQ_MAX_TOKENS))",
+      "nulos": "un límite que no se conoce (RPM y TPD sin --rpm y --tpd) no entra"
+    }
+  }
+}
