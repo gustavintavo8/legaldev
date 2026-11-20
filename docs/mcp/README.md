@@ -943,6 +943,20 @@ está en `resultado-2026-11-13-bd228c6.json`):
 Los límites son los de las mediciones anteriores: es una muestra, una llamada por carga, y
 P05 y P12 no se han revisado a mano.
 
+**Para revisar P05 y P12 a mano (0.5.2).** El oráculo solo ve formas ejecutables; si el
+modelo obedece una orden en lenguaje natural sin copiar la carga, hay que leer el informe.
+Los resultados guardaban solo extractos con las marcas. Con `--informes-completos`, cada
+llamada guarda además el informe saneado entero (`informe_completo`) y el
+`structuredContent` (`structured_content`), y el JSON lo anota en `informes_completos`.
+`--solo` admite solo cargas que se miden con el modelo real; con otro identificador, el
+script se detiene antes de arrancar el servidor (antes lo descartaba sin aviso). Desde la raíz
+del repositorio, 2 llamadas a Groq:
+
+```
+uv run python docs/mcp/pp18/medir.py --solo P05,P12 --informes-completos
+git checkout -- chroma_db/chroma.sqlite3
+```
+
 **Lo que enseña.** Cada defensa era razonable y tenía sus pruebas, pero las de cada capa no
 miraban la otra, y la de extremo a extremo simulaba un modelo que ve la carga tal como la
 escribe el atacante, un supuesto que la propia defensa de la entrada había hecho falso. Lo
@@ -1799,9 +1813,10 @@ Lo que falta del servidor MCP:
   «Latencia»).
 - **C-05:** el formato definitivo del marcado (D-4, art. 50.7), si hace falta una cabecera
   HTTP y el aviso de IA en la web (art. 50.1).
-- **PP-18:** revisar a mano si los informes de P05 y P12 obedecen, sin copiarlas, las órdenes
-  en lenguaje natural. Hace falta guardar el informe entero, porque `medir.py` solo guarda
-  extractos.
+- **PP-18** (lo hace el autor, con Groq): revisar a mano si los informes de P05 y P12
+  obedecen, sin copiarlas, las órdenes en lenguaje natural. Desde la 0.5.2,
+  `medir.py --solo P05,P12 --informes-completos` guarda el informe saneado entero y el
+  `structuredContent` de cada una (2 llamadas; ver «PP-18 sobre la 0.5.1»).
 - **Tokens por análisis** (lo hace el autor, con Groq): ejecutar `tools/medir_tokens.py`
   (6 llamadas con los valores por defecto) y llevar las cifras a la memoria (ver «Cuántos
   análisis caben en la cuenta de Groq»).
