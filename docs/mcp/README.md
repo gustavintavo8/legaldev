@@ -1,6 +1,6 @@
 # Servidor MCP de LegalDev
 
-**Estado (20/11/2026).** En producción en el Space de Hugging Face
+**Estado (21/11/2026).** En producción en el Space de Hugging Face
 (`https://gustavintavo8-legaldev.hf.space/mcp`) desde el 06/11/2026, con `MCP_API_KEYS`
 propias y la API REST abierta para la web. El despliegue del 13/11/2026 (`main@ab3e3a3`) llevó
 todo lo del 12/11/2026: el saneado de la salida (RNF-20), el marcado del contenido generado por
@@ -22,8 +22,9 @@ modelo real sobre ella vuelve a dar 0 cargas que sobrevivan (ver «PP-18 sobre l
 `v0.5.2`, comprobada allí en `docs/mcp/produccion/verificacion-0.5.2-2026-11-20.json`): fija
 el `ttlMs` de `server/discover` con su prueba, avisa en el informe si el modelo se cortó y
 registra los tokens de cada análisis (ver «Tokens y corte del informe»). No cambia lo que
-recibe el modelo ni el saneado, así que la PP-18 medida sobre la 0.5.1 le sirve. Lo que falta
-está en «Pendiente».
+recibe el modelo ni el saneado, así que la PP-18 medida sobre la 0.5.1 le sirve. El 21/11/2026
+el tope diario por clave del Space (`MCP_DAILY_LIMIT`) bajó de `200/day` a `20/day`, sin cambio
+de código ni de versión (ver «Tope diario por clave»). Lo que falta está en «Pendiente».
 
 `POST /mcp` existe cuando `MCP_ENABLED=true` y hay claves (`MCP_API_KEYS` o, si está vacía,
 `API_KEYS`); sin claves no se monta aunque se active (RNF-15), y por defecto está desactivado.
@@ -279,13 +280,13 @@ Responde a la amenaza de consumo de la cuota del proveedor del modelo: con solo 
 minuto, una clave filtrada podía pedir `10/minute` × 1.440 minutos = 14.400 análisis al día y
 agotar la cuota de Groq, que el Space comparte con la web.
 
-- **Valor.** `MCP_DAILY_LIMIT=200/day` (o `200`): como mucho 200 llamadas a
+- **Valor.** `MCP_DAILY_LIMIT=20/day` (o `20`): como mucho 20 llamadas a
   `analizar_proyecto` por clave y día. Vacío o `0` (el valor por defecto), sin tope. Si no
   es un único límite por día (`200/hour`, `1/day;2/day`), la aplicación no arranca, igual que
   con un `*` en `MCP_ALLOWED_ORIGINS`.
 - **Cómo cuenta.** Por clave (el mismo resumen SHA-256 que el cupo por minuto) y en el mismo
   almacén del limitador, con un identificador propio (`tope_diario`): si `RATE_LIMIT`
-  incluyera el mismo límite (`10/minute;200/day`), sin él los dos compartirían contador y
+  incluyera el mismo límite (`10/minute;20/day`), sin él los dos compartirían contador y
   cada llamada contaría dos veces. Se comprueba después del cupo por minuto, así que una
   llamada frenada por el cupo no gasta el tope.
 - **Qué cuenta.** Toda llamada a `analizar_proyecto` que pasa la guarda: también las que
@@ -299,7 +300,8 @@ agotar la cuota de Groq, que el Space comparte con la web.
   repite un cuestionario ya tiene la respuesta. El cupo por minuto cuenta igual.
 - **Ventana.** 24 horas desde la primera llamada contada de cada clave, no desde
   medianoche. El almacén es la memoria del proceso: un reinicio del Space (se duerme por
-  inactividad o se redespliega) pone a cero el tope, igual que el cupo por minuto.
+  inactividad, se redespliega o cambia una variable, que reconstruye el contenedor) pone a
+  cero el tope, igual que el cupo por minuto.
 - **Al agotarse.** 429 con `Retry-After` (los segundos que faltan), código -32000 y un
   mensaje que da el tope, cuándo se renueva y que `listar_normativas` y
   `consultar_obligaciones` siguen disponibles. Se registra como `mcp_rejected` con `reason`
@@ -312,9 +314,11 @@ aciertos de caché y los cuestionarios inválidos, que las otras herramientas no
 clientes de la era antigua, el aislamiento entre claves, la separación del contador de
 `RATE_LIMIT`, el orden con el cupo por minuto, la ausencia de tope y la validación del valor.
 
-En el Space vale `200/day` desde el 13/11/2026 (*Settings → Variables and secrets*). Es una
-variable, no un secreto. Revisarlo si cambia la cuota diaria de Groq, que se reparte entre las
-claves y la web.
+En el Space vale `20/day` desde el 21/11/2026 (*Settings → Variables and secrets*); del 13 al
+21/11/2026 valió `200/day`. Es una variable, no un secreto. Se bajó porque 200 por clave
+quedaban muy por encima de los análisis que caben en un día en la cuenta de Groq (ver «Cuántos
+análisis caben en la cuenta de Groq» y «Tope diario del 21/11/2026»). Revisarlo si cambia la
+cuota diaria de Groq, que se reparte entre las claves y la web.
 
 ### Salida segura (RNF-20) y PP-18
 
@@ -1332,7 +1336,8 @@ El Space (`https://gustavintavo8-legaldev.hf.space`) se despliega con `make push
 la web. Los asistentes se conectan a `https://gustavintavo8-legaldev.hf.space/mcp` con la
 cabecera `X-API-Key` (ejemplos en `clients/`). El cupo de `analizar_proyecto` es por clave y
 comparte la cuota de Groq con la web. `MCP_DAILY_LIMIT` (variable, no secreto) añade el tope
-diario por clave; en el Space vale `200/day` desde el 13/11/2026.
+diario por clave; en el Space vale `20/day` desde el 21/11/2026 (`200/day` del 13 al
+21/11/2026).
 
 Comprobado en producción el 06/11/2026, con el cliente del SDK por internet y en las dos eras:
 sin clave, 401; con una clave falsa, 403; GET, 405; las tres herramientas con el índice del
@@ -1344,7 +1349,8 @@ sigue sin pedir clave (`/v1/analyze` con un cuerpo inválido responde 422, no 40
 **Despliegue del 13/11/2026.** `main` en `ab3e3a3` y el Space en la instantánea `9906137`, hecha
 con el árbol de `main` (como `make push-space`). Se construyó y arrancó en 128 s.
 `app/sanitize.py`, `app/citations.py`, `app/rag.py` y `app/mcp_server.py` del Space son iguales
-byte a byte que los de `ab3e3a3`. `MCP_DAILY_LIMIT` vale `200/day`.
+byte a byte que los de `ab3e3a3`. `MCP_DAILY_LIMIT` valía `200/day` (`20/day` desde el
+21/11/2026, ver «Tope diario del 21/11/2026»).
 
 Lo comprobado ese día, guardado en `docs/mcp/produccion/verificacion-2026-11-13.json`:
 
@@ -1368,6 +1374,16 @@ Lo comprobado ese día, guardado en `docs/mcp/produccion/verificacion-2026-11-13
     el proceso sale con 127 y no con 3: Node aborta al cerrar en Windows (aserción de libuv
     `UV_HANDLE_CLOSING`), después de imprimir el error. El 401 se confirma con curl.
     `make mcp-inspect` fallaría en Windows por eso, no por el servidor.
+
+**Tope diario del 21/11/2026.** `MCP_DAILY_LIMIT` pasó de `200/day` a `20/day` con la API de
+Hugging Face (`HfApi.add_space_variable`), sin cambio de código ni de versión: el Space sigue
+en la instantánea `b13d088` (0.5.2, `155c009`). El motivo está en «Cuántos análisis caben en
+la cuenta de Groq». Cambiar una variable reconstruye el contenedor (etapa `RUNNING_BUILDING`),
+así que no es el reinicio simple del 20/11/2026: `/health` respondió 200 a los 52,1 s,
+contados desde el cambio. Después, `GET /` anuncia 0.5.2, `/health` da 200 y `POST /mcp` sin
+clave, 401. Que `20/day` se lee como 20 por día se comprobó en local (`Settings`); el tope no
+se ejerció en producción, porque haría falta gastar 20 análisis de la cuota de Groq.
+Evidencia en `docs/mcp/produccion/tope-20-2026-11-21.json`.
 
 ## Latencia (RNF-19)
 
@@ -1411,7 +1427,10 @@ Decisiones:
 
 Una ejecución con los valores por defecto (`--frio 10 --caliente 10 --consultas 10`) hace 10
 llamadas a Groq y gasta 20 del tope diario de la clave (`MCP_DAILY_LIMIT` también cuenta los
-aciertos de caché). Tarda unos 17 minutos. Tras el despliegue, desde la raíz del repositorio:
+aciertos de caché). Con el tope de `20/day` del Space (desde el 21/11/2026) es el tope entero
+de la clave: hasta 24 h después de su primera llamada contada, o hasta que se reinicie el
+Space, cualquier otra llamada a `analizar_proyecto` con esa clave recibe 429, y el script las
+cuenta como excluidas. Tarda unos 17 minutos. Tras el despliegue, desde la raíz del repositorio:
 
 ```
 LEGALDEV_URL=https://gustavintavo8-legaldev.hf.space LEGALDEV_API_KEY=<clave> \
@@ -1570,7 +1589,8 @@ análisis y, con eso, cuántos caben:
   `min(RPD, floor(TPD / máx(total)))`. También con la media, y por minuto con lo que
   cabría si Groq reservara la entrada más `GROQ_MAX_TOKENS` al recibir la petición, que no
   está documentado. A eso se suman los límites propios de LegalDev: `RATE_LIMIT` (10 por
-  minuto) y, en `/mcp`, `MCP_DAILY_LIMIT` (200 al día por clave en el Space).
+  minuto) y, en `/mcp`, `MCP_DAILY_LIMIT` (20 al día por clave en el Space desde el
+  21/11/2026).
 
 Gasta `--n` + 1 llamadas a Groq: la mínima, que va primero, y una por análisis. Si la
 mínima no responde 200 (clave o modelo mal), se para antes de cargar el motor. No hay
@@ -1614,11 +1634,19 @@ límites de la consola pide sesión; los límites salen de las cabeceras de la c
   documentación de Groq da 200.000 tokens por día para este modelo (es la del plan Developer y
   el plan gratuito no está confirmado): con ese valor caben **unos 35 análisis al día** en
   total, para la web y todas las claves.
-- **Consecuencia para el tope diario.** `MCP_DAILY_LIMIT=200/day` por clave está muy por
-  encima de lo que la cuenta permite en un día, así que no protege la cuota común: una sola
-  clave filtrada la agota en unas 35 llamadas. Un tope de unos 20 al día por clave dejaría
-  margen para la web (decisión del autor; ver «Pendiente»). La caché común ayuda, porque un
-  acierto no gasta tokens, aunque sí cuenta en el tope.
+- **Consecuencia para el tope diario.** Con `MCP_DAILY_LIMIT=200/day` por clave, muy por
+  encima de lo que la cuenta permite en un día, una sola clave filtrada agotaba la cuota común
+  en unas 35 llamadas. Por eso el 21/11/2026 se bajó a `20/day` (ver «Tope diario del
+  21/11/2026»). Lo que consigue y lo que no:
+  - una sola clave al tope ya no agota la cuota diaria común (20 < 35) y deja margen para la
+    web, pero dos claves al tope (40) sí la superan;
+  - los 35 al día solo valen si rige el límite de 200.000 tokens por día de la tabla de Groq,
+    que no está confirmado para el plan gratuito;
+  - el límite por minuto de Groq (un análisis) sigue mandando con dos usuarios a la vez, sea
+    cual sea el tope;
+  - la cuota total, la de la web y todas las claves juntas, solo la acota Groq con su 429;
+  - los aciertos de caché cuentan en el tope, pero no gastan tokens;
+  - el tope se reinicia con el Space (ver «Ventana» en «Tope diario por clave»).
 
 ## Primera prueba con un asistente real (Claude Code, 06/11/2026)
 
@@ -1773,7 +1801,8 @@ salía de él, separándolo de lo que aportaba por su cuenta. Lo que señaló:
   `docs/tfg/modulos.md` (es la de `832ac33`).
 - RNF-21 y modelo de amenazas (consumo de la cuota del modelo): tope diario por clave
   (`MCP_DAILY_LIMIT`), con qué cuenta y por qué (incluidos los aciertos de caché), su ventana
-  de 24 h y su 429 con `Retry-After`; 30-manual-instalacion: la variable y su formato.
+  de 24 h y su 429 con `Retry-After`; 30-manual-instalacion: la variable, su formato y su
+  valor en el Space (`20/day` desde el 21/11/2026).
 - RNF-20 pasa a implementado y sale de la tabla de pendientes (PT2-rnf20). Hay que contar el
   principio (codificar la salida, no detectar lo peligroso): qué se escapa y qué se retira
   (llamadas a herramientas, caracteres), que se sanea antes de verificar las citas y que
@@ -1882,14 +1911,35 @@ salía de él, separándolo de lo que aportaba por su cuenta. Lo que señaló:
 - Modelo de amenazas (consumo de la cuota del modelo), RNF-21 y el anexo de herramientas:
   `tools/medir_tokens.py` y sus cifras (ver «Cuántos análisis caben en la cuenta de Groq»):
   unos 5.700 tokens por informe, un análisis por minuto y unos 35 al día en la cuenta
-  gratuita, y por qué el tope de 200 por clave no protege la cuota común.
+  gratuita (si rige el límite diario de la tabla de Groq, sin confirmar para el plan
+  gratuito). Con esas cifras, el tope de 200 por clave no protegía la cuota común, y el
+  21/11/2026 se bajó a 20: una sola clave al tope ya no la agota, dos sí, el límite por minuto
+  sigue mandando con dos usuarios a la vez y la cuota total solo la acota el 429 de Groq.
+  Donde la memoria dé el valor del tope, tiene que decir `20/day`.
+- 31-manual-usuario y 06-resultados (`tab:res-balance`): el aviso de la web al arrancar («la
+  primera consulta puede tardar 40–60 s», `ServerStatus.tsx` en `legaldev-web`) es coherente
+  con lo medido, porque en la web la primera consulta es un análisis: el arranque (tras un
+  reinicio simple, `/health` a los 20,7 s y la primera consulta ligera por MCP a los 27,9 s;
+  tras cambiar una variable, que reconstruye el contenedor, `/health` a los 52 s) más el
+  análisis (p50 sin caché, unos 21 s). Sobra la fila de `tab:res-balance` que pide ajustar al
+  arranque medido la cifra del aviso de la web, y la frase del manual de usuario que dice que
+  la web «tarda unos `\mcpArranqueListoSeg` s en atender la primera consulta» confunde: esos
+  28 s son hasta una consulta ligera por MCP, no hasta el primer análisis en la web.
 
 Siguen abiertas, como estaban: tipificación de las guías de la AEPD sin articulado y forma de
 `sin_mapeo` en la evidencia (OE2). En las guías, además, el encabezado que da `articulo` o
 `considerando` es una mención al RGPD (ver «Diseño resumido»), así que la tipificación no
 puede tomar el par (guía, artículo) por bueno.
 
-## Pendiente (20/11/2026)
+## Pendiente (21/11/2026)
+
+Hecho el 21/11/2026:
+
+- El tope diario por clave del Space, de `200/day` a `20/day`, sin cambio de código ni de
+  versión (ver «Tope diario del 21/11/2026» y «Cuántos análisis caben en la cuenta de Groq»).
+  Comprobado después del cambio: `GET /` da 0.5.2, `/health` 200 y `POST /mcp` sin clave 401;
+  el tope no se ejerció en producción. Evidencia en
+  `docs/mcp/produccion/tope-20-2026-11-21.json`.
 
 Hecho el 20/11/2026 (0.5.2, desplegada y etiquetada `v0.5.2` ese día):
 
@@ -1909,7 +1959,7 @@ Hecho el 13/11/2026, después de M1 (stdio y tope diario), M2 (saneado, PP-18 y 
 y M3 (latencia, MCP Inspector y clientes):
 
 - La fusión en `main` (`ab3e3a3`) y el despliegue en el Space.
-- `MCP_DAILY_LIMIT=200/day`.
+- `MCP_DAILY_LIMIT=200/day` (`20/day` desde el 21/11/2026).
 - La comprobación del Space y el MCP Inspector (ver «Despliegue en el Space de Hugging Face»).
 - La latencia en producción (ver «Latencia»).
 - La PP-18 repetida con la codificación (ver «Salida segura»).
@@ -1921,9 +1971,6 @@ y M3 (latencia, MCP Inspector y clientes):
 
 Lo que falta del servidor MCP:
 
-- **Tope diario frente a la cuota de Groq** (decisión del autor): bajar `MCP_DAILY_LIMIT` a
-  unos 20 al día por clave, o justificar los 200 (ver «Cuántos análisis caben en la cuenta de
-  Groq»).
 - **Clientes reales** (el marcador de CU-07 de «Configuración de clientes»): VS Code, Cursor y Claude Code, por HTTP y por stdio,
   con los pasos de «Configuración de clientes». Anotar en cada uno la versión, la revisión que
   negocia, si aguanta el arranque de stdio y cómo presenta el 401 y el 403.

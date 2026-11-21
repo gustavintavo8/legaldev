@@ -1,0 +1,43 @@
+{
+ "fecha_utc": "2026-11-21",
+ "cambio": "MCP_DAILY_LIMIT de 200/day a 20/day (variable del Space, Settings → Variables and secrets), con la API de Hugging Face (HfApi.add_space_variable)",
+ "motivo": "Con unos 5.716 tokens por informe y los límites de la cuenta gratuita de Groq caben 1 análisis por minuto y unos 35 al día si rige el límite diario de la tabla de Groq (sin confirmar para el plan gratuito). Con 200 por clave, una sola clave filtrada agotaba la cuota común; con 20, una sola ya no, aunque dos claves al tope sí. Ver docs/mcp/README.md, «Cuántos análisis caben en la cuenta de Groq».",
+ "variables_antes": {
+  "MCP_ENABLED": "True",
+  "MCP_DAILY_LIMIT": "200/day"
+ },
+ "variables_despues": {
+  "MCP_ENABLED": "True",
+  "MCP_DAILY_LIMIT": "20/day"
+ },
+ "reinicio": {
+  "etapas_s": [
+   [
+    0.3,
+    "RUNNING"
+   ],
+   [
+    2.4,
+    "RUNNING_BUILDING"
+   ],
+   [
+    6.7,
+    "RUNNING_APP_STARTING"
+   ],
+   [
+    51.7,
+    "RUNNING"
+   ]
+  ],
+  "health_200_s": 52.1,
+  "nota": "Tiempos desde el cambio de la variable, que reconstruye el contenedor (RUNNING_BUILDING); no es el reinicio simple medido el 20/11 (health a los 20,7 s)."
+ },
+ "comprobacion": {
+  "sha_space": "b13d088",
+  "GET /": "200, version 0.5.2",
+  "/health": "200, docs_indexed 13756, corpus 7a2029a4dfd8",
+  "POST /mcp sin clave": 401,
+  "parseo_local": "Settings(mcp_daily_limit='20/day').mcp_daily_limit_item = 20 por 1 day"
+ },
+ "sin_groq": "No se llamó al modelo; el tope no se ejerció en producción (haría falta gastar 20 análisis de la cuota)."
+}
